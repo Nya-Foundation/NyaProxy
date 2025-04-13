@@ -422,7 +422,7 @@ class ProxyHandler:
         Returns:
             A truncated version of the key for metrics
         """
-        return key[:5] + "..." if len(key) > 5 else key
+        return key[:4] + "..." + key[:-4] if len(key) > 8 else key
 
     def _handle_request_exception(
         self, exception: Exception, start_time: float, api_name: str
