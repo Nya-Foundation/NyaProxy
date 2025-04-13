@@ -1,0 +1,326 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "NyaProxy Configuration Schema",
+    "description": "Schema for validating NyaProxy configuration files",
+    "type": "object",
+    "required": [
+        "nya_proxy",
+        "default_settings",
+        "apis"
+    ],
+    "properties": {
+        "nya_proxy": {
+            "type": "object",
+            "required": [
+                "host",
+                "port"
+            ],
+            "properties": {
+                "host": {
+                    "type": "string",
+                    "description": "Host for NyaProxy to bind to"
+                },
+                "port": {
+                    "type": "integer",
+                    "description": "Port for NyaProxy to listen on",
+                    "minimum": 1,
+                    "maximum": 65535
+                },
+                "api_key": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "description": "API key for authenticating requests (optional)"
+                },
+                "logging": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "description": "Enable logging"
+                        },
+                        "level": {
+                            "type": "string",
+                            "enum": [
+                                "debug",
+                                "info",
+                                "warning",
+                                "error",
+                                "DEBUG",
+                                "INFO",
+                                "WARNING",
+                                "ERROR"
+                            ],
+                            "description": "Log level"
+                        },
+                        "log_file": {
+                            "type": "string",
+                            "description": "Log file name"
+                        }
+                    }
+                },
+                "proxy": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "description": "Enable outbound proxy"
+                        },
+                        "address": {
+                            "type": "string",
+                            "description": "Proxy address URI"
+                        }
+                    }
+                },
+                "dashboard": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "description": "Enable/disable the metrics dashboard"
+                        }
+                    }
+                },
+                "queue": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "description": "Enable request queuing when rate limits are hit"
+                        },
+                        "max_size": {
+                            "type": "integer",
+                            "description": "Maximum queue size per API",
+                            "minimum": 1
+                        },
+                        "expiry_seconds": {
+                            "type": "integer",
+                            "description": "How long to keep requests in queue before expiry",
+                            "minimum": 1
+                        }
+                    }
+                }
+            }
+        },
+        "default_settings": {
+            "type": "object",
+            "properties": {
+                "key_variable": {
+                    "type": "string",
+                    "description": "Default variable name for API keys"
+                },
+                "load_balancing_strategy": {
+                    "type": "string",
+                    "enum": [
+                        "round_robin",
+                        "random",
+                        "least_connections",
+                        "fastest_response",
+                        "weighted"
+                    ],
+                    "description": "Default load balancing strategy"
+                },
+                "rate_limit": {
+                    "type": "object",
+                    "properties": {
+                        "endpoint_rate_limit": {
+                            "type": "string",
+                            "pattern": "^\\d+\\/(s|m|h|d)$",
+                            "description": "Default global rate limit"
+                        },
+                        "key_rate_limit": {
+                            "type": "string",
+                            "pattern": "^\\d+\\/(s|m|h|d)$",
+                            "description": "Default per-key rate limit"
+                        }
+                    }
+                },
+                "retry": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "description": "Enable automatic retries"
+                        },
+                        "attempts": {
+                            "type": "integer",
+                            "description": "Max retry attempts",
+                            "minimum": 0
+                        },
+                        "retry_after_seconds": {
+                            "type": "integer",
+                            "description": "Delay between retries",
+                            "minimum": 0
+                        }
+                    }
+                },
+                "timeouts": {
+                    "type": "object",
+                    "properties": {
+                        "request_timeout_seconds": {
+                            "type": "integer",
+                            "description": "Request timeout",
+                            "minimum": 1
+                        }
+                    }
+                },
+                "error_handling": {
+                    "type": "object",
+                    "properties": {
+                        "report_api_errors": {
+                            "type": "boolean",
+                            "description": "Report API errors"
+                        },
+                        "retry_status_codes": {
+                            "type": "array",
+                            "items": {
+                                "type": "integer",
+                                "description": "HTTP status codes to retry"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "apis": {
+            "type": "object",
+            "patternProperties": {
+                "^[a-zA-Z0-9_-]+$": {
+                    "type": "object",
+                    "required": [
+                        "name",
+                        "endpoint",
+                        "key_variable",
+                        "headers",
+                        "variables"
+                    ],
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Human-readable API name"
+                        },
+                        "endpoint": {
+                            "type": "string",
+                            "description": "Target API endpoint URL",
+                            "format": "uri"
+                        },
+                        "aliases": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "description": "URL path aliases for this API"
+                            }
+                        },
+                        "key_variable": {
+                            "type": "string",
+                            "description": "Variable name for API keys in config"
+                        },
+                        "headers": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string",
+                                "description": "Header value that may contain variable substitutions"
+                            }
+                        },
+                        "variables": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "oneOf": [
+                                    {
+                                        "type": "array",
+                                        "items": {
+                                            "oneOf": [
+                                                {
+                                                    "type": "string"
+                                                },
+                                                {
+                                                    "type": "number"
+                                                },
+                                                {
+                                                    "type": "integer"
+                                                }
+                                            ]
+                                        }
+                                    }
+                                ]
+                            }
+                        },
+                        "load_balancing_strategy": {
+                            "type": "string",
+                            "enum": [
+                                "round_robin",
+                                "random",
+                                "least_connections",
+                                "fastest_response",
+                                "weighted"
+                            ],
+                            "description": "Load balancing strategy for this API"
+                        },
+                        "rate_limit": {
+                            "type": "object",
+                            "properties": {
+                                "endpoint_rate_limit": {
+                                    "type": "string",
+                                    "pattern": "^\\d+\\/(s|m|h|d)$",
+                                    "description": "Global rate limit for this API"
+                                },
+                                "key_rate_limit": {
+                                    "type": "string",
+                                    "pattern": "^\\d+\\/(s|m|h|d)$",
+                                    "description": "Per-key rate limit for this API"
+                                }
+                            }
+                        },
+                        "retry": {
+                            "type": "object",
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean",
+                                    "description": "Enable automatic retries for this API"
+                                },
+                                "attempts": {
+                                    "type": "integer",
+                                    "description": "Max retry attempts for this API",
+                                    "minimum": 0
+                                },
+                                "retry_after_seconds": {
+                                    "type": "integer",
+                                    "description": "Delay between retries for this API",
+                                    "minimum": 0
+                                }
+                            }
+                        },
+                        "timeouts": {
+                            "type": "object",
+                            "properties": {
+                                "request_timeout_seconds": {
+                                    "type": "integer",
+                                    "description": "Request timeout for this API",
+                                    "minimum": 1
+                                }
+                            }
+                        },
+                        "error_handling": {
+                            "type": "object",
+                            "properties": {
+                                "report_api_errors": {
+                                    "type": "boolean",
+                                    "description": "Report API errors for this API"
+                                },
+                                "retry_status_codes": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "integer",
+                                        "description": "HTTP status codes to retry for this API"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "additionalProperties": false
+        }
+    }
+}

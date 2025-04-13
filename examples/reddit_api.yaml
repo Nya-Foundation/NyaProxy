@@ -1,0 +1,79 @@
+# Reddit API Configuration Example (Not yet tested)
+nya_proxy:
+  host: 0.0.0.0
+  port: 8080
+  api_key: 
+  logging:
+    enabled: true
+    level: info
+    log_file: nya_proxy.log
+  proxy:
+    enabled: false
+    address: socks5://username:password@proxy.example.com:1080
+  dashboard:
+    enabled: true
+  queue:
+    enabled: true
+    max_size: 200
+    expiry_seconds: 300
+
+default_settings:
+  key_variable: keys
+  load_balancing_strategy: round_robin
+  rate_limit:
+    endpoint_rate_limit: 10/s
+    key_rate_limit: 10/m
+  retry:
+    enabled: true
+    attempts: 3
+    retry_after_seconds: 10
+  timeouts:
+    request_timeout_seconds: 30
+  error_handling:
+    report_api_errors: true
+    retry_status_codes:
+    - 429
+    - 500
+    - 502
+    - 503
+    - 504
+
+apis:
+  reddit:
+    name: "Reddit API"
+    endpoint: "https://oauth.reddit.com"
+    aliases: ["/r", "/reddit"]
+    key_variable: "tokens"
+    headers:
+      Authorization: "Bearer ${{tokens}}"
+      User-Agent: "${{agents}}"  # Reddit API requires unique user agent
+    variables:
+      tokens:
+        - "your-reddit-access-token-1"  # OAuth2 access tokens
+        - "your-reddit-access-token-2"
+      agents:
+        - "NyaProxy/1.0 (by /u/your_username)"  # Format: App name/version by username
+        - "NyaProxy/2.0 (by /u/your_username)"
+    load_balancing_strategy: "round_robin"
+    rate_limit:
+      endpoint_rate_limit: "600/10m"  # Reddit has 600 requests per 10 minutes limit
+      key_rate_limit: "300/10m"       # Conservative per-token limit
+    retry:
+      enabled: true
+      attempts: 3
+      retry_after_seconds: 60  # Reddit prefers longer waits between retries
+    timeouts:
+      request_timeout_seconds: 30
+    error_handling:
+      retry_status_codes: [429, 500, 502, 503, 504]
+      report_api_errors: true
+    
+    # Optional settings for Reddit OAuth setup
+    auth:
+      enabled: false  # Enable if you want NyaProxy to handle token refreshing
+      client_id: "your_client_id"
+      client_secret: "your_client_secret"
+      refresh_tokens:
+        - "your_refresh_token_1"
+        - "your_refresh_token_2"
+      refresh_before_expiry_seconds: 300  # Refresh 5 minutes before expiry

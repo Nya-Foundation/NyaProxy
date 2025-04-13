@@ -1,0 +1,72 @@
+# Google Gemini API Configuration Example (Tested Working!)
+nya_proxy:
+  host: 0.0.0.0
+  port: 8080
+  api_key: 
+  logging:
+    enabled: true
+    level: info
+    log_file: nya_proxy.log
+  proxy:
+    enabled: false
+    address: socks5://username:password@proxy.example.com:1080
+  dashboard:
+    enabled: true
+  queue:
+    enabled: true
+    max_size: 200
+    expiry_seconds: 300
+    
+default_settings:
+  key_variable: keys
+  load_balancing_strategy: round_robin
+  rate_limit:
+    endpoint_rate_limit: 10/s
+    key_rate_limit: 10/m
+  retry:
+    enabled: true
+    attempts: 3
+    retry_after_seconds: 10
+  timeouts:
+    request_timeout_seconds: 30
+  error_handling:
+    report_api_errors: true
+    retry_status_codes:
+    - 429
+    - 500
+    - 502
+    - 503
+    - 504
+
+apis:
+  gemini:
+    name: "Google Gemini API"
+    endpoint: "https://generativelanguage.googleapis.com"
+    aliases: ["gemini"]  # Allow routing via this path
+    key_variable: "api_keys"
+    headers:
+      Content-Type: "application/json"
+    variables:
+      api_keys:
+        - "AIza..."  # Your Gemini API keys
+        - "AIza..."
+    load_balancing_strategy: "least_connections"
+    rate_limit:
+      endpoint_rate_limit: "60/m"  # Conservative estimate
+      key_rate_limit: "30/m"       # Adjust based on your quota
+    retry:
+      enabled: true
+      attempts: 3
+      retry_after_seconds: 1
+      exponential_backoff: true
+    timeouts:
+      request_timeout_seconds: 120  # Longer timeout for model generations
+    error_handling:
+      retry_status_codes: [429, 500, 502, 503, 504]
+      report_api_errors: true
+    
+    # URL parameter modification to inject API key
+    url_params:
+      enabled: true
+      key: "key"
+      value: "${{api_keys}}"  # Will add ?key=YOUR_API_KEY to requests

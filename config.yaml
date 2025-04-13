@@ -1,0 +1,76 @@
+nya_proxy:
+  host: 0.0.0.0
+  port: 8080
+  api_key: 
+  logging:
+    enabled: true
+    level: info
+    log_file: nya_proxy.log
+  proxy:
+    enabled: false
+    address: socks5://username:password@proxy.example.com:1080
+  dashboard:
+    enabled: true
+  queue:
+    enabled: true
+    max_size: 200
+    expiry_seconds: 300
+
+default_settings:
+  key_variable: keys
+  load_balancing_strategy: round_robin
+  rate_limit:
+    endpoint_rate_limit: 10/s
+    key_rate_limit: 10/m
+  retry:
+    enabled: true
+    attempts: 3
+    retry_after_seconds: 10
+  timeouts:
+    request_timeout_seconds: 30
+  error_handling:
+    report_api_errors: true
+    retry_status_codes:
+    - 429
+    - 500
+    - 502
+    - 503
+    - 504
+
+apis:
+  gemini:
+    name: Google Gemini API
+    endpoint: https://generativelanguage.googleapis.com/v1beta/openai
+    aliases:
+    - /gemini
+    key_variable: keys
+    headers:
+      Authorization: 'Bearer ${{keys}}'
+    variables:
+      keys:
+      - your_gemini_key_1
+      - your_gemini_key_2
+      - your_gemini_key_3
+    load_balancing_strategy: round_robin
+    rate_limit:
+      endpoint_rate_limit: 10/m
+      key_rate_limit: 10/m
+    error_handling:
+      retry_status_codes:
+      - 429
+      - 500
+      - 503
+  openai:
+    name: OpenAI API
+    endpoint: https://api.openai.com
+    key_variable: keys
+    headers:
+      Authorization: 'Bearer ${{keys}}'
+    variables:
+      keys:
+      - your_openai_key_1
+      - your_openai_key_2
+    load_balancing_strategy: least_connections
+    rate_limit:
+      endpoint_rate_limit: 500/m
+      key_rate_limit: 250/m

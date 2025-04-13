@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nya-proxy"
+version = "0.1.0"
+description = "A cute and simple low-level API proxy with dynamic token rotation"
+readme = "README.md"
+authors = [
+    {name = "Nya Foundation Team", email = "k3scat@gmail.com"},
+]
+license = {text = "MIT"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "fastapi>=0.95.0",
+    "uvicorn>=0.22.0",
+    "httpx>=0.24.0",
+    "nekoconf>=0.1.4",
+    "pyyaml>=6.0",
+    "jinja2>=3.1.2",
+    "setuptools>=42.0.0",
+    "watchfiles",
+    "brotli",
+]
+
+[project.urls]
+Homepage = "https://github.com/nyaproxy/nyaproxy"
+"Bug Tracker" = "https://github.com/nyaproxy/nyaproxy/issues"
+
+[project.scripts]
+nyaproxy = "nya_proxy.app:main"
+
+[tool.setuptools]
+packages = ["nya_proxy"]
+package-dir = {"nya_proxy" = "nya_proxy"}
