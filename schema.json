@@ -143,6 +143,14 @@
                             "type": "boolean",
                             "description": "Enable automatic retries"
                         },
+                        "mode": {
+                            "type": "string",
+                            "enum": [
+                                "default",
+                                "key_rotation"
+                            ],
+                            "description": "Retry mode"
+                        },
                         "attempts": {
                             "type": "integer",
                             "description": "Max retry attempts",

@@ -201,7 +201,7 @@ class MetricsCollector:
                 }
             )
 
-    def record_rate_limit_hit(self, api_name: str):
+    def record_rate_limit_hit(self, api_name: str, key_id: str = "unknown"):
         """
         Record a rate limit hit for an API.
 
@@ -213,7 +213,12 @@ class MetricsCollector:
 
             # Add to request history
             self.request_history.append(
-                {"type": "rate_limit", "api_name": api_name, "timestamp": time.time()}
+                {
+                    "type": "rate_limit",
+                    "api_name": api_name,
+                    "key_id": key_id,
+                    "timestamp": time.time(),
+                }
             )
 
     def record_queue_hit(self, api_name: str):

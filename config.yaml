@@ -24,6 +24,7 @@ default_settings:
     key_rate_limit: 10/m
   retry:
     enabled: true
+    mode: key_rotation
     attempts: 3
     retry_after_seconds: 10
   timeouts:
@@ -51,7 +52,7 @@ apis:
       - your_gemini_key_1
       - your_gemini_key_2
       - your_gemini_key_3
-    load_balancing_strategy: round_robin
+    load_balancing_strategy: least_connections
     rate_limit:
       endpoint_rate_limit: 10/m
       key_rate_limit: 10/m
@@ -74,3 +75,18 @@ apis:
     rate_limit:
       endpoint_rate_limit: 500/m
       key_rate_limit: 250/m
+  test:
+    name: Test API
+    endpoint: http://127.0.0.1:8000
+    key_variable: keys
+    headers:
+      Authorization: 'Bearer ${{keys}}'
+    variables:
+      keys:
+      - your_test_key_1
+      - your_test_key_2
+      - your_test_key_3
+    load_balancing_strategy: least_connections
+    rate_limit:
+      endpoint_rate_limit: 20/m
+      key_rate_limit: 10/m

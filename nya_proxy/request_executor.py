@@ -11,6 +11,8 @@ from urllib.parse import urlparse
 
 import httpx
 
+from .models import NyaRequest
+
 
 class RequestExecutorError(Exception):
     """Exception raised for request executor errors."""
@@ -64,8 +66,9 @@ class RequestExecutor:
     def _init_retry_settings(self, default_settings: Dict[str, Any]) -> None:
         """Initialize retry settings from config."""
         retry_settings: Dict = default_settings.get("retry", {})
-        self.max_attempts = retry_settings.get("attempts", 3)
-        self.retry_delay = retry_settings.get("retry_after_seconds", 10.0)
+        self.default_max_attempts = retry_settings.get("attempts", 3)
+        self.default_retry_delay = retry_settings.get("retry_after_seconds", 10.0)
+        self.default_retry_mode = retry_settings.get("mode", "default")
 
     def _init_error_handling(self, default_settings: Dict[str, Any]) -> None:
         """Initialize error handling settings from config."""
@@ -74,21 +77,47 @@ class RequestExecutor:
             "retry_status_codes", [429, 500, 502, 503, 504, 507, 524]
         )
 
+    def _debug_request(self, request: Dict[str, Any]) -> None:
+        """Debug the request by logging its content and headers."""
+        headers: Dict = request.get("headers", {})
+
+        content_type = headers.get("content-type", None)
+        content = request.get("content", {})
+
+        if content_type == "application/json":
+            # Handle potential bytes content
+            if isinstance(content, bytes):
+                try:
+                    content = json.loads(content.decode("utf-8"))
+                except:
+                    content = f"<binary data: {len(content)} bytes>"
+            self.logger.debug(
+                f"Prepared Request JSON: {json.dumps(content, indent=4, ensure_ascii=False)}"
+            )
+        else:
+            # Handle different content types safely
+            if isinstance(content, bytes):
+                content = f"<binary data: {len(content)} bytes>"
+            self.logger.debug(
+                f"Prepared Request Content: {content if content else 'No Content Available'}"
+            )
+
+        self.logger.debug(f"Prepared Request Headers: {headers}")
+
     async def execute_with_retry(
         self,
-        request_data: Dict[str, Any],
+        r: NyaRequest,
         max_attempts: Optional[int] = None,
         retry_delay: Optional[float] = None,
-        api_name: str = "unknown",
+        retry_mode: Optional[str] = None,
     ) -> httpx.Response:
         """
         Execute a request with retry logic.
 
         Args:
-            request_data: Request data
+            r: NyaRequest object containing request data
             max_attempts: Maximum number of retry attempts (defaults to config value)
             retry_delay: Base delay between retries in seconds (defaults to config value)
-            api_name: Name of the API for logging
 
         Returns:
             Response from the API
@@ -97,30 +126,21 @@ class RequestExecutor:
             RequestExecutorError: If all retry attempts fail
         """
         # Use provided values or fall back to instance defaults from config
-        max_attempts = max_attempts or self.max_attempts
-        retry_delay = retry_delay or self.retry_delay
+        max_attempts = max_attempts or self.default_max_attempts
+        retry_delay = retry_delay or self.default_retry_delay
+        retry_mode = retry_mode or self.default_retry_mode
 
         attempt = 0
         last_error = None
         self.total_requests += 1
+        api_name = r.api_name
 
         # Prepare the request
-        request = self._prepare_headers(request_data.copy())
-        timeout = httpx.Timeout(request.pop("timeout", self.default_timeout))
+        request = self._prepare_request(r)
 
-        headers = request.get("headers", {})
+        # debug log the request
+        self._debug_request(request)
 
-        content_type = headers.get("content-type", None)
-        if content_type == "application/json":
-            self.logger.debug(
-                f"Prepared Request JSON: {json.dumps(request.get('content', {}), indent=4, ensure_ascii=False)}"
-            )
-        else:
-            self.logger.debug(
-                f"Prepared Request Content: {request.get('content', "No Content Available")}"
-            )
-
-        self.logger.debug(f"Prepared Request Headers: {headers}")
         while attempt < max_attempts:
             attempt += 1
             try:
@@ -136,12 +156,13 @@ class RequestExecutor:
                 )
 
                 response = await self.client.request(
-                    timeout=timeout,
                     **request,  # Pass all remaining parameters
                 )
 
                 # Check if we need to retry based on status
-                if self._should_retry(response, attempt, max_attempts):
+                if self._should_default_retry(
+                    response, attempt, max_attempts, retry_mode
+                ):
                     retry_delay = self._get_retry_delay(response, retry_delay)
                     self.logger.warning(
                         f"Got status {response.status_code} from {api_name}, will retry after {retry_delay:.2f}s"
@@ -149,7 +170,7 @@ class RequestExecutor:
                     await asyncio.sleep(retry_delay)
                     continue
 
-                # If we get here, we've got a response we can use
+                # If we get here, we've got a response we can use, skip retries
                 return response
 
             except httpx.TimeoutException as e:
@@ -171,10 +192,16 @@ class RequestExecutor:
                 break  # Don't retry on unexpected errors
 
         # If we get here, all retries failed
-        return self._handle_retry_failure(attempt, api_name, last_error)
+        self._handle_retry_failure(attempt, api_name, last_error)
+        raise RequestExecutorError(
+            f"Max retry attempts ({attempt}) reached for {api_name}"
+        )
 
-    def _prepare_headers(self, request: Dict[str, Any]) -> Dict[str, Any]:
+    def _prepare_request(self, request_data: NyaRequest) -> Dict[str, Any]:
         """Prepare the request by cleaning headers and internal fields."""
+        # Convert RequestData to dictionary for backward compatibility
+        request = request_data.to_dict()
+
         # Handle headers and host
         headers = request.get("headers", {}) or {}
 
@@ -209,10 +236,7 @@ class RequestExecutor:
 
         # Set updated headers back to request
         request["headers"] = clean_headers
-
-        # Clean internal tracking fields
-        clean_request = {k: v for k, v in request.items() if not k.startswith("_")}
-        return clean_request
+        return request
 
     async def _handle_retry_wait(
         self, attempt: int, max_attempts: int, retry_delay: float, api_name: str
@@ -226,16 +250,18 @@ class RequestExecutor:
         await asyncio.sleep(wait_time)
         self.total_retries += 1
 
-    def _should_retry(
-        self, response: httpx.Response, attempt: int, max_attempts: int
+    def _should_default_retry(
+        self, response: httpx.Response, attempt: int, max_attempts: int, retry_mode: str
     ) -> bool:
         """Determine if a request should be retried based on its status code."""
 
         self.logger.debug(
-            f"Checking if response status {response.status_code} should be retried, current attempt {attempt}/{max_attempts}"
+            f"Checking if response status {response.status_code} should be handled with default retry policy, current attempt {attempt}/{max_attempts}, try mode: {retry_mode}"
         )
         return (
-            response.status_code in self.retry_status_codes and attempt < max_attempts
+            response.status_code in self.retry_status_codes
+            and attempt < max_attempts
+            and retry_mode == "default"
         )
 
     def _get_retry_delay(self, response: httpx.Response, default_delay: float) -> float:
@@ -270,7 +296,7 @@ class RequestExecutor:
         """Handle the case when all retries have failed."""
         self.total_failures += 1
 
-        if attempts >= self.max_attempts:
+        if attempts >= self.default_max_attempts:
             error_message = f"Max retry attempts ({attempts}) reached for {api_name}"
         else:
             error_message = f"Request failed for {api_name} with non-retryable error"
@@ -279,22 +305,18 @@ class RequestExecutor:
             error_message += f": {str(last_error)}"
 
         self.logger.error(error_message)
-        if self.logger.level == logging.DEBUG:
-            raise RequestExecutorError(error_message)
 
     async def execute_batch(
         self,
-        requests: List[Dict[str, Any]],
+        requests: List[NyaRequest],
         concurrency: int = 5,
-        api_name: str = "unknown",
     ) -> List[Tuple[Optional[httpx.Response], Optional[Exception]]]:
         """
         Execute a batch of requests with concurrency control.
 
         Args:
-            requests: List of request data dictionaries
+            requests: List of RequestData objects
             concurrency: Maximum number of concurrent requests
-            api_name: Name of the API for logging
 
         Returns:
             List of (response, error) tuples for each request
@@ -302,12 +324,18 @@ class RequestExecutor:
         semaphore = asyncio.Semaphore(concurrency)
 
         async def execute_with_semaphore(
-            request_data: Dict[str, Any],
+            r: NyaRequest,
         ) -> Tuple[Optional[httpx.Response], Optional[Exception]]:
             async with semaphore:
                 try:
+                    # Execute the request
+                    retry_config: Dict = r.api_config.get("retry", {})
+                    max_attempts = retry_config.get("attempts", 1)
+                    retry_delay = retry_config.get("retry_after_seconds", 0)
+                    retry_mode = retry_config.get("mode", "default")
+
                     response = await self.execute_with_retry(
-                        request_data, api_name=api_name
+                        r, max_attempts, retry_delay, retry_mode
                     )
                     return response, None
                 except Exception as e:

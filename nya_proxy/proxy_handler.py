@@ -8,6 +8,7 @@ import logging
 import time
 import traceback
 import zlib
+import asyncio
 from typing import Any, Dict, Optional, Tuple, Union
 
 import brotli
@@ -18,9 +19,11 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 from .config_manager import ConfigManager
 from .load_balancer import LoadBalancer
 from .metrics import MetricsCollector
+from .models import NyaRequest
 from .rate_limiter import RateLimiter
 from .request_executor import RequestExecutor
 from .request_queue import RequestQueue
+from .utils import _get_key_id_for_metrics
 
 
 class ProxyHandler:
@@ -31,7 +34,7 @@ class ProxyHandler:
     def __init__(
         self,
         config_manager: ConfigManager,
-        logger: logging.Logger,
+        logger: Optional[logging.Logger] = None,
         request_queue: Optional[RequestQueue] = None,
         metrics_collector: Optional[MetricsCollector] = None,
     ):
@@ -45,7 +48,7 @@ class ProxyHandler:
             metrics_collector: Metrics collector instance (optional)
         """
         self.config_manager = config_manager
-        self.logger = logger
+        self.logger = logger or logging.getLogger(__name__)
         self.request_queue = request_queue
         self.metrics_collector = metrics_collector
 
@@ -205,9 +208,7 @@ class ProxyHandler:
                 return request_data
 
             # Process request and handle response
-            return await self._process_and_handle_response(
-                request_data, api_name, api_config, start_time
-            )
+            return await self._process_and_handle_response(request_data, start_time)
 
         except Exception as e:
             return self._handle_request_exception(
@@ -216,35 +217,29 @@ class ProxyHandler:
 
     async def _process_and_handle_response(
         self,
-        request_data: Dict[str, Any],
-        api_name: str,
-        api_config: Dict[str, Any],
+        r: NyaRequest,
         start_time: float,
     ) -> Response:
         """
         Process the prepared request and handle the response.
 
         Args:
-            request_data: Prepared request data
-            api_name: Name of the API
-            api_config: API configuration
-            start_time: Request start time
+            nya_request: Prepared NyaRequest object
 
         Returns:
             Response to the client
         """
-        self.logger.debug(f"Processing and handle request to {api_name}")
+        self.logger.debug(f"Processing and handle request to {r.api_name}")
 
         # Record request metrics
         if self.metrics_collector:
-            key_id = self._get_key_id_for_metrics(
-                request_data.get("_key_used", "unknown")
-            )
-            self.metrics_collector.record_request(api_name, key_id)
+            key_id = _get_key_id_for_metrics(r.api_key)
+            self.metrics_collector.record_request(r.api_name, key_id)
 
         # Get API request settings
-        retry_config: Dict = api_config.get("retry", api_config.get("retry", {}))
+        retry_config: Dict = r.api_config.get("retry", {})
         retry_enabled = retry_config.get("enabled", True)
+        retry_mode = retry_config.get("mode", "default")
 
         if not retry_enabled:
             retry_attempts = 1
@@ -255,10 +250,10 @@ class ProxyHandler:
 
         # Execute the request with retries if configured
         httpx_response = await self.request_executor.execute_with_retry(
-            request_data=request_data,
+            r=r,
             max_attempts=retry_attempts,
             retry_delay=retry_delay,
-            api_name=api_name,
+            retry_mode=retry_mode,
         )
 
         # Log request timing and record metrics
@@ -266,11 +261,11 @@ class ProxyHandler:
         status_code = httpx_response.status_code if httpx_response else 502
 
         self.logger.debug(
-            f"Received response from {api_name} with status {status_code} in {elapsed:.2f}s"
+            f"Received response from {r.api_name} with status {status_code} in {elapsed:.2f}s"
         )
 
         if self.metrics_collector:
-            self.metrics_collector.record_response(api_name, status_code, elapsed)
+            self.metrics_collector.record_response(r.api_name, status_code, elapsed)
 
         if not httpx_response:
             return JSONResponse(
@@ -278,47 +273,63 @@ class ProxyHandler:
                 content={"error": "Bad Gateway: No response from target API"},
             )
 
-        # Check if response is JSON for debug logging
-        if httpx_response.headers.get("content-type", "").startswith(
-            "application/json"
+        # if rate limit exceeded, throw it back to the queue
+        if (
+            httpx_response.status_code == 429
+            and self.config_manager.get_queue_enabled()
+            and self.config_manager.get_retry_mode() == "key_rotation"
         ):
+            return await self._handle_rate_limit_exceeded(
+                request=r._raw_request,
+                api_name=r.api_name,
+                trail_path=r.trail_path,
+                api_config=r.api_config,
+            )
+
+        # Filter out unwanted headers
+        headers = dict(httpx_response.headers)
+        headers_to_remove = ["server", "date", "transfer-encoding"]
+
+        for header in headers_to_remove:
+            if header.lower() in headers:
+                del headers[header.lower()]
+
+        # Determine the response content type
+        content_type = httpx_response.headers.get("content-type", "application/json")
+
+        # Handle streaming response for event-stream
+        if "text/event-stream" in content_type:
+            self.logger.debug("Detected streaming response, forwarding as event-stream")
+
+            async def event_generator():
+                async for chunk in httpx_response.aiter_bytes():
+                    yield chunk  # Don't modify
+
+            headers.pop("transfer-encoding", None)  # Optional
+            headers["cache-control"] = "no-cache"  # Common in SSE
+
+            return StreamingResponse(
+                content=event_generator(),
+                status_code=status_code,
+                media_type="text/event-stream",
+                headers=headers,
+            )
+
+        # Check if response is JSON for debug logging
+        if content_type == "application/json":
             try:
                 self.logger.debug(
                     f"Response content:\n{json.dumps(httpx_response.json(), indent=4, ensure_ascii=False)}"
                 )
             except Exception:
                 self.logger.debug("Response contains non-JSON content")
-        else:
-            self.logger.debug(
-                f"Response content type: {httpx_response.headers.get('content-type')}"
-            )
 
         self.logger.debug(f"Response status code: {httpx_response.status_code}")
         self.logger.debug(f"Response headers: {httpx_response.headers}")
 
-        # Filter out unwanted headers
-        filtered_headers = dict(httpx_response.headers)
-        headers_to_remove = ["server", "date", "transfer-encoding"]
-
-        for header in headers_to_remove:
-            if header.lower() in filtered_headers:
-                del filtered_headers[header.lower()]
-
-        # Determine the response content type
-        content_type = httpx_response.headers.get("content-type", "application/json")
+        # Handle content encoding for decompression (non_streaming responses)
         content_encoding = httpx_response.headers.get("content-encoding", "identity")
-        filtered_headers.pop("content-encoding", None)
-
-        # Handle streaming response for event-stream
-        if "text/event-stream" in content_type:
-            self.logger.debug("Detected streaming response, forwarding as event-stream")
-
-            return StreamingResponse(
-                content=httpx_response.aiter_bytes(),
-                status_code=status_code,
-                media_type="text/event-stream",
-                headers=filtered_headers,
-            )
+        headers.pop("content-encoding", None)
 
         # Decode response body for normal responses (non-streaming)
         raw_content = self.decode_content(httpx_response.content, content_encoding)
@@ -328,7 +339,7 @@ class ProxyHandler:
             content=raw_content,
             status_code=status_code,
             media_type="application/json",
-            headers=filtered_headers,
+            headers=headers,
         )
 
     def decode_content(self, content: bytes, encoding: str) -> bytes:
@@ -412,18 +423,6 @@ class ProxyHandler:
             return False
         return True
 
-    def _get_key_id_for_metrics(self, key: str) -> str:
-        """
-        Get a key identifier for metrics that doesn't expose the full key.
-
-        Args:
-            key: The API key or token
-
-        Returns:
-            A truncated version of the key for metrics
-        """
-        return key[:4] + "..." + key[:-4] if len(key) > 8 else key
-
     def _handle_request_exception(
         self, exception: Exception, start_time: float, api_name: str
     ) -> Response:
@@ -459,7 +458,7 @@ class ProxyHandler:
         api_config: Dict[str, Any],
     ) -> Response:
         """
-        Handle a rate-limited request, queueing it if enabled.
+        Handle a rate-limited request, queueing it if enabled and waiting for response.
 
         Args:
             request: Original request
@@ -467,52 +466,75 @@ class ProxyHandler:
             trail_path: The remaining path after the API name
             api_config: API configuration
 
-
         Returns:
-            Response to the client
+            Response to the client - either the actual API response after processing from queue,
+            or an error response if queueing fails
         """
-        # If queueing is enabled, try to queue the request
+        # If queueing is enabled, try to queue and process the request
         if self.request_queue and self.config_manager.get_queue_enabled():
             try:
                 # First, prepare the request as we would for direct execution
-                processed_request = await self._prepare_request(
+                request_data = await self._prepare_request(
                     request, api_name, trail_path, api_config
                 )
-                if isinstance(processed_request, Response):  # Error during preparation
-                    return processed_request
+                if isinstance(request_data, Response):  # Error during preparation
+                    return request_data
 
                 # Calculate appropriate expiry time based on rate limit reset
                 endpoint_limiter = self.rate_limiters.get(f"{api_name}_endpoint")
-                expiry_seconds = endpoint_limiter.get_reset_time() + 5.0  # Add a buffer
+                reset_in_seconds = (
+                    endpoint_limiter.get_reset_time() + 5.0
+                )  # Add a buffer
 
-                # Queue the request
-                queued = self.request_queue.enqueue_request(
-                    api_name=api_name,
-                    request_data=processed_request,
-                    expiry_seconds=expiry_seconds,
-                )
+                try:
+                    # Queue the request and get future
+                    response_future = await self.request_queue.enqueue_request(
+                        r=request_data,
+                        reset_in_seconds=int(reset_in_seconds),
+                    )
 
-                if queued:
                     # Record queue hit in metrics
                     if self.metrics_collector:
                         self.metrics_collector.record_queue_hit(api_name)
 
                     self.logger.info(
-                        f"Request to {api_name} queued due to rate limiting"
+                        f"Request to {api_name} queued due to rate limiting, waiting for response"
                     )
-                    queue_size = self.request_queue.get_queue_size(api_name)
+
+                    # Wait for the response
+                    return await asyncio.wait_for(
+                        response_future, timeout=reset_in_seconds
+                    )
+
+                except asyncio.TimeoutError:
+                    self.logger.error(
+                        f"Timeout waiting for queued request response after {reset_in_seconds}s"
+                    )
                     return JSONResponse(
-                        status_code=202,  # Accepted
+                        status_code=504,  # Gateway Timeout
                         content={
-                            "status": "queued",
-                            "message": f"Request queued due to rate limiting (queue position: {queue_size})",
-                            "queue_size": queue_size,
-                            "estimated_wait": expiry_seconds,
+                            "error": f"Request timed out after {reset_in_seconds} seconds"
                         },
                     )
+                except ValueError as ve:
+                    # Handle queue full or duplicate request errors
+                    self.logger.warning(f"Request queuing failed: {str(ve)}")
+                    return JSONResponse(
+                        status_code=429,
+                        content={"error": str(ve)},
+                    )
+                except Exception as e:
+                    self.logger.error(f"Error processing queued request: {str(e)}")
+                    return JSONResponse(
+                        status_code=500,
+                        content={"error": f"Error processing queued request: {str(e)}"},
+                    )
+
             except Exception as queue_error:
-                self.logger.error(f"Error queuing request: {str(queue_error)}")
-                # Continue to normal rate limit response if queuing fails
+                self.logger.error(
+                    f"Error queueing request: {str(queue_error)}, {traceback.format_exc()}"
+                )
+                # Continue to normal rate limit response if queueing fails
 
         return JSONResponse(
             status_code=429, content={"error": "Rate limit exceeded for this endpoint"}
@@ -524,7 +546,7 @@ class ProxyHandler:
         api_name: str,
         trail_path: str,
         api_config: Dict[str, Any],
-    ) -> Union[Dict[str, Any], Response]:
+    ) -> Union[NyaRequest, Response]:
         """
         Prepare the request for forwarding to the target API.
 
@@ -535,7 +557,7 @@ class ProxyHandler:
             api_config: API configuration
 
         Returns:
-            Dictionary with request data or Response if error
+            RequestData object or Response if error
         """
         # Get the load balancer for this API
         key_variable = api_config.get("key_variable", "keys")
@@ -552,7 +574,8 @@ class ProxyHandler:
 
         if key is None:
             if self.metrics_collector:
-                self.metrics_collector.record_rate_limit_hit(api_name)
+                key_id = _get_key_id_for_metrics(key)
+                self.metrics_collector.record_rate_limit_hit(api_name, key_id)
 
             return JSONResponse(
                 status_code=429,
@@ -571,15 +594,18 @@ class ProxyHandler:
             request, api_name, api_config, key_variable, key
         )
 
-        # Prepare the request data
-        request_data = {
-            "method": request.method,
-            "url": target_url,
-            "headers": headers,
-            "content": body or None,
-            "_key_used": key,  # Store the key for metrics tracking
-            "_api_name": api_name,  # Store API name for queued requests
-        }
+        # Create RequestData object
+        request_data = NyaRequest(
+            method=request.method,
+            url=target_url,
+            _raw_request=request,
+            headers=headers,
+            content=body or None,
+            api_name=api_name,
+            api_config=api_config,
+            trail_path=trail_path,
+            api_key=key,
+        )
 
         return request_data
 
@@ -746,22 +772,29 @@ class ProxyHandler:
         # If no match found, return the original path
         return original_path
 
-    async def _process_queued_request(self, request_data: Dict[str, Any]) -> Response:
+    async def _process_queued_request(self, r: NyaRequest) -> Response:
         """
         Process a request from the queue.
 
         Args:
-            request_data: Request data dictionary
+            r: NyaRequest object containing the queued request data
 
         Returns:
             Response from the target API
         """
         try:
-            api_name = request_data.pop("_api_name", "unknown")
-            key = request_data.pop("_key_used", None)
-
             # Execute the request
-            return await self.request_executor.execute_request(request_data)
+            retry_config: Dict = r.api_config.get("retry", {})
+            max_attempts = retry_config.get("attempts", 1)
+            retry_delay = retry_config.get("retry_after_seconds", 0)
+            retry_mode = retry_config.get("mode", "default")
+
+            return await self.request_executor.execute_with_retry(
+                r=r,
+                max_attempts=max_attempts,
+                retry_delay=retry_delay,
+                retry_mode=retry_mode,
+            )
         except Exception as e:
             self.logger.error(f"Error processing queued request: {str(e)}")
             raise  # Re-raise to allow the queue to handle retry logic

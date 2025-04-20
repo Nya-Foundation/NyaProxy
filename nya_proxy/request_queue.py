@@ -6,7 +6,9 @@ import asyncio
 import heapq
 import logging
 import time
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Set, Tuple
+
+from .models import NyaRequest
 
 
 class RequestQueue:
@@ -30,7 +32,8 @@ class RequestQueue:
         self.default_expiry = expiry_seconds
 
         # Use a priority queue (min heap) for each API
-        self.queues: Dict[str, List[Dict[str, Any]]] = {}
+        # Each queue entry is a tuple of (expiry_time, RequestData)
+        self.queues: Dict[str, List[Tuple[float, NyaRequest]]] = {}
 
         # Track queue sizes
         self.sizes: Dict[str, int] = {}
@@ -38,8 +41,11 @@ class RequestQueue:
         # Track request IDs to avoid duplicates
         self.request_ids: Set[str] = set()
 
+        # Track response futures for waiting clients
+        self.response_futures: Dict[str, asyncio.Future] = {}
+
         # Request processor callback
-        self.processor: Optional[Callable[[Dict[str, Any]], Awaitable[Any]]] = None
+        self.processor: Optional[Callable[[NyaRequest], Awaitable[Any]]] = None
 
         # Counters for metrics
         self.total_enqueued = 0
@@ -51,7 +57,7 @@ class RequestQueue:
         self.running = True
         self.processing_task = asyncio.create_task(self._process_queue_task())
 
-    def register_processor(self, processor: Callable[[Dict[str, Any]], Awaitable[Any]]):
+    def register_processor(self, processor: Callable[[NyaRequest], Awaitable[Any]]):
         """
         Register a callback function to process queued requests.
 
@@ -60,66 +66,64 @@ class RequestQueue:
         """
         self.processor = processor
 
-    def enqueue_request(
+    async def enqueue_request(
         self,
-        api_name: str,
-        request_data: Dict[str, Any],
-        expiry_seconds: Optional[int] = None,
-    ) -> bool:
+        r: NyaRequest,
+        reset_in_seconds: Optional[int] = None,
+    ) -> asyncio.Future:
         """
         Add a request to the queue.
 
         Args:
-            api_name: Name of the API
-            request_data: Request data
-            expiry_seconds: Optional custom expiry time in seconds
+            r: NyaRequest object to enqueue
+            reset_in_seconds: Optional time in seconds after which the rate limit will be reset.
 
         Returns:
-            True if the request was enqueued, False otherwise
+            Future that will be resolved with the response, or None if enqueueing failed
         """
         # Initialize queue for this API if it doesn't exist
-        if api_name not in self.queues:
-            self.queues[api_name] = []
-            self.sizes[api_name] = 0
+        if r.api_name not in self.queues:
+            self.queues[r.api_name] = []
+            self.sizes[r.api_name] = 0
 
         # Check if queue is full
-        if self.sizes[api_name] >= self.max_size:
-            self.logger.warning(f"Queue for {api_name} is full, rejecting request")
-            return False
+        if self.sizes[r.api_name] >= self.max_size:
+            self.logger.warning(f"Queue for {r.api_name} is full, rejecting request")
+            raise ValueError("Queue is full")
 
         # Generate unique request ID and check for duplicates
-        request_id = f"{api_name}_{int(time.time())}_{hash(str(request_data))}"
+        request_id = f"{r.api_name}_{int(time.time())}_{hash(str(r.to_dict()))}"
         if request_id in self.request_ids:
             self.logger.warning(
-                f"Duplicate request detected for {api_name}, not enqueueing"
+                f"Duplicate request detected for {r.api_name}, not enqueueing"
             )
-            return False
+            raise ValueError("Duplicate request")
+
+        # Create a future for this request's response
+        response_future = asyncio.Future()
+        self.response_futures[request_id] = response_future
 
         # Calculate expiry time
         expiry = time.time() + (
-            expiry_seconds if expiry_seconds is not None else self.default_expiry
+            reset_in_seconds if reset_in_seconds is not None else self.default_expiry
         )
 
-        # Add request to queue
-        queue_item = {
-            "expiry": expiry,
-            "added_at": time.time(),
-            "request_data": request_data,
-            "api_name": api_name,
-            "request_id": request_id,
-            "attempts": 0,
-        }
+        # Update RequestData with queue-specific information
+        r.request_id = request_id
+        r.expiry = expiry
+        r.added_at = time.time()
+        r.attempts = 0
 
         # Add to priority queue (min heap based on expiry time)
-        heapq.heappush(self.queues[api_name], (expiry, queue_item))
-        self.sizes[api_name] += 1
+        heapq.heappush(self.queues[r.api_name], (expiry, r))
+        self.sizes[r.api_name] += 1
         self.request_ids.add(request_id)
         self.total_enqueued += 1
 
         self.logger.info(
-            f"Request enqueued for {api_name}, queue size: {self.sizes[api_name]}"
+            f"Request enqueued for {r.api_name}, queue size: {self.sizes[r.api_name]}"
         )
-        return True
+        return response_future
 
     def get_queue_size(self, api_name: str) -> int:
         """
@@ -179,15 +183,15 @@ class RequestQueue:
             # Check if the next request is ready to be processed (expiry <= current_time)
             while self.queues[api_name] and self.queues[api_name][0][0] <= current_time:
                 # Pop the next request
-                _, item = heapq.heappop(self.queues[api_name])
+                _, request_data = heapq.heappop(self.queues[api_name])
                 self.sizes[api_name] -= 1
 
                 # Remove from request ID tracking
-                if item["request_id"] in self.request_ids:
-                    self.request_ids.remove(item["request_id"])
+                if request_data.request_id in self.request_ids:
+                    self.request_ids.remove(request_data.request_id)
 
                 # Check if the request is expired
-                if (current_time - item["added_at"]) > 2 * self.default_expiry:
+                if (current_time - request_data.added_at) > 2 * self.default_expiry:
                     self.logger.warning(
                         f"Request in queue for {api_name} expired after waiting too long"
                     )
@@ -195,32 +199,38 @@ class RequestQueue:
                     continue
 
                 # Process the request
-                await self._process_request_item(item)
+                await self._process_request_item(request_data)
 
-    async def _process_request_item(self, item: Dict[str, Any]):
+    async def _process_request_item(self, request_data: NyaRequest):
         """
         Process a single request item from the queue.
 
         Args:
-            item: Queue item with request data
+            request_data: RequestData object with request details
         """
         if not self.processor:
             self.logger.error("No request processor registered")
             return
 
-        api_name = item["api_name"]
-        request_data = item["request_data"]
+        api_name = request_data.api_name
 
         try:
             # Increment attempts counter
-            item["attempts"] += 1
+            request_data.attempts += 1
             max_attempts = 3  # Maximum number of retry attempts
 
             # Process the request
             self.logger.info(
-                f"Processing queued request for {api_name} (attempt {item['attempts']})"
+                f"Processing queued request for {api_name} (attempt {request_data.attempts})"
             )
-            await self.processor(request_data)
+            response = await self.processor(request_data)
+
+            # Get and complete the response future
+            if request_data.request_id in self.response_futures:
+                future = self.response_futures[request_data.request_id]
+                if not future.done():
+                    future.set_result(response)
+                del self.response_futures[request_data.request_id]
 
             # Successfully processed
             self.total_processed += 1
@@ -232,23 +242,23 @@ class RequestQueue:
             )
 
             # If we haven't exceeded max attempts, requeue with a delay
-            if item["attempts"] < max_attempts:
+            if request_data.attempts < max_attempts:
                 # Re-add to the queue with a delay
-                delay = 10 * (2 ** (item["attempts"] - 1))  # Exponential backoff
+                delay = 10 * (2 ** (request_data.attempts - 1))  # Exponential backoff
                 new_expiry = time.time() + delay
 
                 # Generate new request ID
-                item["request_id"] = (
-                    f"{api_name}_{int(time.time())}_{hash(str(request_data))}"
+                request_data.request_id = (
+                    f"{api_name}_{int(time.time())}_{hash(str(request_data.to_dict()))}"
                 )
 
                 # Re-add to queue
                 if api_name in self.queues:
-                    heapq.heappush(self.queues[api_name], (new_expiry, item))
+                    heapq.heappush(self.queues[api_name], (new_expiry, request_data))
                     self.sizes[api_name] += 1
-                    self.request_ids.add(item["request_id"])
+                    self.request_ids.add(request_data.request_id)
                     self.logger.info(
-                        f"Requeued request for {api_name} with {delay}s delay (attempt {item['attempts']})"
+                        f"Requeued request for {api_name} with {delay}s delay (attempt {request_data.attempts})"
                     )
             else:
                 self.logger.error(
@@ -272,9 +282,9 @@ class RequestQueue:
         cleared_count = self.sizes[api_name]
 
         # Remove all request IDs for this API
-        for _, item in self.queues[api_name]:
-            if item["request_id"] in self.request_ids:
-                self.request_ids.remove(item["request_id"])
+        for _, request_data in self.queues[api_name]:
+            if request_data.request_id in self.request_ids:
+                self.request_ids.remove(request_data.request_id)
 
         # Clear the queue
         self.queues[api_name] = []
@@ -301,7 +311,7 @@ class RequestQueue:
         return total_cleared
 
     async def stop(self):
-        """Stop the queue processing task."""
+        """Stop the queue processing task and clean up."""
         self.running = False
         if self.processing_task:
             self.processing_task.cancel()
@@ -309,3 +319,9 @@ class RequestQueue:
                 await self.processing_task
             except asyncio.CancelledError:
                 pass
+
+        # Clean up any pending futures
+        for future in self.response_futures.values():
+            if not future.done():
+                future.cancel()
+        self.response_futures.clear()

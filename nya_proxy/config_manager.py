@@ -110,6 +110,14 @@ class ConfigManager:
         """Check if request queuing is enabled."""
         return self.config.get_bool("nya_proxy.queue.enabled", True)
 
+    def get_retry_mode(self) -> str:
+        """Get the retry mode for failed requests."""
+        return self.config.get_str("nya_proxy.retry.mode", "default")
+
+    def get_retry_config(self) -> Dict[str, Any]:
+        """Get the retry configuration."""
+        return self.config.get_dict("nya_proxy.retry", {})
+
     def get_queue_size(self) -> int:
         """Get the maximum queue size."""
         return self.config.get_int("nya_proxy.queue.max_size", 100)
