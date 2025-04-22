@@ -267,7 +267,7 @@ apis:
       keys:                            # Your API keys/tokens
         - "your_openai_key_1"
         - "your_openai_key_2"
-    load_balancing_strategy: "least_connections"
+    load_balancing_strategy: "least_requests"
     rate_limit:
       endpoint_rate_limit: "500/m"
       key_rate_limit: "250/m"

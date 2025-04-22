@@ -102,6 +102,10 @@ class ConfigManager:
         """Get the host for the proxy server."""
         return self.config.get_str("nay_proxy.host", "0.0.0.0")
 
+    def get_debug_level(self) -> str:
+        """Get the debug level for logging."""
+        return self.config.get_str("nya_proxy.debug_level", "INFO")
+
     def get_dashboard_enabled(self) -> bool:
         """Check if dashboard is enabled."""
         return self.config.get_bool("nya_proxy.dashboard.enabled", True)
@@ -130,6 +134,32 @@ class ConfigManager:
         """Get the API key for authenticating with the proxy."""
         return self.config.get_str("nya_proxy.api_key", "")
 
+    def get_apis(self) -> Dict[str, Any]:
+        """
+        Get the configured APIs.
+
+        Returns:
+            Dictionary of API names and their configurations
+        """
+        apis = self.config.get_dict("apis", {})
+        if not apis:
+            raise ConfigError("No APIs configured. Please add at least one API.")
+
+        return apis
+
+    def get_api_config(self, api_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Get the configuration for a specific API.
+
+        Args:
+            api_name: Name of the API
+
+        Returns:
+            Dictionary with API configuration or None if not found
+        """
+        apis = self.get_apis()
+        return apis.get(api_name, None)
+
     def get_logging_config(self) -> Dict[str, Any]:
         """Get the logging configuration."""
         return {
@@ -151,22 +181,198 @@ class ConfigManager:
         """Get the default settings for endpoints."""
         return self.config.get_dict("default_settings", {})
 
-    def get_apis(self) -> Dict[str, Dict[str, Any]]:
-        """Get all configured APIs."""
-        return self.config.get_dict("apis", {})
-
-    def get_api_config(self, api_name: str) -> Optional[Dict[str, Any]]:
+    def get_default_timeout(self) -> int:
         """
-        Get configuration for a specific API.
+        Get the default timeout for API requests.
+
+        Returns:
+            Default timeout in seconds or 10 if not specified
+        """
+        return self.config.get_int("nya_proxy.timeouts.request_timeout_seconds", 30)
+
+    def get_default_setting(self, setting_path: str, default_value: Any = None) -> Any:
+        """
+        Get a default setting value.
+
+        Args:
+            setting_path: Path to the setting within default_settings
+            default_value: Default value if not specified
+
+        Returns:
+            The setting value or default if not specified
+        """
+        return self.config.get(f"default_settings.{setting_path}", default_value)
+
+    def get_api_setting(
+        self, api_name: str, setting_path: str, value_type: str = "str"
+    ) -> Any:
+        """
+        Get a setting value for an API with fallback to default settings.
+
+        Args:
+            api_name: Name of the API
+            setting_path: Path to the setting within the API config
+            value_type: Type of value to get (str, int, bool, list, dict)
+
+        Returns:
+            The setting value from API config or default settings
+        """
+        # Get the default value first
+        default_value = self.get_default_setting(setting_path)
+
+        # Get the correct getter method based on value_type
+        if value_type == "int":
+            return self.config.get_int(f"apis.{api_name}.{setting_path}", default_value)
+        elif value_type == "bool":
+            return self.config.get_bool(
+                f"apis.{api_name}.{setting_path}", default_value
+            )
+        elif value_type == "list":
+            return self.config.get_list(
+                f"apis.{api_name}.{setting_path}", default_value
+            )
+        elif value_type == "dict":
+            return self.config.get_dict(
+                f"apis.{api_name}.{setting_path}", default_value
+            )
+        else:  # Default to string
+            return self.config.get_str(f"apis.{api_name}.{setting_path}", default_value)
+
+    def get_api_default_timeout(self, api_name: str) -> int:
+        """
+        Get the default timeout for an API.
 
         Args:
             api_name: Name of the API
 
         Returns:
-            API configuration dictionary or None if not found
+            Default timeout in seconds or fallback to global default
         """
-        apis = self.get_apis()
-        return apis.get(api_name)
+        return self.get_api_setting(api_name, "timeouts.request_timeout_seconds", "int")
+
+    def get_api_key_variable(self, api_name: str) -> str:
+        """
+        Get the key variable name for an API.
+
+        Args:
+            api_name: Name of the API
+
+        Returns:
+            Key variable name or default if not specified
+        """
+        return self.get_api_setting(api_name, "key_variable")
+
+    def get_api_load_balancing_strategy(self, api_name: str) -> str:
+        """
+        Get the load balancing strategy for an API.
+
+        Args:
+            api_name: Name of the API
+
+        Returns:
+            Load balancing strategy or default if not specified
+        """
+        return self.get_api_setting(api_name, "load_balancing_strategy")
+
+    def get_api_endpoint_rate_limit(self, api_name: str) -> str:
+        """
+        Get the endpoint rate limit for an API.
+
+        Args:
+            api_name: Name of the API
+
+        Returns:
+            Endpoint rate limit or default if not specified
+        """
+        return self.get_api_setting(api_name, "rate_limit.endpoint_rate_limit")
+
+    def get_api_key_rate_limit(self, api_name: str) -> str:
+        """
+        Get the key rate limit for an API.
+
+        Args:
+            api_name: Name of the API
+
+        Returns:
+            Key rate limit or default if not specified
+        """
+        return self.get_api_setting(api_name, "rate_limit.key_rate_limit")
+
+    def get_api_retry_enabled(self, api_name: str) -> bool:
+        """
+        Get the retry enabled setting for an API.
+
+        Args:
+            api_name: Name of the API
+
+        Returns:
+            Retry enabled setting or default if not specified
+        """
+        return self.get_api_setting(api_name, "retry.enabled", "bool")
+
+    def get_api_retry_mode(self, api_name: str) -> str:
+        """
+        Get the retry mode for an API.
+
+        Args:
+            api_name: Name of the API
+
+        Returns:
+            Retry mode or default if not specified
+        """
+        return self.get_api_setting(api_name, "retry.mode")
+
+    def get_api_retry_attempts(self, api_name: str) -> int:
+        """
+        Get the number of retry attempts for an API.
+
+        Args:
+            api_name: Name of the API
+
+        Returns:
+            Number of retry attempts or default if not specified
+        """
+        return self.get_api_setting(api_name, "retry.attempts", "int")
+
+    def get_api_retry_after_seconds(self, api_name: str) -> int:
+        """
+        Get the retry delay in seconds for an API.
+
+        Args:
+            api_name: Name of the API
+
+        Returns:
+            Retry delay in seconds or default if not specified
+        """
+        return self.get_api_setting(api_name, "retry.retry_after_seconds", "int")
+
+    def get_api_report_api_errors(self, api_name: str) -> bool:
+        """
+        Get the setting for reporting API errors for an API.
+
+        Args:
+            api_name: Name of the API
+
+        Returns:
+            Setting for reporting API errors or default if not specified
+        """
+        return self.get_api_setting(
+            api_name, "error_handling.report_api_errors", "bool"
+        )
+
+    def get_api_retry_status_codes(self, api_name: str) -> List[int]:
+        """
+        Get the retry status codes for an API.
+
+        Args:
+            api_name: Name of the API
+
+        Returns:
+            Retry status codes or default if not specified
+        """
+        return self.get_api_setting(
+            api_name, "error_handling.retry_status_codes", "list"
+        )
 
     def get_api_variables(self, api_name: str, variable_name: str) -> List[str]:
         """
@@ -183,7 +389,7 @@ class ConfigManager:
         if not api_config:
             return []
 
-        variables = api_config.get("variables", {})
+        variables: Dict = api_config.get("variables", {})
         values = variables.get(variable_name, [])
 
         if isinstance(values, list):

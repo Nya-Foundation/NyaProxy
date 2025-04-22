@@ -50,7 +50,7 @@ apis:
       api_keys:
         - "AIza..."  # Your Gemini API keys
         - "AIza..."
-    load_balancing_strategy: "least_connections"
+    load_balancing_strategy: "least_requests"
     rate_limit:
       endpoint_rate_limit: "60/m"  # Conservative estimate
       key_rate_limit: "30/m"       # Adjust based on your quota

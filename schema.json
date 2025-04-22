@@ -115,7 +115,7 @@
                     "enum": [
                         "round_robin",
                         "random",
-                        "least_connections",
+                        "least_requests",
                         "fastest_response",
                         "weighted"
                     ],
@@ -259,7 +259,7 @@
                             "enum": [
                                 "round_robin",
                                 "random",
-                                "least_connections",
+                                "least_requests",
                                 "fastest_response",
                                 "weighted"
                             ],

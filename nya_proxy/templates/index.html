@@ -257,6 +257,20 @@
               </div>
               <div class="flex-1">
                 <label
+                  for="key-filter"
+                  class="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1"
+                  >Filter by API Key</label
+                >
+                <select
+                  id="key-filter"
+                  class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500 transition-shadow duration-200"
+                >
+                  <option value="all">All Keys</option>
+                  <!-- Key options will be added dynamically -->
+                </select>
+              </div>
+              <div class="flex-1">
+                <label
                   for="time-range"
                   class="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1"
                   >Time Range</label
@@ -273,8 +287,60 @@
                 </select>
               </div>
             </div>
+            <div
+              id="filter-summary"
+              class="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-3 italic"
+            >
+              Showing data for all APIs over the last 24h
+            </div>
             <div class="h-72 md:h-64 mt-2">
               <canvas id="traffic-chart"></canvas>
+            </div>
+          </div>
+        </section>
+
+        <!-- Advanced Analytics Section (New) -->
+        <section class="mb-8">
+          <h2 class="text-lg font-semibold mb-4 flex items-center">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-5 w-5 mr-2 text-pink-500"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                fill-rule="evenodd"
+                d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z"
+              />
+            </svg>
+            Advanced Analytics
+          </h2>
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div class="modern-card p-5">
+              <h3 class="text-md font-semibold mb-3">Response Time Analysis</h3>
+              <div class="h-60">
+                <canvas id="response-time-chart"></canvas>
+              </div>
+            </div>
+            <div class="modern-card p-5">
+              <h3 class="text-md font-semibold mb-3">
+                Status Code Distribution
+              </h3>
+              <div class="h-60">
+                <canvas id="status-code-chart"></canvas>
+              </div>
+            </div>
+            <div class="modern-card p-5">
+              <h3 class="text-md font-semibold mb-3">API Usage Distribution</h3>
+              <div class="h-60">
+                <canvas id="api-distribution-chart"></canvas>
+              </div>
+            </div>
+            <div class="modern-card p-5">
+              <h3 class="text-md font-semibold mb-3">API Key Usage</h3>
+              <div class="h-60">
+                <canvas id="key-usage-chart"></canvas>
+              </div>
             </div>
           </div>
         </section>
@@ -431,25 +497,47 @@
               </svg>
               Recent Requests
             </h2>
-            <button
-              id="clear-all-queues-btn"
-              class="btn-modern bg-yellow-500 hover:bg-yellow-600 text-white text-xs py-1.5 px-3 rounded-lg transition-all duration-200 flex items-center"
-              style="display: {{ enable_control and 'flex' or 'none' }}"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-3 w-3 mr-1.5"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-              >
-                <path
-                  fill-rule="evenodd"
-                  d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z"
-                  clip-rule="evenodd"
+            <div class="flex items-center gap-2">
+              <div class="relative flex-grow sm:flex-grow-0">
+                <input
+                  type="text"
+                  id="history-search"
+                  placeholder="Filter history..."
+                  class="w-full sm:w-auto rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 pl-8 pr-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500 transition-shadow duration-200"
                 />
-              </svg>
-              Clear All Queues
-            </button>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-4 w-4 text-slate-400 absolute left-2.5 top-1/2 transform -translate-y-1/2"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path
+                    fill-rule="evenodd"
+                    d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"
+                    clip-rule="evenodd"
+                  />
+                </svg>
+              </div>
+              <button
+                id="clear-all-queues-btn"
+                class="btn-modern bg-yellow-500 hover:bg-yellow-600 text-white text-xs py-1.5 px-3 rounded-lg transition-all duration-200 flex items-center"
+                style="display: {{ enable_control and 'flex' or 'none' }}"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-3 w-3 mr-1.5"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path
+                    fill-rule="evenodd"
+                    d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z"
+                    clip-rule="evenodd"
+                  />
+                </svg>
+                Clear All Queues
+              </button>
+            </div>
           </div>
           <div class="modern-card overflow-hidden">
             <div class="overflow-x-auto responsive-table">

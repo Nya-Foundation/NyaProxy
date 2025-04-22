@@ -57,7 +57,7 @@ apis:
       api_secrets:
         - "your_api_secret_1"  # For endpoints requiring consumer API secret
         - "your_api_secret_2"
-    load_balancing_strategy: "least_connections"
+    load_balancing_strategy: "least_requests"
     rate_limit:
       endpoint_rate_limit: "500/15m"  # Twitter has various rate limits per endpoint
       key_rate_limit: "250/15m"       # Conservative estimate for bearer tokens

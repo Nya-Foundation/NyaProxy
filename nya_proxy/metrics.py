@@ -1,240 +1,241 @@
 """
-Metrics collector for tracking proxy performance.
+Metrics collection for monitoring API usage.
 """
 
-import json
 import logging
-import os
-import threading
 import time
-from collections import defaultdict, deque
-from typing import Any, Deque, Dict, List
+from collections import deque
+from typing import Any, Dict, List, Optional
+
+from .constants import METRICS_HISTORY_SIZE
+from .utils import _mask_api_key
 
 
 class MetricsCollector:
     """
-    Collects and stores metrics about the proxy's performance.
+    Collects and aggregates metrics about API usage.
+
+    This class provides a centralized way to track request volumes,
+    response times, error rates, and other performance indicators
+    across different APIs and keys.
     """
 
-    # Class variable to store singleton instances
-    _instances = {}
-    _instances_lock = threading.RLock()
-
-    @classmethod
-    def get_instance(
-        cls,
-        logger: logging.Logger,
-        metrics_path: str = "./.metrics",
-        history_size: int = 1000,
-        persist_interval: int = 60,
-    ) -> "MetricsCollector":
-        """
-        Get or create a MetricsCollector instance for the given metrics_path.
-
-        Args:
-            logger: Logger instance
-            metrics_path: Path to store metrics data
-            history_size: Number of recent requests to keep in memory
-            persist_interval: How often to save metrics to disk (in seconds)
-
-        Returns:
-            MetricsCollector instance for the given metrics_path
-        """
-        abs_metrics_path = os.path.abspath(metrics_path)
-
-        with cls._instances_lock:
-            if abs_metrics_path not in cls._instances:
-                cls._instances[abs_metrics_path] = cls(
-                    logger, metrics_path, history_size, persist_interval
-                )
-            return cls._instances[abs_metrics_path]
-
-    def __init__(
-        self,
-        logger: logging.Logger,
-        metrics_path: str = "./.metrics",
-        history_size: int = 1000,
-        persist_interval: int = 60,
-    ):
+    def __init__(self, logger: Optional[logging.Logger] = None):
         """
         Initialize the metrics collector.
 
         Args:
             logger: Logger instance
-            metrics_path: Path to store metrics data
-            history_size: Number of recent requests to keep in memory
-            persist_interval: How often to save metrics to disk (in seconds)
         """
-        self.logger = logger
-        self.metrics_path = metrics_path
-        self.history_size = history_size
-        self.persist_interval = persist_interval
+        self.logger = logger or logging.getLogger(__name__)
+        self.last_reset = time.time()
 
-        # Create metrics directory if it doesn't exist
-        os.makedirs(metrics_path, exist_ok=True)
+        # Initialize request history tracking
+        self.request_history = deque(maxlen=2000)  # Store last 2000 requests/responses
 
-        # Thread safety
-        self.lock = threading.RLock()
+        # Initialize metrics storage
+        self._init_metrics()
 
-        # Initialize metrics containers
-        self.initialize_metrics()
-
-        # Try to load existing metrics from disk
-        self.load_metrics()
-
-        # Start persistence task
-        self.last_persist_time = time.time()
-        self.persistence_thread = None
-        self.running = True
-
-        if persist_interval > 0:
-            self.persistence_thread = threading.Thread(
-                target=self._persistence_task, daemon=True
-            )
-            self.persistence_thread.start()
-
-    def initialize_metrics(self):
-        """Initialize or reset metrics containers."""
-        with self.lock:
-            # API-specific counters
-            self.request_counts: Dict[str, int] = defaultdict(int)
-            self.response_counts: Dict[str, Dict[int, int]] = defaultdict(
-                lambda: defaultdict(int)
-            )
-            self.error_counts: Dict[str, int] = defaultdict(int)
-            self.rate_limit_hits: Dict[str, int] = defaultdict(int)
-            self.queue_hits: Dict[str, int] = defaultdict(int)
-
-            # Response time tracking (ms)
-            self.response_times: Dict[str, List[float]] = defaultdict(list)
-            self.avg_response_time: Dict[str, float] = defaultdict(float)
-            self.min_response_time: Dict[str, float] = defaultdict(lambda: float("inf"))
-            self.max_response_time: Dict[str, float] = defaultdict(float)
-
-            # Key usage tracking
-            self.key_usage: Dict[str, Dict[str, int]] = defaultdict(
-                lambda: defaultdict(int)
-            )
-
-            # Request history (recent requests)
-            self.request_history: Deque[Dict[str, Any]] = deque(
-                maxlen=self.history_size
-            )
-
-            # Timestamp tracking
-            self.start_time = time.time()
-            self.last_request_time: Dict[str, float] = defaultdict(float)
-
-    def record_request(self, api_name: str, key_id: str = "unknown"):
+    def record_request(self, api_name: str, api_key: str) -> None:
         """
         Record a request to an API.
 
         Args:
             api_name: Name of the API
-            key_id: Identifier for the key/token used
+            api_key: the API key used for the request
         """
-        with self.lock:
-            current_time = time.time()
-            self.request_counts[api_name] += 1
-            self.key_usage[api_name][key_id] += 1
-            self.last_request_time[api_name] = current_time
 
-            # Add to request history
-            self.request_history.append(
-                {
-                    "type": "request",
-                    "api_name": api_name,
-                    "key_id": key_id,
-                    "timestamp": current_time,
-                }
-            )
+        key_id = _mask_api_key(api_key)
 
-    def record_response(self, api_name: str, status_code: int, elapsed_time: float):
+        # Initialize API in dictionaries if not present
+        self._ensure_api_exists(api_name)
+        self._ensure_key_exists(api_name, key_id)
+
+        # Increment request counters
+        self._request_counts[api_name]["total"] += 1
+        self._request_counts[api_name]["active"] += 1
+
+        # Track key usage
+        self._key_usage[api_name][key_id]["total"] += 1
+        self._key_usage[api_name][key_id]["active"] += 1
+
+        # Record in history
+        self.request_history.append(
+            {
+                "type": "request",
+                "api_name": api_name,
+                "key_id": key_id,
+                "timestamp": time.time(),
+            }
+        )
+
+    def record_response(
+        self, api_name: str, api_key: str, status_code: int, elapsed: float
+    ) -> None:
         """
         Record a response from an API.
 
         Args:
             api_name: Name of the API
+            api_key: the API key used for the request
             status_code: HTTP status code
-            elapsed_time: Time taken for the request in seconds
+            elapsed: Time taken for the request in seconds
         """
-        with self.lock:
-            # Convert to milliseconds for easier readability
-            elapsed_ms = elapsed_time * 1000
 
-            # Update response counts by status code
-            self.response_counts[api_name][status_code] += 1
+        key_id = _mask_api_key(api_key)
 
-            # Update error counts for non-2xx responses
-            if status_code >= 400:
-                self.error_counts[api_name] += 1
+        # Initialize API in dictionaries if not present
+        self._ensure_api_exists(api_name)
+        self._ensure_key_exists(api_name, key_id)
 
-            # Update response time metrics
-            self.response_times[api_name].append(elapsed_ms)
-            if (
-                len(self.response_times[api_name]) > 100
-            ):  # Keep only recent measurements
-                self.response_times[api_name] = self.response_times[api_name][-100:]
+        # Decrement active request counter
+        self._request_counts[api_name]["active"] = max(
+            0, self._request_counts[api_name]["active"] - 1
+        )
 
-            # Update min/max/avg
-            self.min_response_time[api_name] = min(
-                self.min_response_time[api_name], elapsed_ms
-            )
-            self.max_response_time[api_name] = max(
-                self.max_response_time[api_name], elapsed_ms
-            )
+        # Record status code
+        if status_code not in self._status_codes[api_name]:
+            self._status_codes[api_name][status_code] = 0
 
-            # Recalculate average
-            if self.response_times[api_name]:
-                self.avg_response_time[api_name] = sum(
-                    self.response_times[api_name]
-                ) / len(self.response_times[api_name])
+        self._status_codes[api_name][status_code] += 1
 
-            # Add to request history
-            self.request_history.append(
-                {
-                    "type": "response",
-                    "api_name": api_name,
-                    "status_code": status_code,
-                    "elapsed_ms": elapsed_ms,
-                    "timestamp": time.time(),
-                }
-            )
+        # Record response time (convert to milliseconds)
+        elapsed_ms = elapsed * 1000
+        self._response_times[api_name].append(elapsed_ms)
 
-    def record_rate_limit_hit(self, api_name: str, key_id: str = "unknown"):
+        # Update key metrics
+        key_metrics = self._key_usage[api_name][key_id]
+        key_metrics["active"] = max(0, key_metrics["active"] - 1)
+
+        # Record status code for key
+        if status_code not in key_metrics["status_codes"]:
+            key_metrics["status_codes"][status_code] = 0
+
+        key_metrics["status_codes"][status_code] += 1
+
+        # Record success/error for key
+        if 200 <= status_code < 300:
+            key_metrics["success"] += 1
+        elif status_code >= 400:
+            key_metrics["error"] += 1
+
+        # Record in history
+        self.request_history.append(
+            {
+                "type": "response",
+                "api_name": api_name,
+                "key_id": key_id,
+                "status_code": status_code,
+                "elapsed_ms": elapsed_ms,
+                "timestamp": time.time(),
+            }
+        )
+
+    def record_key_usage(self, api_name: str, key_id: str, status: int) -> None:
         """
-        Record a rate limit hit for an API.
+        Record API key usage.
+
+        Args:
+            api_name: Name of the API
+            key_id: ID of the API key
+            status: HTTP status code
+        """
+        # Initialize API in dictionaries if not present
+        self._ensure_api_exists(api_name)
+        self._ensure_key_exists(api_name, key_id)
+
+        # Update key metrics
+        key_metrics = self._key_usage[api_name][key_id]
+        key_metrics["active"] = max(0, key_metrics["active"] - 1)
+
+        # Record status code
+        if status not in key_metrics["status_codes"]:
+            key_metrics["status_codes"][status] = 0
+
+        key_metrics["status_codes"][status] += 1
+
+        # Record success/error
+        if 200 <= status < 300:
+            key_metrics["success"] += 1
+        elif status >= 400:
+            key_metrics["error"] += 1
+
+    def record_rate_limit_hit(self, api_name: str, api_key: Optional[str]) -> None:
+        """
+        Record a rate limit hit.
+
+        Args:
+            api_name: Name of the API
+            api_key: the API key used for the request [Optional]
+        """
+        # Initialize API in dictionaries if not present
+
+        self._ensure_api_exists(api_name)
+        key_id = _mask_api_key(api_key)
+
+        # Record rate limit hit
+        if key_id not in self._rate_limit_hits[api_name]:
+            self._rate_limit_hits[api_name][key_id] = 0
+
+        self._rate_limit_hits[api_name][key_id] += 1
+
+    def record_queue_hit(self, api_name: str) -> None:
+        """
+        Record a request being queued.
 
         Args:
             api_name: Name of the API
         """
-        with self.lock:
-            self.rate_limit_hits[api_name] += 1
+        # Initialize API in dictionaries if not present
+        self._ensure_api_exists(api_name)
 
-            # Add to request history
-            self.request_history.append(
-                {
-                    "type": "rate_limit",
-                    "api_name": api_name,
-                    "key_id": key_id,
-                    "timestamp": time.time(),
-                }
-            )
+        # Increment queue hit counter
+        self._queue_hits[api_name] += 1
 
-    def record_queue_hit(self, api_name: str):
+    def _ensure_api_exists(self, api_name: str) -> None:
         """
-        Record a queue hit for an API.
+        Ensure that an API exists in all metric dictionaries.
 
         Args:
             api_name: Name of the API
         """
-        with self.lock:
-            self.queue_hits[api_name] += 1
+        if api_name not in self._request_counts:
+            self._request_counts[api_name] = {"total": 0, "active": 0}
 
-            # Add to request history
-            self.request_history.append(
-                {"type": "queue", "api_name": api_name, "timestamp": time.time()}
-            )
+        if api_name not in self._status_codes:
+            self._status_codes[api_name] = {}
+
+        if api_name not in self._response_times:
+            self._response_times[api_name] = deque(maxlen=METRICS_HISTORY_SIZE)
+
+        if api_name not in self._rate_limit_hits:
+            self._rate_limit_hits[api_name] = {}
+
+        if api_name not in self._queue_hits:
+            self._queue_hits[api_name] = 0
+
+        if api_name not in self._key_usage:
+            self._key_usage[api_name] = {}
+
+    def _ensure_key_exists(self, api_name: str, key_id: str) -> None:
+        """
+        Ensure that a key exists in the key usage dictionary.
+
+        Args:
+            api_name: Name of the API
+            key_id: ID of the API key
+        """
+        if api_name not in self._key_usage:
+            self._key_usage[api_name] = {}
+
+        if key_id not in self._key_usage[api_name]:
+            self._key_usage[api_name][key_id] = {
+                "total": 0,
+                "active": 0,
+                "success": 0,
+                "error": 0,
+                "status_codes": {},
+            }
 
     def get_api_metrics(self, api_name: str) -> Dict[str, Any]:
         """
@@ -246,199 +247,263 @@ class MetricsCollector:
         Returns:
             Dictionary with API metrics
         """
-        with self.lock:
-            return {
-                "requests": self.request_counts[api_name],
-                "responses": dict(self.response_counts[api_name]),
-                "errors": self.error_counts[api_name],
-                "rate_limit_hits": self.rate_limit_hits[api_name],
-                "queue_hits": self.queue_hits[api_name],
-                "avg_response_time_ms": self.avg_response_time[api_name],
-                "min_response_time_ms": (
-                    self.min_response_time[api_name]
-                    if self.min_response_time[api_name] != float("inf")
-                    else 0
-                ),
-                "max_response_time_ms": self.max_response_time[api_name],
-                "key_usage": dict(self.key_usage[api_name]),
-                "last_request_time": self.last_request_time[api_name],
-            }
+        # Initialize metrics structure
+        metrics = {
+            "total_requests": 0,
+            "active_requests": 0,
+            "success_count": 0,
+            "error_count": 0,
+            "success_rate": 100.0,  # Default to 100% if no requests
+            "avg_response_time": 0,
+            "min_response_time": 0,
+            "max_response_time": 0,
+            "status_codes": {},
+            "rate_limit_hits": 0,
+            "queue_hits": 0,
+            "keys": {},
+        }
+
+        # If API doesn't exist in metrics, return default structure
+        if api_name not in self._request_counts:
+            return metrics
+
+        # Fill in request counts
+        metrics["total_requests"] = self._request_counts[api_name].get("total", 0)
+        metrics["active_requests"] = self._request_counts[api_name].get("active", 0)
+
+        # Fill in status codes and calculate success/error rates
+        if api_name in self._status_codes:
+            metrics["status_codes"] = dict(self._status_codes[api_name])
+
+            # Calculate success and error counts
+            metrics["success_count"] = sum(
+                count
+                for status, count in self._status_codes[api_name].items()
+                if 200 <= status < 300
+            )
+            metrics["error_count"] = sum(
+                count
+                for status, count in self._status_codes[api_name].items()
+                if status >= 400
+            )
+
+            # Calculate success rate
+            total = metrics["success_count"] + metrics["error_count"]
+            if total > 0:
+                metrics["success_rate"] = (metrics["success_count"] / total) * 100
+
+        # Fill in response time metrics
+        if api_name in self._response_times and self._response_times[api_name]:
+            times = list(self._response_times[api_name])
+            metrics["avg_response_time"] = sum(times) / len(times)
+            metrics["min_response_time"] = min(times)
+            metrics["max_response_time"] = max(times)
+
+        # Fill in rate limit and queue hits
+        if api_name in self._rate_limit_hits:
+            metrics["rate_limit_hits"] = sum(self._rate_limit_hits[api_name].values())
+
+        if api_name in self._queue_hits:
+            metrics["queue_hits"] = self._queue_hits[api_name]
+
+        # Fill in key metrics
+        if api_name in self._key_usage:
+            for key_id, key_metrics in self._key_usage[api_name].items():
+                # Calculate key success rate
+                key_success = key_metrics.get("success", 0)
+                key_error = key_metrics.get("error", 0)
+                key_success_rate = 100.0
+
+                if key_success + key_error > 0:
+                    key_success_rate = (key_success / (key_success + key_error)) * 100
+
+                # Record key metrics
+                metrics["keys"][key_id] = {
+                    "total": key_metrics.get("total", 0),
+                    "active": key_metrics.get("active", 0),
+                    "success": key_success,
+                    "error": key_error,
+                    "rate_limit_hits": self._rate_limit_hits.get(api_name, {}).get(
+                        key_id, 0
+                    ),
+                    "success_rate": key_success_rate,
+                }
+
+        return metrics
+
+    def get_summary(self) -> Dict[str, Any]:
+        """
+        Get a summary of all metrics.
+
+        Returns:
+            Dictionary with metrics summary
+        """
+        # Calculate global statistics
+        total_requests = sum(
+            metrics.get("total", 0) for metrics in self._request_counts.values()
+        )
+        active_requests = sum(
+            metrics.get("active", 0) for metrics in self._request_counts.values()
+        )
+
+        # Calculate total success and error counts
+        total_success = 0
+        total_error = 0
+
+        for api_name in self._status_codes:
+            total_success += sum(
+                count
+                for status, count in self._status_codes[api_name].items()
+                if 200 <= status < 300
+            )
+            total_error += sum(
+                count
+                for status, count in self._status_codes[api_name].items()
+                if status >= 400
+            )
+
+        # Calculate overall success rate
+        success_rate = 100.0
+        if total_success + total_error > 0:
+            success_rate = (total_success / (total_success + total_error)) * 100
+
+        # Calculate overall average response time
+        all_response_times = []
+        for times in self._response_times.values():
+            all_response_times.extend(times)
+
+        avg_response_time = 0
+        if all_response_times:
+            avg_response_time = sum(all_response_times) / len(all_response_times)
+
+        # Collect API-specific metrics
+        apis = {}
+        for api_name in sorted(self._request_counts.keys()):
+            apis[api_name] = self.get_api_metrics(api_name)
+
+        # Build summary
+        return {
+            "total_requests": total_requests,
+            "active_requests": active_requests,
+            "success_count": total_success,
+            "error_count": total_error,
+            "success_rate": success_rate,
+            "avg_response_time": avg_response_time,
+            "uptime": time.time() - self.last_reset,
+            "apis": apis,
+        }
 
     def get_all_metrics(self) -> Dict[str, Any]:
         """
-        Get metrics for all APIs.
+        Get all metrics data formatted for dashboard visualization.
 
         Returns:
-            Dictionary with all metrics
+            Dictionary with formatted metrics for the dashboard
         """
-        with self.lock:
-            api_names = set(self.request_counts.keys())
+        # Get summary metrics
+        summary = self.get_summary()
 
-            # Add API names that might only have responses but no requests yet
-            for api_name in self.response_counts:
-                api_names.add(api_name)
+        # Format for dashboard display
+        apis_data = {}
+        for api_name, api_metrics in summary["apis"].items():
+            # Find the last request timestamp for this API
+            last_request_time = self._get_last_request_time(api_name)
 
-            metrics = {
-                "global": {
-                    "total_requests": sum(self.request_counts.values()),
-                    "total_errors": sum(self.error_counts.values()),
-                    "total_rate_limit_hits": sum(self.rate_limit_hits.values()),
-                    "total_queue_hits": sum(self.queue_hits.values()),
-                    "uptime_seconds": time.time() - self.start_time,
-                },
-                "apis": {
-                    api_name: self.get_api_metrics(api_name) for api_name in api_names
-                },
+            # Format response codes
+            responses = {
+                str(code): count for code, count in api_metrics["status_codes"].items()
             }
 
-            return metrics
+            # Format key usage data
+            key_usage = {
+                key_id: data["total"] for key_id, data in api_metrics["keys"].items()
+            }
+
+            # Create formatted API metrics
+            apis_data[api_name] = {
+                "requests": api_metrics["total_requests"],
+                "errors": api_metrics["error_count"],
+                "avg_response_time_ms": api_metrics["avg_response_time"],
+                "min_response_time_ms": api_metrics["min_response_time"],
+                "max_response_time_ms": api_metrics["max_response_time"],
+                "rate_limit_hits": api_metrics["rate_limit_hits"],
+                "queue_hits": api_metrics["queue_hits"],
+                "last_request_time": last_request_time,
+                "responses": responses,
+                "key_usage": key_usage,
+            }
+
+        return {
+            "global": {
+                "total_requests": summary["total_requests"],
+                "total_errors": summary["error_count"],
+                "total_rate_limit_hits": self._get_total_rate_limit_hits(),
+                "total_queue_hits": self._get_total_queue_hits(),
+                "uptime_seconds": summary["uptime"],
+            },
+            "apis": apis_data,
+            "timestamp": time.time(),
+        }
 
     def get_recent_history(self, count: int = 100) -> List[Dict[str, Any]]:
         """
         Get recent request/response history.
 
         Args:
-            count: Number of recent events to return
+            count: Number of history entries to return
 
         Returns:
-            List of recent events
+            List of history entries
         """
-        with self.lock:
-            return list(self.request_history)[-count:]
+        return list(self.request_history)[-count:]
 
-    def load_metrics(self):
-        """Load metrics from disk if available."""
-        metrics_file = os.path.join(self.metrics_path, "metrics.json")
+    def _get_last_request_time(self, api_name: str) -> Optional[float]:
+        """Get the timestamp of the last request for a specific API."""
+        for entry in reversed(self.request_history):
+            if entry["api_name"] == api_name and entry["type"] == "request":
+                return entry["timestamp"]
+        return None
 
-        if not os.path.exists(metrics_file):
-            self.logger.debug(f"No metrics file found at {metrics_file}")
-            return
+    def _get_total_rate_limit_hits(self) -> int:
+        """Get total rate limit hits across all APIs."""
+        total = 0
+        for api_data in self._rate_limit_hits.values():
+            total += sum(api_data.values())
+        return total
 
-        try:
-            with open(metrics_file, "r") as f:
-                try:
-                    saved_metrics = json.load(f)
-                except json.JSONDecodeError as e:
-                    self.logger.error(f"Invalid JSON in metrics file: {str(e)}")
-                    return
+    def _get_total_queue_hits(self) -> int:
+        """Get total queue hits across all APIs."""
+        return sum(self._queue_hits.values())
 
-            with self.lock:
-                # Load API-specific counters
-                api_metrics = saved_metrics.get("apis", {})
-                for api_name, metrics in api_metrics.items():
-                    self.request_counts[api_name] = metrics.get("requests", 0)
+    def reset(self) -> None:
+        """
+        Reset all metrics.
+        """
+        self.last_reset = time.time()
+        self._init_metrics()
+        self.logger.info("Metrics have been reset")
 
-                    # Load response counts by status code
-                    for status_code_str, count in metrics.get("responses", {}).items():
-                        try:
-                            status_code = int(status_code_str)
-                            self.response_counts[api_name][status_code] = count
-                        except ValueError:
-                            self.logger.warning(
-                                f"Invalid status code: {status_code_str}"
-                            )
-                            continue
+    def _init_metrics(self) -> None:
+        """
+        Initialize or reset all metrics data structures.
+        """
+        # Response time history with fixed size per API
+        self._response_times: Dict[str, deque] = {}
 
-                    self.error_counts[api_name] = metrics.get("errors", 0)
-                    self.rate_limit_hits[api_name] = metrics.get("rate_limit_hits", 0)
-                    self.queue_hits[api_name] = metrics.get("queue_hits", 0)
+        # Request counts by API
+        self._request_counts: Dict[str, Dict[str, int]] = {}
 
-                    # Load response time metrics
-                    self.avg_response_time[api_name] = metrics.get(
-                        "avg_response_time_ms", 0
-                    )
+        # Status code distribution by API
+        self._status_codes: Dict[str, Dict[int, int]] = {}
 
-                    min_time = metrics.get("min_response_time_ms")
-                    if min_time is not None and min_time > 0:
-                        self.min_response_time[api_name] = min_time
+        # Rate limit hits by API and key
+        self._rate_limit_hits: Dict[str, Dict[str, int]] = {}
 
-                    self.max_response_time[api_name] = metrics.get(
-                        "max_response_time_ms", 0
-                    )
+        # Queue hits by API
+        self._queue_hits: Dict[str, int] = {}
 
-                    # Load key usage data
-                    for key_id, count in metrics.get("key_usage", {}).items():
-                        self.key_usage[api_name][key_id] = count
+        # Key usage statistics by API
+        self._key_usage: Dict[str, Dict[str, Dict[str, Any]]] = {}
 
-                    # Load last request time
-                    self.last_request_time[api_name] = metrics.get(
-                        "last_request_time", 0
-                    )
-
-                # Restore start time to maintain accurate uptime
-                saved_timestamp = saved_metrics.get("timestamp")
-                if saved_timestamp and "global" in saved_metrics:
-                    saved_uptime = saved_metrics["global"].get("uptime_seconds")
-                    if saved_uptime is not None:
-                        # Calculate original start time from previous data
-                        calculated_start = float(saved_timestamp) - float(saved_uptime)
-                        # Use the earlier of the two start times
-                        self.start_time = min(self.start_time, calculated_start)
-
-            self.logger.info(f"Successfully loaded metrics from {metrics_file}")
-
-        except (OSError, IOError) as e:
-            self.logger.error(f"Error reading metrics file: {str(e)}")
-        except Exception as e:
-            self.logger.error(
-                f"Unexpected error loading metrics: {str(e)}", exc_info=True
-            )
-
-    def persist_metrics(self):
-        """Save metrics to disk."""
-        try:
-            metrics_file = os.path.join(self.metrics_path, "metrics.json")
-            tmp_file = metrics_file + ".tmp"
-
-            # Get metrics data
-            metrics = self.get_all_metrics()
-
-            # Add timestamp
-            metrics["timestamp"] = time.time()
-
-            # Write to temp file first to prevent corruption
-            with open(tmp_file, "w") as f:
-                json.dump(metrics, f, indent=2)
-
-            # Rename to final file
-            os.replace(tmp_file, metrics_file)
-
-            self.logger.debug(f"Metrics persisted to {metrics_file}")
-            self.last_persist_time = time.time()
-
-        except Exception as e:
-            self.logger.error(f"Error persisting metrics: {str(e)}")
-
-    def _persistence_task(self):
-        """Background task for periodically persisting metrics."""
-        while self.running:
-            try:
-                current_time = time.time()
-                if current_time - self.last_persist_time >= self.persist_interval:
-                    self.persist_metrics()
-                time.sleep(1)
-            except Exception as e:
-                self.logger.error(f"Error in metrics persistence task: {str(e)}")
-                time.sleep(5)  # Back off on error
-
-    def stop(self):
-        """Stop the metrics collector persistence thread."""
-        self.running = False
-        if self.persistence_thread:
-            self.persistence_thread.join(timeout=2)
-
-        # Save metrics one last time
-        self.persist_metrics()
-
-        # Remove from instances map
-        with self._instances_lock:
-            abs_path = os.path.abspath(self.metrics_path)
-            if abs_path in self._instances:
-                del self._instances[abs_path]
-
-    def reset(self):
-        """Reset all metrics."""
-        with self.lock:
-            self.initialize_metrics()
-            # Save the reset metrics
-            self.persist_metrics()
+        # Reset request history
+        self.request_history.clear()

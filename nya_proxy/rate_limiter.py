@@ -1,191 +1,169 @@
 """
-Rate limiter for API requests.
+Rate limiting implementation for API requests.
 """
 
+import logging
 import re
-import threading
 import time
-from typing import Dict, Tuple
-
-
-class RateLimitError(Exception):
-    """Exception raised for rate limit parsing errors."""
-
-    pass
+from typing import List, Optional, Tuple
 
 
 class RateLimiter:
     """
-    Rate limiter for API requests.
+    Rate limiter for throttling requests to comply with API limits.
+
+    Supports time-based rate limits in the format "X/Y" where:
+    - X is the number of requests allowed
+    - Y is the time unit (s=seconds, m=minutes, h=hours, d=days)
+
+    Example rate limits:
+    - "100/m": 100 requests per minute
+    - "5/s": 5 requests per second
+    - "1000/h": 1000 requests per hour
     """
 
-    def __init__(self, rate_limit: str = "0"):
+    # Time unit to seconds conversion
+    TIME_UNITS = {
+        "s": 1,
+        "m": 60,
+        "h": 3600,
+        "d": 86400,
+    }
+
+    def __init__(self, rate_limit: str, logger: Optional[logging.Logger] = None):
         """
-        Initialize the rate limiter.
+        Initialize rate limiter.
 
         Args:
-            rate_limit: Rate limit as a string in the format "count/period"
-                       where period is one of s (seconds), m (minutes), h (hours), d (days)
-                       Examples: "10/s", "100/m", "1000/h"
-                       Use "0" for no limit
+            rate_limit: Rate limit string in format "X/Y"
+            logger: Logger instance
         """
-        self.rate_limit = rate_limit
-        self.count, self.period = self._parse_rate_limit(rate_limit)
-        self.requests = []
-        self.lock = threading.RLock()
+        self.logger = logger or logging.getLogger(__name__)
 
-        # Keep track of when the next request will be allowed
-        self.next_request_time = 0.0
+        # Parse rate limit
+        self.requests_limit, self.window_seconds = self._parse_rate_limit(rate_limit)
 
-        # Statistics
-        self.allowed_count = 0
-        self.rejected_count = 0
-        self.last_reset_time = time.time()
+        # Initialize timestamps with fixed-size list
+        self.request_timestamps: List[float] = []
+        self.last_cleanup_time = 0
 
-    def _parse_rate_limit(self, rate_limit: str) -> Tuple[int, float]:
+    def _parse_rate_limit(self, rate_limit: str) -> Tuple[int, int]:
         """
-        Parse the rate limit string.
+        Parse rate limit string into numeric values.
 
         Args:
-            rate_limit: Rate limit string
+            rate_limit: Rate limit string in format "X/Y"
 
         Returns:
-            Tuple of (count, period in seconds)
+            Tuple of (requests_limit, window_seconds)
         """
-        # No limit
-        if rate_limit == "0":
+        # Handle empty or zero rate limit (no limit)
+        if not rate_limit or rate_limit == "0":
             return 0, 0
 
-        # Parse rate limit string
-        match = re.match(r"(\d+)/([smhd])", rate_limit)
+        # Parse rate limit string (e.g., "100/m")
+        pattern = r"^(\d+)/([smhd])$"
+        match = re.match(pattern, rate_limit)
+
         if not match:
-            # Invalid format, default to no limit
+            self.logger.warning(
+                f"Invalid rate limit format: {rate_limit}, using no limit"
+            )
             return 0, 0
 
-        count = int(match.group(1))
-        period_unit = match.group(2)
+        requests_limit = int(match.group(1))
+        time_unit = match.group(2)
+        window_seconds = self.TIME_UNITS.get(time_unit, 0)
 
-        # Convert period to seconds
-        period_seconds = {"s": 1, "m": 60, "h": 3600, "d": 86400}.get(period_unit, 0)
-
-        return count, period_seconds
+        return requests_limit, window_seconds
 
     def allow_request(self) -> bool:
         """
-        Check if a request is allowed under the current rate limit.
+        Check if a request is allowed under the rate limit.
 
         Returns:
-            True if the request is allowed, False otherwise
+            True if request is allowed, False if rate limited
         """
-        with self.lock:
-            # No limit
-            if self.count == 0:
-                self.allowed_count += 1
-                return True
+        # If no limit is set, always allow
+        if self.requests_limit == 0 or self.window_seconds == 0:
+            return True
 
-            current_time = time.time()
+        current_time = time.time()
 
-            # Clean up old requests
-            threshold = current_time - self.period
-            self.requests = [t for t in self.requests if t > threshold]
+        # Clean up timestamps outside the current window
+        self._clean_old_timestamps(current_time)
 
-            # Update next request time
-            if len(self.requests) >= self.count:
-                # Calculate when the next slot will be available
-                self.next_request_time = self.requests[0] + self.period
+        # Check if we've hit the limit
+        if len(self.request_timestamps) >= self.requests_limit:
+            return False
 
-            # Check if we're under the limit
-            if len(self.requests) < self.count:
-                self.requests.append(current_time)
-                self.allowed_count += 1
-                return True
-            else:
-                self.rejected_count += 1
-                return False
+        # Record this request
+        self.request_timestamps.append(current_time)
+        return True
 
-    def get_remaining(self) -> int:
+    def _clean_old_timestamps(self, current_time: float) -> None:
         """
-        Get the number of remaining requests allowed.
+        Remove timestamps that are outside the current window.
 
-        Returns:
-            Number of remaining requests
+        Args:
+            current_time: Current time in seconds
         """
-        with self.lock:
-            if self.count == 0:
-                return -1  # No limit
+        # Skip frequent cleanups (optimization)
+        if current_time - self.last_cleanup_time < 1.0:
+            return
 
-            current_time = time.time()
-            threshold = current_time - self.period
-            valid_requests = [t for t in self.requests if t > threshold]
+        window_start = current_time - self.window_seconds
 
-            return max(0, self.count - len(valid_requests))
+        # Use list comprehension for better performance
+        self.request_timestamps = [
+            t for t in self.request_timestamps if t >= window_start
+        ]
+
+        # Update last cleanup time
+        self.last_cleanup_time = current_time
 
     def get_reset_time(self) -> float:
         """
         Get the time in seconds until the rate limit resets.
 
         Returns:
-            Seconds until reset (0 if no limit or already reset)
+            Time in seconds until reset
         """
-        with self.lock:
-            if self.count == 0 or not self.requests:
-                return 0.0
+        # If no limit or no timestamps, no reset needed
+        if self.window_seconds == 0 or not self.request_timestamps:
+            return 0
 
-            current_time = time.time()
+        current_time = time.time()
 
-            # If we're not at the limit, return 0
-            if len(self.requests) < self.count:
-                return 0.0
+        # If we haven't hit the limit, no reset needed
+        if len(self.request_timestamps) < self.requests_limit:
+            return 0
 
-            # Calculate time until oldest request expires
-            return max(0.0, (self.requests[0] + self.period) - current_time)
+        # Calculate when the oldest timestamp will leave the window
+        oldest_timestamp = min(self.request_timestamps)
+        reset_time = oldest_timestamp + self.window_seconds - current_time
 
-    def get_limit_details(self) -> Dict[str, float]:
+        return max(0, reset_time)
+
+    def get_remaining_requests(self) -> int:
         """
-        Get detailed information about the rate limit.
+        Get the number of remaining requests in the current window.
 
         Returns:
-            Dictionary with rate limit details
+            Number of remaining requests
         """
-        with self.lock:
-            remaining = self.get_remaining()
-            reset_time = self.get_reset_time()
+        # If no limit, return a large number
+        if self.requests_limit == 0:
+            return 999
 
-            return {
-                "limit": self.count,
-                "remaining": remaining,
-                "reset_after": reset_time,
-                "allowed_count": self.allowed_count,
-                "rejected_count": self.rejected_count,
-            }
+        # Clean up old timestamps
+        self._clean_old_timestamps(time.time())
 
-    def reset(self):
-        """Reset the rate limiter state."""
-        with self.lock:
-            self.requests = []
-            self.next_request_time = 0.0
-            self.last_reset_time = time.time()
+        return max(0, self.requests_limit - len(self.request_timestamps))
 
-    def update_limit(self, rate_limit: str):
+    def reset(self) -> None:
         """
-        Update the rate limit.
-
-        Args:
-            rate_limit: New rate limit string
+        Reset the rate limiter state.
         """
-        with self.lock:
-            old_count = self.count
-            old_period = self.period
-
-            self.rate_limit = rate_limit
-            self.count, self.period = self._parse_rate_limit(rate_limit)
-
-            # If the period changed, we need to reset
-            if old_period != self.period:
-                self.reset()
-
-            # If only the count changed, keep the existing requests
-            # but make sure we're not over the new limit
-            elif self.count < old_count and len(self.requests) > self.count:
-                # Keep only the most recent requests up to the new count
-                self.requests = self.requests[-self.count :]
+        self.request_timestamps = []
+        self.last_cleanup_time = 0

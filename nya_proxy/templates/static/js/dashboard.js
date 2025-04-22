@@ -1,1411 +1,1633 @@
-// NyaProxy Dashboard JavaScript
+// NyaProxy Dashboard - Frontend JavaScript
+// Handles data fetching, visualization, and interactivity for the dashboard
 
-// Theme toggle functionality
-document.addEventListener("DOMContentLoaded", () => {
-  // Theme management
-  const themeToggle = document.getElementById("theme-toggle");
-  const moonIcon = themeToggle.querySelector(".dark\\:hidden"); // Moon icon shown in light mode
-  const sunIcon = themeToggle.querySelector(".hidden.dark\\:block"); // Sun icon shown in dark mode
-
-  // Function to set theme
-  const setTheme = (isDark) => {
-    if (isDark) {
-      document.documentElement.classList.add("dark");
-      moonIcon.classList.add("hidden");
-      sunIcon.classList.remove("hidden");
-    } else {
-      document.documentElement.classList.remove("dark");
-      moonIcon.classList.remove("hidden");
-      sunIcon.classList.add("hidden");
-    }
-    localStorage.theme = isDark ? "dark" : "light";
-  };
-
-  // Check for saved theme preference or respect OS preference
-  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-  const savedTheme = localStorage.getItem("theme");
-
-  if (savedTheme === "dark" || (!savedTheme && prefersDark)) {
-    setTheme(true);
-  } else {
-    setTheme(false);
-  }
-
-  // Theme toggle button
-  themeToggle.addEventListener("click", () => {
-    const isDark = document.documentElement.classList.contains("dark");
-    setTheme(!isDark);
-
-    // Add a subtle animation effect
-    themeToggle.classList.add("rotate-180");
-    setTimeout(() => {
-      themeToggle.classList.remove("rotate-180");
-    }, 300);
-  });
-
-  // Listen for OS theme changes
-  window
-    .matchMedia("(prefers-color-scheme: dark)")
-    .addEventListener("change", (e) => {
-      if (!localStorage.theme) {
-        // Only auto-switch if user hasn't set a preference
-        setTheme(e.matches);
-      }
-    });
-
-  // Initialize dashboard
-  initDashboard();
-});
-
-// API endpoints
-const API_ENDPOINTS = {
-  METRICS: "/dashboard/api/metrics",
-  QUEUE: "/dashboard/api/queue",
-  HISTORY: "/dashboard/api/history",
-  RESET_METRICS: "/dashboard/api/metrics/reset",
-  CLEAR_QUEUE: "/dashboard/api/queue/clear",
-  CLEAR_SPECIFIC_QUEUE: (apiName) => `/dashboard/api/queue/clear/${apiName}`,
+// Configuration
+const CONFIG = {
+  refreshInterval: 30000, // Auto-refresh interval in milliseconds
+  chartColors: {
+    blue: {
+      primary: "#3b82f6",
+      light: "rgba(59, 130, 246, 0.1)",
+      dark: "#2563eb",
+    },
+    red: {
+      primary: "#ef4444",
+      light: "rgba(239, 68, 68, 0.1)",
+      dark: "#dc2626",
+    },
+    green: {
+      primary: "#10b981",
+      light: "rgba(16, 185, 129, 0.1)",
+      dark: "#059669",
+    },
+    yellow: {
+      primary: "#f59e0b",
+      light: "rgba(245, 158, 11, 0.1)",
+      dark: "#d97706",
+    },
+    pink: {
+      primary: "#ec4899",
+      light: "rgba(236, 72, 153, 0.1)",
+      dark: "#db2777",
+    },
+    purple: {
+      primary: "#8b5cf6",
+      light: "rgba(139, 92, 246, 0.1)",
+      dark: "#7c3aed",
+    },
+  },
+  maxItemsInCharts: 10,
+  statusCodeColors: {
+    200: "#10b981",
+    201: "#059669",
+    204: "#34d399",
+    400: "#f59e0b",
+    401: "#f97316",
+    403: "#fb923c",
+    404: "#fbbf24",
+    429: "#fb7185",
+    500: "#ef4444",
+    502: "#dc2626",
+    503: "#b91c1c",
+    504: "#991b1b",
+  },
 };
 
-// Dashboard initialization
-function initDashboard() {
-  // Set up header blur on scroll
-  setupHeaderBlur();
+// State management
+const state = {
+  metrics: null,
+  history: [],
+  queueStatus: {},
+  analytics: null,
+  filters: {
+    apiName: "all",
+    keyId: "all",
+    timeRange: "24h",
+  },
+  charts: {},
+  lastUpdated: null,
+  refreshTimer: null,
+};
 
-  // Set up refresh functionality
-  setupRefreshButton();
+// DOM Elements cache
+const elements = {};
 
-  // Set up API search functionality
-  const apiSearch = document.getElementById("api-search");
-  apiSearch.addEventListener("input", filterApiTable);
+// Utility functions
+const utils = {
+  formatNumber(num) {
+    if (num === undefined || num === null) return "0";
+    if (num === 0) return "0";
 
-  // Set up reset metrics button
-  const resetMetricsBtn = document.getElementById("reset-metrics-btn");
-  if (resetMetricsBtn) {
-    resetMetricsBtn.addEventListener("click", resetMetrics);
-  }
-
-  // Set up clear all queues button
-  const clearAllQueuesBtn = document.getElementById("clear-all-queues-btn");
-  if (clearAllQueuesBtn) {
-    clearAllQueuesBtn.addEventListener("click", clearAllQueues);
-  }
-
-  // Set up modal close button
-  setupModalClose();
-
-  // Initial data fetch
-  fetchDashboardData();
-
-  // Set up auto-refresh every 30 seconds
-  setInterval(fetchDashboardData, 30000);
-}
-
-// Setup refresh button functionality
-function setupRefreshButton() {
-  const refreshButton = document.getElementById("refresh-button");
-  refreshButton.addEventListener("click", () => {
-    // Show loading spinner in the refresh button
-    refreshButton.innerHTML = '<div class="loading-spinner"></div>';
-    refreshButton.disabled = true;
-
-    fetchDashboardData()
-      .then(() => {
-        // Restore original refresh button after data is loaded
-        refreshButton.innerHTML = `
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-          <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" />
-        </svg>
-      `;
-        refreshButton.disabled = false;
-        showToast("Dashboard refreshed", "success");
-      })
-      .catch((error) => {
-        console.error("Failed to refresh dashboard:", error);
-        // Restore original refresh button if there's an error
-        refreshButton.innerHTML = `
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-          <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" />
-        </svg>
-      `;
-        refreshButton.disabled = false;
-        showToast("Failed to refresh dashboard", "error");
-      });
-  });
-}
-
-// Setup modal close functionality
-function setupModalClose() {
-  const closeModalBtn = document.getElementById("close-modal");
-  closeModalBtn.addEventListener("click", () => {
-    const modal = document.getElementById("api-details-modal");
-    modal.classList.add("hidden");
-    // Add fade-out animation
-    modal.style.opacity = 0;
-  });
-
-  // Close modal when clicking outside
-  window.addEventListener("click", (e) => {
-    const modal = document.getElementById("api-details-modal");
-    if (e.target === modal) {
-      modal.classList.add("hidden");
-      // Add fade-out animation
-      modal.style.opacity = 0;
+    if (num >= 1000000) {
+      return (num / 1000000).toFixed(1) + "M";
+    } else if (num >= 1000) {
+      return (num / 1000).toFixed(1) + "K";
     }
-  });
-}
+    return num.toString();
+  },
 
-// Setup header blur on scroll
-function setupHeaderBlur() {
-  const header = document.querySelector("header");
+  formatTime(timestamp) {
+    if (!timestamp) return "N/A";
+    const date = new Date(timestamp * 1000);
+    return date.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  },
 
-  window.addEventListener("scroll", () => {
-    if (window.scrollY > 10) {
-      header.classList.add("shadow-sm");
+  formatDate(timestamp) {
+    if (!timestamp) return "N/A";
+    const date = new Date(timestamp * 1000);
+    return (
+      date.toLocaleDateString() +
+      " " +
+      date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    );
+  },
+
+  formatTimeAgo(timestamp) {
+    if (!timestamp) return "N/A";
+
+    const seconds = Math.floor(Date.now() / 1000 - timestamp);
+
+    if (seconds < 60) {
+      return `${seconds}s ago`;
+    } else if (seconds < 3600) {
+      return `${Math.floor(seconds / 60)}m ago`;
+    } else if (seconds < 86400) {
+      return `${Math.floor(seconds / 3600)}h ago`;
     } else {
-      header.classList.remove("shadow-sm");
+      return `${Math.floor(seconds / 86400)}d ago`;
     }
-  });
-}
+  },
 
-// Fetch all dashboard data
-async function fetchDashboardData() {
-  try {
-    // Fetch all data in parallel for better performance
-    const [metricsResponse, queueResponse, historyResponse] = await Promise.all(
-      [
-        fetch(API_ENDPOINTS.METRICS),
-        fetch(API_ENDPOINTS.QUEUE),
-        fetch(API_ENDPOINTS.HISTORY),
-      ]
+  formatDuration(seconds) {
+    if (!seconds) return "0s";
+
+    if (seconds < 60) {
+      return `${Math.floor(seconds)}s`;
+    } else if (seconds < 3600) {
+      const minutes = Math.floor(seconds / 60);
+      const secs = Math.floor(seconds % 60);
+      return `${minutes}m ${secs}s`;
+    } else if (seconds < 86400) {
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      return `${hours}h ${minutes}m`;
+    } else {
+      const days = Math.floor(seconds / 86400);
+      const hours = Math.floor((seconds % 86400) / 3600);
+      return `${days}d ${hours}h`;
+    }
+  },
+
+  formatResponseTime(ms) {
+    if (ms === undefined || ms === null) return "N/A";
+    if (ms === 0) return "0ms";
+
+    // Format with proper precision
+    if (ms < 1) {
+      return "<1ms";
+    } else if (ms < 1000) {
+      return `${Math.round(ms)}ms`;
+    } else {
+      return `${(ms / 1000).toFixed(2)}s`;
+    }
+  },
+
+  getStatusCodeClass(code) {
+    if (code >= 200 && code < 300) {
+      return "bg-green-500";
+    } else if (code >= 400 && code < 500) {
+      return "bg-yellow-500";
+    } else if (code >= 500) {
+      return "bg-red-500";
+    } else {
+      return "bg-blue-500";
+    }
+  },
+
+  getStatusCodeColor(code) {
+    code = code.toString();
+    if (CONFIG.statusCodeColors[code]) {
+      return CONFIG.statusCodeColors[code];
+    }
+
+    // Default colors based on ranges
+    if (code.startsWith("2")) {
+      return CONFIG.statusCodeColors["200"];
+    } else if (code.startsWith("4")) {
+      return CONFIG.statusCodeColors["400"];
+    } else if (code.startsWith("5")) {
+      return CONFIG.statusCodeColors["500"];
+    }
+
+    return "#64748b"; // Default gray
+  },
+
+  // Truncate text with ellipsis
+  truncate(text, length = 20) {
+    if (!text) return "";
+    return text.length > length ? text.substring(0, length) + "..." : text;
+  },
+
+  // Generate a random color with good contrast
+  randomColor(index) {
+    const colors = Object.values(CONFIG.chartColors).map((c) => c.primary);
+    return colors[index % colors.length];
+  },
+
+  showToast(message, type = "success") {
+    const toast = document.getElementById("toast");
+    const toastMessage = document.getElementById("toast-message");
+    const toastIcon = document.getElementById("toast-icon");
+
+    toastMessage.textContent = message;
+
+    // Set icon and color based on type
+    if (type === "success") {
+      toastIcon.innerHTML =
+        '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>';
+      toastIcon.className = "mr-3 text-green-500";
+    } else if (type === "error") {
+      toastIcon.innerHTML =
+        '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" /></svg>';
+      toastIcon.className = "mr-3 text-red-500";
+    } else if (type === "warning") {
+      toastIcon.innerHTML =
+        '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>';
+      toastIcon.className = "mr-3 text-yellow-500";
+    }
+
+    // Show the toast
+    toast.classList.remove("toast-hidden", "translate-y-full", "opacity-0");
+    toast.classList.add("toast-visible");
+
+    // Hide the toast after 3 seconds
+    setTimeout(() => {
+      toast.classList.remove("toast-visible");
+      toast.classList.add("toast-hidden", "translate-y-full", "opacity-0");
+    }, 3000);
+  },
+};
+
+// API service for handling data fetching
+const apiService = {
+  async fetchMetrics() {
+    try {
+      const response = await fetch("/dashboard/api/metrics");
+      if (!response.ok) throw new Error("Failed to fetch metrics");
+
+      const data = await response.json();
+      state.metrics = data;
+      state.lastUpdated = new Date();
+      return data;
+    } catch (error) {
+      console.error("Error fetching metrics:", error);
+      utils.showToast("Failed to fetch metrics data", "error");
+      throw error;
+    }
+  },
+
+  async fetchHistory() {
+    try {
+      const response = await fetch("/dashboard/api/history");
+      if (!response.ok) throw new Error("Failed to fetch history");
+
+      const data = await response.json();
+      state.history = data.history || [];
+      return data.history;
+    } catch (error) {
+      console.error("Error fetching history:", error);
+      utils.showToast("Failed to fetch request history", "error");
+      throw error;
+    }
+  },
+
+  async fetchQueueStatus() {
+    try {
+      const response = await fetch("/dashboard/api/queue");
+      if (!response.ok) throw new Error("Failed to fetch queue status");
+
+      const data = await response.json();
+      state.queueStatus = data;
+      return data;
+    } catch (error) {
+      console.error("Error fetching queue status:", error);
+      return null;
+    }
+  },
+
+  async fetchAnalytics(apiName = null, keyId = null, timeRange = "24h") {
+    let url = `/dashboard/api/analytics?time_range=${timeRange}`;
+    if (apiName && apiName !== "all") url += `&api_name=${apiName}`;
+    if (keyId && keyId !== "all") url += `&key_id=${keyId}`;
+
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Failed to fetch analytics");
+
+      const data = await response.json();
+      state.analytics = data;
+      return data;
+    } catch (error) {
+      console.error("Error fetching analytics:", error);
+      utils.showToast("Failed to fetch analytics data", "error");
+      throw error;
+    }
+  },
+
+  async resetMetrics() {
+    try {
+      const response = await fetch("/dashboard/api/metrics/reset", {
+        method: "POST",
+      });
+      if (!response.ok) throw new Error("Failed to reset metrics");
+
+      const data = await response.json();
+      utils.showToast("Metrics reset successfully");
+      return data;
+    } catch (error) {
+      console.error("Error resetting metrics:", error);
+      utils.showToast("Failed to reset metrics", "error");
+      throw error;
+    }
+  },
+
+  async clearAllQueues() {
+    try {
+      const response = await fetch("/dashboard/api/queue/clear", {
+        method: "POST",
+      });
+      if (!response.ok) throw new Error("Failed to clear queues");
+
+      const data = await response.json();
+      utils.showToast(`Cleared ${data.cleared_count} queued requests`);
+      return data;
+    } catch (error) {
+      console.error("Error clearing queues:", error);
+      utils.showToast("Failed to clear queues", "error");
+      throw error;
+    }
+  },
+
+  async clearQueue(apiName) {
+    try {
+      const response = await fetch(`/dashboard/api/queue/clear/${apiName}`, {
+        method: "POST",
+      });
+      if (!response.ok) throw new Error("Failed to clear queue");
+
+      const data = await response.json();
+      utils.showToast(
+        `Cleared ${data.cleared_count} queued requests for ${apiName}`
+      );
+      return data;
+    } catch (error) {
+      console.error(`Error clearing queue for ${apiName}:`, error);
+      utils.showToast(`Failed to clear queue for ${apiName}`, "error");
+      throw error;
+    }
+  },
+};
+
+// UI rendering functions
+const ui = {
+  // Initialize and cache DOM elements
+  cacheElements() {
+    // Global stats elements
+    elements.totalRequests = document.getElementById("total-requests");
+    elements.totalErrors = document.getElementById("total-errors");
+    elements.totalRateLimits = document.getElementById("total-rate-limits");
+    elements.uptime = document.getElementById("uptime");
+    elements.totalRequestsBar = document.getElementById("total-requests-bar");
+    elements.totalErrorsBar = document.getElementById("total-errors-bar");
+    elements.totalRateLimitsBar = document.getElementById(
+      "total-rate-limits-bar"
     );
 
-    // Check for response errors
-    if (!metricsResponse.ok) {
-      throw new Error(`Metrics API error: ${metricsResponse.status}`);
+    // Filter elements
+    elements.apiFilter = document.getElementById("api-filter");
+    elements.keyFilter = document.getElementById("key-filter");
+    elements.timeRange = document.getElementById("time-range");
+    elements.filterSummary = document.getElementById("filter-summary");
+
+    // Table elements
+    elements.apiTableBody = document.getElementById("api-table-body");
+    elements.apiCardsContainer = document.getElementById("api-cards-container");
+    elements.historyTableBody = document.getElementById("history-table-body");
+    elements.historyCardsContainer = document.getElementById(
+      "history-cards-container"
+    );
+
+    // Queue elements
+    elements.queueContainer = document.getElementById("queue-container");
+
+    // Chart canvases
+    elements.trafficChart = document.getElementById("traffic-chart");
+    elements.responseTimeChart = document.getElementById("response-time-chart");
+    elements.statusCodeChart = document.getElementById("status-code-chart");
+    elements.apiDistributionChart = document.getElementById(
+      "api-distribution-chart"
+    );
+    elements.keyUsageChart = document.getElementById("key-usage-chart");
+
+    // Action buttons
+    elements.refreshButton = document.getElementById("refresh-button");
+    elements.resetMetricsBtn = document.getElementById("reset-metrics-btn");
+    elements.clearAllQueuesBtn = document.getElementById(
+      "clear-all-queues-btn"
+    );
+    elements.themeToggle = document.getElementById("theme-toggle");
+
+    // Search inputs
+    elements.apiSearch = document.getElementById("api-search");
+    elements.historySearch = document.getElementById("history-search");
+
+    // Modal elements
+    elements.apiDetailsModal = document.getElementById("api-details-modal");
+    elements.modalTitle = document.getElementById("modal-title");
+    elements.modalContent = document.getElementById("modal-content");
+    elements.closeModal = document.getElementById("close-modal");
+
+    // Last updated indicator
+    elements.lastUpdated = document.getElementById("last-updated");
+  },
+
+  // Update global statistics display
+  updateGlobalStats() {
+    if (!state.metrics || !state.metrics.global) return;
+
+    const global = state.metrics.global;
+
+    // Update counters with formatted numbers
+    elements.totalRequests.textContent = utils.formatNumber(
+      global.total_requests
+    );
+    elements.totalErrors.textContent = utils.formatNumber(global.total_errors);
+    elements.totalRateLimits.textContent = utils.formatNumber(
+      global.total_rate_limit_hits
+    );
+    elements.uptime.textContent = utils.formatDuration(global.uptime_seconds);
+
+    // Update progress bars
+    // Calculate percentages for visualization
+    const maxRequests = Math.max(global.total_requests, 1);
+    const errorPercentage = (global.total_errors / maxRequests) * 100;
+    const rateLimitPercentage =
+      (global.total_rate_limit_hits / maxRequests) * 100;
+
+    elements.totalRequestsBar.style.width = "100%";
+    elements.totalErrorsBar.style.width = `${Math.min(errorPercentage, 100)}%`;
+    elements.totalRateLimitsBar.style.width = `${Math.min(
+      rateLimitPercentage,
+      100
+    )}%`;
+
+    // Update last updated text
+    if (state.lastUpdated) {
+      elements.lastUpdated.textContent = `Last updated: ${state.lastUpdated.toLocaleTimeString()}`;
     }
-    if (!queueResponse.ok) {
-      throw new Error(`Queue API error: ${queueResponse.status}`);
+  },
+
+  // Render API table
+  renderApiTable() {
+    if (!state.metrics || !state.metrics.apis) return;
+
+    const apis = state.metrics.apis;
+    const searchTerm = elements.apiSearch.value.toLowerCase();
+
+    // Clear existing content
+    elements.apiTableBody.innerHTML = "";
+    elements.apiCardsContainer.innerHTML = "";
+
+    // Check if we have APIs to display
+    if (Object.keys(apis).length === 0) {
+      const emptyRow = document.createElement("tr");
+      emptyRow.innerHTML = `
+        <td colspan="6" class="px-6 py-4 text-center text-sm text-slate-500 dark:text-slate-400">
+          No APIs have been used yet
+        </td>
+      `;
+      elements.apiTableBody.appendChild(emptyRow);
+      return;
     }
-    if (!historyResponse.ok) {
-      throw new Error(`History API error: ${historyResponse.status}`);
+
+    // Sort APIs by request count (descending)
+    const sortedApis = Object.entries(apis).sort(
+      (a, b) => b[1].requests - a[1].requests
+    );
+
+    // Filter APIs by search term
+    const filteredApis = sortedApis.filter(([apiName]) =>
+      apiName.toLowerCase().includes(searchTerm)
+    );
+
+    if (filteredApis.length === 0) {
+      const emptyRow = document.createElement("tr");
+      emptyRow.innerHTML = `
+        <td colspan="6" class="px-6 py-4 text-center text-sm text-slate-500 dark:text-slate-400">
+          No APIs match your search
+        </td>
+      `;
+      elements.apiTableBody.appendChild(emptyRow);
+      return;
     }
 
-    // Parse JSON responses
-    const metricsData = await metricsResponse.json();
-    const queueData = await queueResponse.json();
-    const historyData = await historyResponse.json();
+    // Render each API row
+    filteredApis.forEach(([apiName, apiData]) => {
+      // Desktop view (table row)
+      const row = document.createElement("tr");
+      row.className =
+        "hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors duration-150 clickable-row";
+      row.onclick = () => ui.showApiDetails(apiName, apiData);
 
-    // Update the dashboard with the fetched data
-    updateDashboard(metricsData, queueData, historyData);
+      const lastRequestTime = apiData.last_request_time
+        ? utils.formatTimeAgo(apiData.last_request_time)
+        : "Never";
 
-    // Update last updated time
-    updateLastUpdatedTime();
-
-    return Promise.resolve();
-  } catch (error) {
-    console.error("Error fetching dashboard data:", error);
-    showToast(`Failed to fetch dashboard data: ${error.message}`, "error");
-    return Promise.reject(error);
-  }
-}
-
-// Update the dashboard with the fetched data
-function updateDashboard(metricsData, queueData, historyData) {
-  // Update global stats
-  updateGlobalStats(metricsData.global);
-
-  // Update API table
-  updateApiTable(metricsData.apis);
-
-  // Update responsive API cards for mobile
-  updateApiCards(metricsData.apis);
-
-  // Update API filter options
-  updateApiFilterOptions(metricsData.apis);
-
-  // Update traffic chart
-  updateTrafficChart(metricsData.apis);
-
-  // Update queue status
-  updateQueueStatus(queueData.queue_sizes);
-
-  // Update request history
-  updateRequestHistory(historyData.history);
-
-  // Update responsive history cards for mobile
-  updateHistoryCards(historyData.history);
-}
-
-// Update global statistics
-function updateGlobalStats(globalStats) {
-  // Use number animation for statistics
-  animateNumber("total-requests", 0, globalStats.total_requests);
-  animateNumber("total-errors", 0, globalStats.total_errors);
-  animateNumber("total-rate-limits", 0, globalStats.total_rate_limit_hits);
-
-  document.getElementById("uptime").textContent = formatUptime(
-    globalStats.uptime_seconds
-  );
-
-  // Update progress bars with animation
-  const maxValue = Math.max(globalStats.total_requests, 1);
-  animateProgressBar("total-requests-bar", 0, 100);
-  animateProgressBar(
-    "total-errors-bar",
-    0,
-    (globalStats.total_errors / maxValue) * 100
-  );
-  animateProgressBar(
-    "total-rate-limits-bar",
-    0,
-    (globalStats.total_rate_limit_hits / maxValue) * 100
-  );
-}
-
-// Animate number counting up
-function animateNumber(elementId, start, end) {
-  const element = document.getElementById(elementId);
-  if (!element) return;
-
-  const duration = 1000; // milliseconds
-  const frameRate = 60;
-  const increment = (end - start) / (duration / (1000 / frameRate));
-
-  let current = start;
-  const timer = setInterval(() => {
-    current += increment;
-    if (
-      (increment > 0 && current >= end) ||
-      (increment < 0 && current <= end)
-    ) {
-      clearInterval(timer);
-      current = end;
-    }
-    element.textContent = Math.round(current).toLocaleString();
-  }, 1000 / frameRate);
-}
-
-// Animate progress bar
-function animateProgressBar(elementId, start, end) {
-  const element = document.getElementById(elementId);
-  if (!element) return;
-
-  const duration = 1000; // milliseconds
-  const frameRate = 60;
-  const increment = (end - start) / (duration / (1000 / frameRate));
-
-  let current = start;
-  const timer = setInterval(() => {
-    current += increment;
-    if (
-      (increment > 0 && current >= end) ||
-      (increment < 0 && current <= end)
-    ) {
-      clearInterval(timer);
-      current = end;
-    }
-    element.style.width = `${current}%`;
-  }, 1000 / frameRate);
-}
-
-// Update API table
-function updateApiTable(apis) {
-  const tableBody = document.getElementById("api-table-body");
-  if (!tableBody) return;
-
-  tableBody.innerHTML = "";
-
-  if (Object.keys(apis).length === 0) {
-    const row = document.createElement("tr");
-    row.innerHTML = `
-      <td colspan="6" class="px-6 py-4 text-center text-sm text-slate-500 dark:text-slate-400">
-        No API data available
-      </td>
-    `;
-    tableBody.appendChild(row);
-    return;
-  }
-
-  Object.entries(apis).forEach(([apiName, apiData]) => {
-    const row = document.createElement("tr");
-    row.className =
-      "hover:bg-slate-50/50 dark:hover:bg-slate-700/50 transition-colors duration-150";
-    row.dataset.apiName = apiName;
-
-    // Calculate error rate
-    const errorRate =
-      apiData.requests > 0 ? (apiData.errors / apiData.requests) * 100 : 0;
-    const errorRateClass =
-      errorRate > 20
-        ? "text-red-500"
-        : errorRate > 5
-        ? "text-yellow-500"
-        : "text-green-500";
-
-    row.innerHTML = `
-      <td class="px-6 py-4">
-        <div class="flex items-center">
-          <div class="h-2.5 w-2.5 rounded-full ${getApiStatusColor(
-            apiData
-          )} mr-2.5"></div>
-          <span class="font-medium">${apiName}</span>
-        </div>
-      </td>
-      <td class="px-6 py-4">${apiData.requests.toLocaleString()}</td>
-      <td class="px-6 py-4">
-        <span class="${errorRateClass} font-medium">${apiData.errors.toLocaleString()} <span class="text-xs font-normal">(${errorRate.toFixed(
-      1
-    )}%)</span></span>
-      </td>
-      <td class="px-6 py-4">${apiData.avg_response_time_ms.toFixed(2)} ms</td>
-      <td class="px-6 py-4 whitespace-nowrap text-xs">${formatTimestamp(
-        apiData.last_request_time
-      )}</td>
-      <td class="px-6 py-4">
-        <div class="flex space-x-2">
-          <button class="btn-modern bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 text-xs py-1 px-2 rounded-lg transition-colors duration-200 view-details-btn">
+      row.innerHTML = `
+        <td class="px-6 py-4 whitespace-nowrap">
+          <div class="font-medium">${apiName}</div>
+        </td>
+        <td class="px-6 py-4 whitespace-nowrap text-sm">
+          ${utils.formatNumber(apiData.requests)}
+        </td>
+        <td class="px-6 py-4 whitespace-nowrap text-sm">
+          <span class="px-2 py-1 rounded-full text-xs ${
+            apiData.errors > 0
+              ? "bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300"
+              : "bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300"
+          }">
+            ${utils.formatNumber(apiData.errors)}
+          </span>
+        </td>
+        <td class="px-6 py-4 whitespace-nowrap text-sm">
+          ${utils.formatResponseTime(apiData.avg_response_time_ms)}
+        </td>
+        <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">
+          ${lastRequestTime}
+        </td>
+        <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
+          <button class="view-details-btn text-pink-500 hover:text-pink-700 dark:hover:text-pink-400 font-medium">
             View Details
           </button>
-          <button class="btn-modern bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-800/30 text-xs py-1 px-2 rounded-lg transition-colors duration-200 clear-queue-btn" style="display: ${
-            document.getElementById("reset-metrics-btn").style.display
+        </td>
+      `;
+
+      elements.apiTableBody.appendChild(row);
+
+      // Mobile view (card)
+      const card = document.createElement("div");
+      card.className = "responsive-table-card modern-card";
+      card.onclick = () => ui.showApiDetails(apiName, apiData);
+
+      card.innerHTML = `
+        <div class="responsive-table-card-header">
+          <div>${apiName}</div>
+          <div class="px-2 py-1 rounded-full text-xs ${
+            apiData.errors > 0
+              ? "bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300"
+              : "bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300"
           }">
-            Clear
+            ${utils.formatNumber(apiData.errors)} errors
+          </div>
+        </div>
+        <div class="responsive-table-card-content">
+          <div>
+            <div class="responsive-table-card-label">Requests</div>
+            <div>${utils.formatNumber(apiData.requests)}</div>
+          </div>
+          <div>
+            <div class="responsive-table-card-label">Avg Response</div>
+            <div>${utils.formatResponseTime(apiData.avg_response_time_ms)}</div>
+          </div>
+          <div>
+            <div class="responsive-table-card-label">Last Request</div>
+            <div>${lastRequestTime}</div>
+          </div>
+          <div>
+            <div class="responsive-table-card-label">Rate Limits</div>
+            <div>${utils.formatNumber(apiData.rate_limit_hits || 0)}</div>
+          </div>
+        </div>
+      `;
+
+      elements.apiCardsContainer.appendChild(card);
+    });
+  },
+
+  // Render history table
+  renderHistoryTable() {
+    if (!state.history) return;
+
+    const history = state.history;
+    const searchTerm = elements.historySearch
+      ? elements.historySearch.value.toLowerCase()
+      : "";
+
+    // Clear existing content
+    elements.historyTableBody.innerHTML = "";
+    elements.historyCardsContainer.innerHTML = "";
+
+    // Check if we have history to display
+    if (history.length === 0) {
+      const emptyRow = document.createElement("tr");
+      emptyRow.innerHTML = `
+        <td colspan="5" class="px-6 py-4 text-center text-sm text-slate-500 dark:text-slate-400">
+          No request history available
+        </td>
+      `;
+      elements.historyTableBody.appendChild(emptyRow);
+      return;
+    }
+
+    // Only show response entries for the table (they have status_code)
+    const responseEntries = history.filter(
+      (entry) =>
+        entry.type === "response" &&
+        (searchTerm === "" ||
+          entry.api_name.toLowerCase().includes(searchTerm) ||
+          entry.key_id.toLowerCase().includes(searchTerm) ||
+          (entry.status_code &&
+            entry.status_code.toString().includes(searchTerm)))
+    );
+
+    // Limit to most recent 50 entries for performance
+    const limitedEntries = responseEntries.slice(0, 50);
+
+    if (limitedEntries.length === 0) {
+      const emptyRow = document.createElement("tr");
+      emptyRow.innerHTML = `
+        <td colspan="5" class="px-6 py-4 text-center text-sm text-slate-500 dark:text-slate-400">
+          No matching request history found
+        </td>
+      `;
+      elements.historyTableBody.appendChild(emptyRow);
+      return;
+    }
+
+    // Render each history row
+    limitedEntries.forEach((entry) => {
+      // Desktop view (table row)
+      const row = document.createElement("tr");
+      row.className =
+        "hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors duration-150";
+
+      const statusColorClass = utils.getStatusCodeClass(entry.status_code);
+
+      row.innerHTML = `
+        <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">
+          ${utils.formatTime(entry.timestamp)}
+        </td>
+        <td class="px-6 py-4 whitespace-nowrap text-sm">
+          ${entry.api_name}
+        </td>
+        <td class="px-6 py-4 whitespace-nowrap">
+          <span class="inline-flex items-center justify-center w-12 h-6 rounded-full text-xs text-white font-medium ${statusColorClass}">
+            ${entry.status_code}
+          </span>
+        </td>
+        <td class="px-6 py-4 whitespace-nowrap text-sm">
+          ${
+            entry.elapsed_ms
+              ? utils.formatResponseTime(entry.elapsed_ms)
+              : "N/A"
+          }
+        </td>
+        <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">
+          ${utils.truncate(entry.key_id, 24)}
+        </td>
+      `;
+
+      elements.historyTableBody.appendChild(row);
+
+      // Mobile view (card)
+      const card = document.createElement("div");
+      card.className = "responsive-table-card modern-card";
+
+      card.innerHTML = `
+        <div class="responsive-table-card-header">
+          <div>${entry.api_name}</div>
+          <div class="inline-flex items-center justify-center w-12 h-6 rounded-full text-xs text-white font-medium ${statusColorClass}">
+            ${entry.status_code}
+          </div>
+        </div>
+        <div class="responsive-table-card-content">
+          <div>
+            <div class="responsive-table-card-label">Time</div>
+            <div>${utils.formatTime(entry.timestamp)}</div>
+          </div>
+          <div>
+            <div class="responsive-table-card-label">Response</div>
+            <div>${
+              entry.elapsed_ms
+                ? utils.formatResponseTime(entry.elapsed_ms)
+                : "N/A"
+            }</div>
+          </div>
+          <div>
+            <div class="responsive-table-card-label">Key</div>
+            <div class="truncate max-w-[120px]">${utils.truncate(
+              entry.key_id,
+              16
+            )}</div>
+          </div>
+        </div>
+      `;
+
+      elements.historyCardsContainer.appendChild(card);
+    });
+  },
+
+  // Render queue status
+  renderQueueStatus() {
+    if (!state.queueStatus || !state.queueStatus.queue_sizes) return;
+
+    const queueSizes = state.queueStatus.queue_sizes;
+
+    // Clear existing content
+    elements.queueContainer.innerHTML = "";
+
+    // Check if we have queues to display
+    if (Object.keys(queueSizes).length === 0) {
+      const emptyCard = document.createElement("div");
+      emptyCard.className = "modern-card p-5 col-span-full";
+      emptyCard.innerHTML = `
+        <div class="empty-state">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16M4 12h16M4 18h7" />
+          </svg>
+          <p>No active request queues</p>
+        </div>
+      `;
+      elements.queueContainer.appendChild(emptyCard);
+      return;
+    }
+
+    // Render each queue
+    Object.entries(queueSizes).forEach(([apiName, queueSize]) => {
+      const card = document.createElement("div");
+      card.className = "modern-card p-5";
+
+      // Determine status color
+      let statusClass = "text-green-500";
+      let statusText = "Normal";
+
+      if (queueSize > 50) {
+        statusClass = "text-red-500";
+        statusText = "Heavy Load";
+      } else if (queueSize > 10) {
+        statusClass = "text-yellow-500";
+        statusText = "Moderate Load";
+      }
+
+      card.innerHTML = `
+        <div class="flex justify-between items-start mb-2">
+          <h3 class="font-medium">${apiName}</h3>
+          <span class="badge bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs">Queue</span>
+        </div>
+        <div class="text-2xl font-bold mb-2">${queueSize}</div>
+        <div class="flex justify-between items-center">
+          <span class="text-sm ${statusClass}">${statusText}</span>
+          <button class="clear-queue-btn text-xs px-2 py-1 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 rounded hover:bg-yellow-200 dark:hover:bg-yellow-800/50 transition-colors"
+                  data-api="${apiName}">
+            Clear Queue
           </button>
         </div>
-      </td>
-    `;
+      `;
 
-    tableBody.appendChild(row);
+      // Add event listener to clear queue button
+      card.querySelector(".clear-queue-btn").addEventListener("click", (e) => {
+        e.stopPropagation(); // Prevent card click
+        const apiName = e.target.getAttribute("data-api");
+        apiService.clearQueue(apiName).then(() => {
+          refreshData();
+        });
+      });
 
-    // Add event listener for view details button
-    row.querySelector(".view-details-btn").addEventListener("click", () => {
-      showApiDetailsModal(apiName, apiData);
+      elements.queueContainer.appendChild(card);
+    });
+  },
+
+  // Update filter dropdowns
+  updateFilterDropdowns() {
+    if (!state.metrics || !state.metrics.apis) return;
+
+    const apis = Object.keys(state.metrics.apis);
+
+    // Reset options first
+    elements.apiFilter.innerHTML = '<option value="all">All APIs</option>';
+    elements.keyFilter.innerHTML = '<option value="all">All Keys</option>';
+
+    // Add API options
+    apis.forEach((apiName) => {
+      const option = document.createElement("option");
+      option.value = apiName;
+      option.textContent = apiName;
+      elements.apiFilter.appendChild(option);
     });
 
-    // Add event listener for clear queue button
-    const clearQueueBtn = row.querySelector(".clear-queue-btn");
-    if (clearQueueBtn) {
-      clearQueueBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        clearQueue(apiName);
+    // When an API is selected, update the key filter
+    if (
+      state.filters.apiName !== "all" &&
+      state.metrics.apis[state.filters.apiName]
+    ) {
+      const apiData = state.metrics.apis[state.filters.apiName];
+      const keys = apiData.key_usage ? Object.keys(apiData.key_usage) : [];
+
+      keys.forEach((keyId) => {
+        const option = document.createElement("option");
+        option.value = keyId;
+        option.textContent = utils.truncate(keyId, 24);
+        elements.keyFilter.appendChild(option);
       });
+    } else {
+      // Collect all keys across all APIs
+      const allKeys = new Set();
+
+      Object.values(state.metrics.apis).forEach((apiData) => {
+        if (apiData.key_usage) {
+          Object.keys(apiData.key_usage).forEach((key) => allKeys.add(key));
+        }
+      });
+
+      // Add all unique keys to the dropdown
+      Array.from(allKeys)
+        .sort()
+        .forEach((keyId) => {
+          const option = document.createElement("option");
+          option.value = keyId;
+          option.textContent = utils.truncate(keyId, 24);
+          elements.keyFilter.appendChild(option);
+        });
     }
-  });
-}
 
-// Create responsive API cards for mobile view
-function updateApiCards(apis) {
-  const cardsContainer = document.getElementById("api-cards-container");
-  if (!cardsContainer) return;
+    // Set selected values based on current filters
+    elements.apiFilter.value = state.filters.apiName;
+    elements.keyFilter.value = state.filters.keyId;
+    elements.timeRange.value = state.filters.timeRange;
 
-  cardsContainer.innerHTML = "";
+    // Update filter summary text
+    let summaryText = "Showing data for ";
 
-  if (Object.keys(apis).length === 0) {
-    const emptyCard = document.createElement("div");
-    emptyCard.className =
-      "modern-card p-4 text-center text-sm text-slate-500 dark:text-slate-400";
-    emptyCard.textContent = "No API data available";
-    cardsContainer.appendChild(emptyCard);
-    return;
-  }
+    if (state.filters.apiName === "all") {
+      summaryText += "all APIs";
+    } else {
+      summaryText += `API "${state.filters.apiName}"`;
+    }
 
-  Object.entries(apis).forEach(([apiName, apiData]) => {
-    // Calculate error rate
-    const errorRate =
-      apiData.requests > 0 ? (apiData.errors / apiData.requests) * 100 : 0;
-    const errorRateClass =
-      errorRate > 20
-        ? "text-red-500"
-        : errorRate > 5
-        ? "text-yellow-500"
-        : "text-green-500";
+    if (state.filters.keyId !== "all") {
+      summaryText += ` with key "${utils.truncate(state.filters.keyId, 16)}"`;
+    }
 
-    const card = document.createElement("div");
-    card.className = "modern-card p-4";
-    card.dataset.apiName = apiName;
+    let timeRangeText = "";
+    switch (state.filters.timeRange) {
+      case "1h":
+        timeRangeText = "the last hour";
+        break;
+      case "24h":
+        timeRangeText = "the last 24h";
+        break;
+      case "7d":
+        timeRangeText = "the last 7 days";
+        break;
+      case "30d":
+        timeRangeText = "the last 30 days";
+        break;
+      case "all":
+        timeRangeText = "all time";
+        break;
+    }
 
-    card.innerHTML = `
-      <div class="responsive-table-card-header flex items-center">
-        <div class="h-2.5 w-2.5 rounded-full ${getApiStatusColor(
-          apiData
-        )} mr-2"></div>
-        <span class="font-medium">${apiName}</span>
+    summaryText += ` over ${timeRangeText}`;
+    elements.filterSummary.textContent = summaryText;
+  },
+
+  // Show API details modal
+  showApiDetails(apiName, apiData) {
+    elements.modalTitle.textContent = `API: ${apiName}`;
+
+    // Format status code distribution
+    const statusCodes = apiData.responses || {};
+    const statusCodeHtml =
+      Object.entries(statusCodes).length > 0
+        ? Object.entries(statusCodes)
+            .sort(([a], [b]) => parseInt(a) - parseInt(b))
+            .map(([code, count]) => {
+              const colorClass = utils.getStatusCodeClass(code);
+              return `
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center">
+                  <span class="inline-flex items-center justify-center w-10 h-6 rounded-full text-xs text-white font-medium ${colorClass} mr-2">
+                    ${code}
+                  </span>
+                  <span class="text-sm">${count} requests</span>
+                </div>
+                <span class="text-xs text-slate-500 dark:text-slate-400">
+                  ${((count / apiData.requests) * 100).toFixed(1)}%
+                </span>
+              </div>
+            `;
+            })
+            .join("")
+        : '<div class="text-sm text-slate-500 dark:text-slate-400">No status code data available</div>';
+
+    // Format key usage
+    const keyUsage = apiData.key_usage || {};
+    const keyUsageHtml =
+      Object.entries(keyUsage).length > 0
+        ? Object.entries(keyUsage)
+            .sort(([, a], [, b]) => b - a)
+            .map(([keyId, count]) => {
+              return `
+              <div class="flex items-center justify-between mb-2">
+                <div class="truncate max-w-[200px] text-sm">${keyId}</div>
+                <span class="badge bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 text-xs">
+                  ${count} requests
+                </span>
+              </div>
+            `;
+            })
+            .join("")
+        : '<div class="text-sm text-slate-500 dark:text-slate-400">No key usage data available</div>';
+
+    // Build modal content
+    elements.modalContent.innerHTML = `
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">Total Requests</h4>
+          <p class="text-2xl font-bold">${utils.formatNumber(
+            apiData.requests
+          )}</p>
+        </div>
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">Error Rate</h4>
+          <p class="text-2xl font-bold">${
+            apiData.errors > 0
+              ? ((apiData.errors / apiData.requests) * 100).toFixed(1) + "%"
+              : "0%"
+          }</p>
+        </div>
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">Avg Response Time</h4>
+          <p class="text-2xl font-bold">${utils.formatResponseTime(
+            apiData.avg_response_time_ms
+          )}</p>
+          <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            Min: ${utils.formatResponseTime(apiData.min_response_time_ms)} / 
+            Max: ${utils.formatResponseTime(apiData.max_response_time_ms)}
+          </div>
+        </div>
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">Queue & Rate Limits</h4>
+          <p class="text-2xl font-bold">${utils.formatNumber(
+            apiData.queue_hits
+          )}</p>
+          <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            Rate Limit Hits: ${utils.formatNumber(apiData.rate_limit_hits)}
+          </div>
+        </div>
       </div>
-      <div class="responsive-table-card-content mt-3">
+      
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <div class="responsive-table-card-label">Requests</div>
-          <div>${apiData.requests.toLocaleString()}</div>
+          <h4 class="font-medium mb-3">Status Code Distribution</h4>
+          <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+            ${statusCodeHtml}
+          </div>
         </div>
         <div>
-          <div class="responsive-table-card-label">Errors</div>
-          <div class="${errorRateClass}">${apiData.errors.toLocaleString()} <span class="text-xs">(${errorRate.toFixed(
-      1
-    )}%)</span></div>
+          <h4 class="font-medium mb-3">API Key Usage</h4>
+          <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg max-h-[200px] overflow-y-auto">
+            ${keyUsageHtml}
+          </div>
         </div>
-        <div>
-          <div class="responsive-table-card-label">Avg Response</div>
-          <div>${apiData.avg_response_time_ms.toFixed(2)} ms</div>
-        </div>
-        <div>
-          <div class="responsive-table-card-label">Last Request</div>
-          <div class="text-xs">${formatTimestamp(
-            apiData.last_request_time
-          )}</div>
-        </div>
-      </div>
-      <div class="mt-3 flex space-x-2">
-        <button class="btn-modern bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 text-xs py-1 px-2 rounded-lg transition-colors duration-200 flex-1 view-details-btn">
-          View Details
-        </button>
-        <button class="btn-modern bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-800/30 text-xs py-1 px-2 rounded-lg transition-colors duration-200 clear-queue-btn" style="display: ${
-          document.getElementById("reset-metrics-btn").style.display
-        }">
-          Clear
-        </button>
       </div>
     `;
 
-    cardsContainer.appendChild(card);
+    // Show the modal
+    elements.apiDetailsModal.classList.remove("hidden");
+  },
 
-    // Add event listener for view details button
-    card.querySelector(".view-details-btn").addEventListener("click", () => {
-      showApiDetailsModal(apiName, apiData);
-    });
+  // Hide API details modal
+  hideApiDetails() {
+    elements.apiDetailsModal.classList.add("hidden");
+  },
 
-    // Add event listener for clear queue button
-    const clearQueueBtn = card.querySelector(".clear-queue-btn");
-    if (clearQueueBtn) {
-      clearQueueBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        clearQueue(apiName);
-      });
-    }
-  });
-
-  // Apply filter to cards as well
-  filterApiCards();
-}
-
-// Filter API table based on search input
-function filterApiTable() {
-  const searchTerm = document.getElementById("api-search").value.toLowerCase();
-  const rows = document.querySelectorAll("#api-table-body tr");
-
-  rows.forEach((row) => {
-    const apiName = row.dataset.apiName;
-    if (!apiName) return; // Skip rows without API name
-
-    if (apiName.toLowerCase().includes(searchTerm)) {
-      row.style.display = "";
-    } else {
-      row.style.display = "none";
-    }
-  });
-
-  // Also filter the mobile cards
-  filterApiCards();
-}
-
-// Filter API cards based on search input
-function filterApiCards() {
-  const searchTerm = document.getElementById("api-search").value.toLowerCase();
-  const cards = document.querySelectorAll("#api-cards-container > div");
-
-  cards.forEach((card) => {
-    const apiName = card.dataset.apiName;
-    if (!apiName) return; // Skip cards without API name
-
-    if (apiName.toLowerCase().includes(searchTerm)) {
-      card.style.display = "";
-    } else {
-      card.style.display = "none";
-    }
-  });
-}
-
-// Update API filter options
-function updateApiFilterOptions(apis) {
-  const apiFilter = document.getElementById("api-filter");
-  if (!apiFilter) return;
-
-  const currentValue = apiFilter.value;
-
-  // Clear existing options except "All APIs"
-  while (apiFilter.options.length > 1) {
-    apiFilter.remove(1);
-  }
-
-  // Add options for each API
-  Object.keys(apis).forEach((apiName) => {
-    const option = document.createElement("option");
-    option.value = apiName;
-    option.textContent = apiName;
-    apiFilter.appendChild(option);
-  });
-
-  // Restore selected value if it still exists
-  if (
-    Array.from(apiFilter.options).some(
-      (option) => option.value === currentValue
-    )
-  ) {
-    apiFilter.value = currentValue;
-  }
-
-  // Add event listener for filter change
-  apiFilter.removeEventListener("change", updateTrafficChart);
-  apiFilter.addEventListener("change", updateTrafficChart);
-}
-
-// Update traffic chart with actual history data
-async function updateTrafficChart() {
-  const apiFilter = document.getElementById("api-filter");
-  if (!apiFilter) return;
-
-  const timeRange = document.getElementById("time-range");
-  const selectedApi = apiFilter.value;
-  const selectedTimeRange = timeRange ? timeRange.value : "24h";
-
-  try {
-    // Fetch data
-    const [historyResponse] = await Promise.all([fetch(API_ENDPOINTS.HISTORY)]);
-
-    if (!historyResponse.ok) {
-      throw new Error("Failed to fetch data for chart");
-    }
-
-    const historyData = await historyResponse.json();
-    const requestHistory = historyData.history.filter(
-      (item) => item.type === "request"
-    );
-
-    // Process history data to generate time-series data
-    const processedData = processHistoryDataForChart(
-      requestHistory,
-      selectedApi,
-      selectedTimeRange
-    );
-
-    const ctx = document.getElementById("traffic-chart");
-    if (!ctx) return;
-
-    // Destroy existing chart if it exists
-    if (window.trafficChart) {
-      window.trafficChart.destroy();
-    }
-
-    // Create the chart
-    window.trafficChart = new Chart(ctx.getContext("2d"), {
-      type: "line",
-      data: processedData,
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          title: {
-            display: true,
-            text:
-              selectedApi === "all"
-                ? "All APIs Traffic"
-                : `${selectedApi} API Traffic`,
+  // Initialize and render all charts
+  initCharts() {
+    // Define common chart options
+    const commonOptions = {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          labels: {
+            color: document.documentElement.classList.contains("dark")
+              ? "#e2e8f0"
+              : "#1e293b",
             font: {
-              size: 16,
-              weight: "bold",
+              family:
+                "'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif",
             },
           },
-          legend: {
-            position: "bottom",
-          },
-          tooltip: {
-            mode: "index",
-            intersect: false,
-          },
         },
+        tooltip: {
+          backgroundColor: document.documentElement.classList.contains("dark")
+            ? "rgba(15, 23, 42, 0.95)"
+            : "rgba(255, 255, 255, 0.95)",
+          titleColor: document.documentElement.classList.contains("dark")
+            ? "#e2e8f0"
+            : "#1e293b",
+          bodyColor: document.documentElement.classList.contains("dark")
+            ? "#cbd5e1"
+            : "#475569",
+          borderColor: document.documentElement.classList.contains("dark")
+            ? "rgba(30, 41, 59, 0.5)"
+            : "rgba(226, 232, 240, 0.5)",
+          borderWidth: 1,
+          padding: 10,
+          boxPadding: 6,
+          usePointStyle: true,
+          bodyFont: {
+            family:
+              "'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif",
+          },
+          titleFont: {
+            family:
+              "'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif",
+            weight: 600,
+          },
+          cornerRadius: 8,
+          displayColors: true,
+          boxWidth: 8,
+          boxHeight: 8,
+        },
+      },
+    };
+
+    // Traffic chart (requests and errors over time)
+    state.charts.traffic = new Chart(elements.trafficChart, {
+      type: "line",
+      data: {
+        labels: [],
+        datasets: [
+          {
+            label: "Requests",
+            data: [],
+            borderColor: CONFIG.chartColors.blue.primary,
+            backgroundColor: CONFIG.chartColors.blue.light,
+            fill: true,
+            tension: 0.3,
+            borderWidth: 2,
+            pointRadius: 3,
+            pointHoverRadius: 5,
+          },
+          {
+            label: "Errors",
+            data: [],
+            borderColor: CONFIG.chartColors.red.primary,
+            backgroundColor: CONFIG.chartColors.red.light,
+            fill: true,
+            tension: 0.3,
+            borderWidth: 2,
+            pointRadius: 3,
+            pointHoverRadius: 5,
+          },
+        ],
+      },
+      options: {
+        ...commonOptions,
         scales: {
           x: {
-            title: {
-              display: true,
-              text: "Time",
+            ticks: {
+              color: document.documentElement.classList.contains("dark")
+                ? "#cbd5e1"
+                : "#475569",
+              font: {
+                family:
+                  "'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif",
+              },
+            },
+            grid: {
+              color: document.documentElement.classList.contains("dark")
+                ? "rgba(71, 85, 105, 0.2)"
+                : "rgba(203, 213, 225, 0.5)",
             },
           },
           y: {
             beginAtZero: true,
-            title: {
-              display: true,
-              text: "Requests",
+            ticks: {
+              color: document.documentElement.classList.contains("dark")
+                ? "#cbd5e1"
+                : "#475569",
+              font: {
+                family:
+                  "'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif",
+              },
+            },
+            grid: {
+              color: document.documentElement.classList.contains("dark")
+                ? "rgba(71, 85, 105, 0.2)"
+                : "rgba(203, 213, 225, 0.5)",
             },
           },
         },
       },
     });
-  } catch (error) {
-    console.error("Error updating traffic chart:", error);
-    showToast("Failed to update traffic chart", "error");
-  }
-}
 
-// Process history data into chart format
-function processHistoryDataForChart(history, selectedApi, timeRange) {
-  // Filter history entries based on selected time range
-  const filteredHistory = filterHistoryByTimeRange(history, timeRange);
-
-  // Group history by time intervals
-  const timeIntervals = generateTimeIntervals(timeRange);
-  const groupedData = groupHistoryByTimeIntervals(
-    filteredHistory,
-    timeIntervals,
-    selectedApi
-  );
-
-  // Format data for Chart.js
-  return formatDataForChart(groupedData, timeIntervals, selectedApi);
-}
-
-// Filter history by time range
-function filterHistoryByTimeRange(history, timeRange) {
-  if (!history || history.length === 0) return [];
-
-  const now = Date.now() / 1000;
-  let cutoffTime;
-
-  switch (timeRange) {
-    case "1h":
-      cutoffTime = now - 3600; // 1 hour
-      break;
-    case "24h":
-      cutoffTime = now - 86400; // 24 hours
-      break;
-    case "7d":
-      cutoffTime = now - 604800; // 7 days
-      break;
-    case "30d":
-      cutoffTime = now - 2592000; // 30 days
-      break;
-    default:
-      cutoffTime = 0; // All time
-  }
-
-  return history.filter((entry) => entry.timestamp >= cutoffTime);
-}
-
-// Generate time intervals based on selected range
-function generateTimeIntervals(timeRange) {
-  const now = Date.now();
-  const intervals = [];
-  let intervalCount, intervalSize;
-
-  switch (timeRange) {
-    case "1h":
-      intervalCount = 12;
-      intervalSize = 5 * 60 * 1000; // 5 minutes
-      break;
-    case "24h":
-      intervalCount = 24;
-      intervalSize = 60 * 60 * 1000; // 1 hour
-      break;
-    case "7d":
-      intervalCount = 7;
-      intervalSize = 24 * 60 * 60 * 1000; // 1 day
-      break;
-    case "30d":
-      intervalCount = 30;
-      intervalSize = 24 * 60 * 60 * 1000; // 1 day
-      break;
-    default:
-      intervalCount = 24;
-      intervalSize = 60 * 60 * 1000; // Default to hourly for "all"
-  }
-
-  for (let i = intervalCount - 1; i >= 0; i--) {
-    const time = new Date(now - i * intervalSize);
-    intervals.push({
-      time: time,
-      label: formatIntervalLabel(time, timeRange),
-      startTimestamp: time.getTime() / 1000 - intervalSize / 1000,
-      endTimestamp: time.getTime() / 1000,
-    });
-  }
-
-  return intervals;
-}
-
-// Format interval label based on time range
-function formatIntervalLabel(time, timeRange) {
-  switch (timeRange) {
-    case "1h":
-      return time.toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    case "24h":
-      return time.toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    case "7d":
-    case "30d":
-      return time.toLocaleDateString([], { month: "short", day: "numeric" });
-    default:
-      return time.toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-  }
-}
-
-// Group history by time intervals and APIs
-function groupHistoryByTimeIntervals(history, intervals, selectedApi) {
-  // Initialize data structure
-  const apiData = {};
-
-  // Process history entries
-  history.forEach((entry) => {
-    if (entry.type !== "request" && entry.type !== "response") return;
-
-    const apiName = entry.api_name;
-
-    // Skip if we're filtering for a specific API and this is not it
-    if (selectedApi !== "all" && apiName !== selectedApi) return;
-
-    // Find which interval this entry belongs to
-    const interval = intervals.find(
-      (int) =>
-        entry.timestamp >= int.startTimestamp &&
-        entry.timestamp <= int.endTimestamp
-    );
-
-    if (!interval) return;
-
-    // Initialize API data if needed
-    if (!apiData[apiName]) {
-      apiData[apiName] = intervals.map(() => 0);
-    }
-
-    // Increment the count for this API in this interval
-    const intervalIndex = intervals.indexOf(interval);
-    if (intervalIndex >= 0) {
-      apiData[apiName][intervalIndex]++;
-    }
-  });
-
-  return apiData;
-}
-
-// Format grouped data for Chart.js
-function formatDataForChart(groupedData, intervals, selectedApi) {
-  const datasets = [];
-  const labels = intervals.map((int) => int.label);
-
-  // If showing a specific API
-  if (selectedApi !== "all") {
-    const requestsData = groupedData[selectedApi] || intervals.map(() => 0);
-
-    return {
-      labels,
-      datasets: [
-        {
-          label: "Requests",
-          data: requestsData,
-          borderColor: "rgb(59, 130, 246)", // Blue
-          backgroundColor: "rgba(59, 130, 246, 0.2)",
-          tension: 0.4,
-          fill: true,
-        },
-      ],
-    };
-  }
-
-  // If showing all APIs
-  Object.entries(groupedData).forEach(([apiName, data], index) => {
-    // Generate a color based on index
-    const hue = (index * 137) % 360; // Golden angle approximation
-    const color = `hsl(${hue}, 70%, 60%)`;
-
-    datasets.push({
-      label: apiName,
-      data: data,
-      borderColor: color,
-      backgroundColor: `${color}33`, // Add transparency
-      tension: 0.4,
-      fill: false,
-    });
-  });
-
-  return {
-    labels,
-    datasets,
-  };
-}
-
-// Update queue status
-function updateQueueStatus(queueSizes) {
-  const queueContainer = document.getElementById("queue-container");
-  if (!queueContainer) return;
-
-  queueContainer.innerHTML = "";
-
-  if (!queueSizes || Object.keys(queueSizes).length === 0) {
-    const emptyCard = document.createElement("div");
-    emptyCard.className =
-      "bg-white dark:bg-slate-800 rounded-lg shadow-sm p-4 border border-slate-200 dark:border-slate-700";
-    emptyCard.innerHTML = `
-            <p class="text-center text-slate-500 dark:text-slate-400">No queue data available</p>
-        `;
-    queueContainer.appendChild(emptyCard);
-    return;
-  }
-
-  Object.entries(queueSizes).forEach(([apiName, queueSize]) => {
-    const card = document.createElement("div");
-    card.className =
-      "bg-white dark:bg-slate-800 rounded-lg shadow-sm p-4 border border-slate-200 dark:border-slate-700 api-card";
-
-    // Calculate queue fill percentage
-    const maxQueueSize = 100; // Assuming a max queue size of 100 for visualization
-    const fillPercentage = Math.min((queueSize / maxQueueSize) * 100, 100);
-
-    // Determine color based on queue size
-    let queueColor, queueStatus;
-    if (queueSize === 0) {
-      queueColor = "bg-green-500";
-      queueStatus = "Empty";
-    } else if (queueSize < 10) {
-      queueColor = "bg-blue-500";
-      queueStatus = "Low";
-    } else if (queueSize < 50) {
-      queueColor = "bg-yellow-500";
-      queueStatus = "Moderate";
-    } else {
-      queueColor = "bg-red-500";
-      queueStatus = "High";
-    }
-
-    card.innerHTML = `
-            <div class="flex justify-between items-center mb-2">
-                <h3 class="font-medium">${apiName}</h3>
-                <span class="text-xs px-2 py-1 rounded-full bg-slate-100 dark:bg-slate-700">${queueStatus}</span>
-            </div>
-            <div class="h-4 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden mb-2">
-                <div class="${queueColor} h-full" style="width: ${fillPercentage}%"></div>
-            </div>
-            <div class="flex justify-between items-center text-xs text-slate-500 dark:text-slate-400">
-                <span>Queue Size: ${queueSize}</span>
-                <span>${fillPercentage.toFixed(0)}% Full</span>
-            </div>
-        `;
-
-    queueContainer.appendChild(card);
-  });
-}
-
-// Update request history
-function updateRequestHistory(history) {
-  const historyTableBody = document.getElementById("history-table-body");
-  if (!historyTableBody) return;
-
-  historyTableBody.innerHTML = "";
-
-  if (!history || history.length === 0) {
-    const row = document.createElement("tr");
-    row.innerHTML = `
-            <td colspan="5" class="px-6 py-4 text-center text-sm text-slate-500 dark:text-slate-400">
-                No request history available
-            </td>
-        `;
-    historyTableBody.appendChild(row);
-    return;
-  }
-
-  // Process only response entries for the table display
-  const responseEntries = history.filter((entry) => entry.type === "response");
-
-  responseEntries.forEach((entry) => {
-    const row = document.createElement("tr");
-    row.className = "hover:bg-slate-50 dark:hover:bg-slate-700/50";
-
-    // Extract data from the entry
-    const timestamp = entry.timestamp;
-    const apiName = entry.api_name;
-    const statusCode = entry.status_code || 0;
-    const responseTime = entry.elapsed_ms || 0;
-    const keyId = entry.key_id || "unknown";
-
-    // Determine status color
-    let statusClass;
-    if (statusCode >= 200 && statusCode < 300) {
-      statusClass = "bg-green-500";
-    } else if (statusCode >= 400 && statusCode < 500) {
-      statusClass = "bg-yellow-500";
-    } else {
-      statusClass = "bg-red-500";
-    }
-
-    // Mask API key for security
-    const maskedKey = maskApiKey(keyId);
-
-    row.innerHTML = `
-            <td class="px-6 py-4 text-sm">${formatTimestamp(timestamp)}</td>
-            <td class="px-6 py-4 text-sm">${apiName}</td>
-            <td class="px-6 py-4">
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusClass} text-white">
-                    ${statusCode}
-                </span>
-            </td>
-            <td class="px-6 py-4 text-sm">${responseTime.toFixed(2)} ms</td>
-            <td class="px-6 py-4 text-sm font-mono text-xs">${maskedKey}</td>
-        `;
-
-    historyTableBody.appendChild(row);
-  });
-}
-
-// Create responsive history cards for mobile view
-function updateHistoryCards(history) {
-  const cardsContainer = document.getElementById("history-cards-container");
-  if (!cardsContainer) return;
-
-  cardsContainer.innerHTML = "";
-
-  if (!history || history.length === 0) {
-    const emptyCard = document.createElement("div");
-    emptyCard.className =
-      "modern-card p-4 text-center text-sm text-slate-500 dark:text-slate-400";
-    emptyCard.textContent = "No request history available";
-    cardsContainer.appendChild(emptyCard);
-    return;
-  }
-
-  // Process only response entries for the cards display
-  const responseEntries = history.filter((entry) => entry.type === "response");
-
-  responseEntries.slice(0, 10).forEach((entry) => {
-    // Extract data from the entry
-    const timestamp = entry.timestamp;
-    const apiName = entry.api_name;
-    const statusCode = entry.status_code || 0;
-    const responseTime = entry.elapsed_ms || 0;
-    const keyId = entry.key_id || "unknown";
-
-    // Determine status color
-    let statusClass;
-    if (statusCode >= 200 && statusCode < 300) {
-      statusClass = "bg-green-500";
-    } else if (statusCode >= 400 && statusCode < 500) {
-      statusClass = "bg-yellow-500";
-    } else {
-      statusClass = "bg-red-500";
-    }
-
-    // Mask API key for security
-    const maskedKey = maskApiKey(keyId);
-
-    const card = document.createElement("div");
-    card.className = "modern-card p-4";
-
-    card.innerHTML = `
-      <div class="responsive-table-card-header">
-        <div class="text-xs">${formatTimestamp(timestamp)}</div>
-      </div>
-      <div class="responsive-table-card-content mt-3">
-        <div>
-          <div class="responsive-table-card-label">API</div>
-          <div>${apiName}</div>
-        </div>
-        <div>
-          <div class="responsive-table-card-label">Status</div>
-          <div>
-            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusClass} text-white">
-              ${statusCode}
-            </span>
-          </div>
-        </div>
-        <div>
-          <div class="responsive-table-card-label">Response Time</div>
-          <div>${responseTime.toFixed(2)} ms</div>
-        </div>
-        <div>
-          <div class="responsive-table-card-label">Key</div>
-          <div class="text-xs font-mono">${maskedKey}</div>
-        </div>
-      </div>
-    `;
-
-    cardsContainer.appendChild(card);
-  });
-}
-
-// Show API details modal
-function showApiDetailsModal(apiName, apiData) {
-  const modal = document.getElementById("api-details-modal");
-  const modalTitle = document.getElementById("modal-title");
-  const modalContent = document.getElementById("modal-content");
-
-  modalTitle.textContent = `${apiName} API Details`;
-
-  // Prepare response code distribution data
-  const responseCodeLabels = Object.keys(apiData.responses || {});
-  const responseCodeData = responseCodeLabels.map(
-    (code) => apiData.responses[code]
-  );
-
-  // Prepare key usage data
-  const keyUsageLabels = Object.keys(apiData.key_usage || {});
-  const keyUsageData = keyUsageLabels.map((key) => apiData.key_usage[key]);
-  const maskedKeyLabels = keyUsageLabels.map((key) => maskApiKey(key));
-
-  modalContent.innerHTML = `
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div class="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-lg">
-                <h4 class="text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">Response Times</h4>
-                <div class="space-y-2">
-                    <div class="flex justify-between">
-                        <span class="text-sm">Average</span>
-                        <span class="font-medium">${apiData.avg_response_time_ms.toFixed(
-                          2
-                        )} ms</span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span class="text-sm">Minimum</span>
-                        <span class="font-medium">${apiData.min_response_time_ms.toFixed(
-                          2
-                        )} ms</span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span class="text-sm">Maximum</span>
-                        <span class="font-medium">${apiData.max_response_time_ms.toFixed(
-                          2
-                        )} ms</span>
-                    </div>
-                </div>
-            </div>
-            <div class="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-lg">
-                <h4 class="text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">Request Statistics</h4>
-                <div class="space-y-2">
-                    <div class="flex justify-between">
-                        <span class="text-sm">Total Requests</span>
-                        <span class="font-medium">${apiData.requests.toLocaleString()}</span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span class="text-sm">Errors</span>
-                        <span class="font-medium">${apiData.errors.toLocaleString()}</span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span class="text-sm">Rate Limit Hits</span>
-                        <span class="font-medium">${apiData.rate_limit_hits.toLocaleString()}</span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span class="text-sm">Queue Hits</span>
-                        <span class="font-medium">${apiData.queue_hits.toLocaleString()}</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-                <h4 class="text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">Response Code Distribution</h4>
-                <div class="h-64">
-                    <canvas id="response-code-chart"></canvas>
-                </div>
-            </div>
-            <div>
-                <h4 class="text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">Key Usage Distribution</h4>
-                <div class="h-64">
-                    <canvas id="key-usage-chart"></canvas>
-                </div>
-            </div>
-        </div>
-    `;
-
-  modal.classList.remove("hidden");
-  // Add fade-in animation
-  modal.style.opacity = 0;
-  setTimeout(() => {
-    modal.style.transition = "opacity 0.15s ease-in-out";
-    modal.style.opacity = 1;
-  }, 50);
-
-  // Create charts with a slight delay to ensure the DOM is ready
-  setTimeout(() => {
-    createDetailCharts(
-      responseCodeLabels,
-      responseCodeData,
-      maskedKeyLabels,
-      keyUsageData
-    );
-  }, 100);
-}
-
-// Create the charts for API details modal
-function createDetailCharts(
-  responseCodeLabels,
-  responseCodeData,
-  keyLabels,
-  keyData
-) {
-  // Create response code distribution chart
-  const responseCodeCtx = document.getElementById("response-code-chart");
-  if (responseCodeCtx) {
-    new Chart(responseCodeCtx.getContext("2d"), {
-      type: "pie",
+    // Response time chart
+    state.charts.responseTime = new Chart(elements.responseTimeChart, {
+      type: "line",
       data: {
-        labels: responseCodeLabels,
+        labels: [],
         datasets: [
           {
-            data: responseCodeData,
-            backgroundColor: responseCodeLabels.map((code) =>
-              getStatusCodeColor(Number.parseInt(code))
+            label: "Avg Response Time (ms)",
+            data: [],
+            borderColor: CONFIG.chartColors.green.primary,
+            backgroundColor: CONFIG.chartColors.green.light,
+            fill: true,
+            tension: 0.3,
+            borderWidth: 2,
+            pointRadius: 3,
+            pointHoverRadius: 5,
+          },
+        ],
+      },
+      options: {
+        ...commonOptions,
+        scales: {
+          x: {
+            ticks: {
+              color: document.documentElement.classList.contains("dark")
+                ? "#cbd5e1"
+                : "#475569",
+              font: {
+                family:
+                  "'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif",
+              },
+            },
+            grid: {
+              color: document.documentElement.classList.contains("dark")
+                ? "rgba(71, 85, 105, 0.2)"
+                : "rgba(203, 213, 225, 0.5)",
+            },
+          },
+          y: {
+            beginAtZero: true,
+            ticks: {
+              color: document.documentElement.classList.contains("dark")
+                ? "#cbd5e1"
+                : "#475569",
+              font: {
+                family:
+                  "'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif",
+              },
+              callback: function (value) {
+                return value + "ms";
+              },
+            },
+            grid: {
+              color: document.documentElement.classList.contains("dark")
+                ? "rgba(71, 85, 105, 0.2)"
+                : "rgba(203, 213, 225, 0.5)",
+            },
+          },
+        },
+      },
+    });
+
+    // Status code distribution chart
+    state.charts.statusCode = new Chart(elements.statusCodeChart, {
+      type: "doughnut",
+      data: {
+        labels: [],
+        datasets: [
+          {
+            data: [],
+            backgroundColor: [],
+            borderColor: document.documentElement.classList.contains("dark")
+              ? "rgba(15, 23, 42, 1)"
+              : "white",
+            borderWidth: 2,
+            hoverOffset: 5,
+          },
+        ],
+      },
+      options: {
+        ...commonOptions,
+        cutout: "65%",
+        plugins: {
+          ...commonOptions.plugins,
+          legend: {
+            position: "right",
+            labels: {
+              color: document.documentElement.classList.contains("dark")
+                ? "#e2e8f0"
+                : "#1e293b",
+              font: {
+                family:
+                  "'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif",
+                size: 11,
+              },
+              boxWidth: 12,
+              padding: 10,
+            },
+          },
+        },
+      },
+    });
+
+    // API distribution chart
+    state.charts.apiDistribution = new Chart(elements.apiDistributionChart, {
+      type: "bar",
+      data: {
+        labels: [],
+        datasets: [
+          {
+            label: "API Requests",
+            data: [],
+            backgroundColor: [],
+            borderColor: document.documentElement.classList.contains("dark")
+              ? "rgba(15, 23, 42, 1)"
+              : "white",
+            borderWidth: 1,
+            borderRadius: 5,
+          },
+        ],
+      },
+      options: {
+        ...commonOptions,
+        scales: {
+          x: {
+            ticks: {
+              color: document.documentElement.classList.contains("dark")
+                ? "#cbd5e1"
+                : "#475569",
+              font: {
+                family:
+                  "'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif",
+              },
+            },
+            grid: {
+              display: false,
+            },
+          },
+          y: {
+            beginAtZero: true,
+            ticks: {
+              color: document.documentElement.classList.contains("dark")
+                ? "#cbd5e1"
+                : "#475569",
+              font: {
+                family:
+                  "'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif",
+              },
+            },
+            grid: {
+              color: document.documentElement.classList.contains("dark")
+                ? "rgba(71, 85, 105, 0.2)"
+                : "rgba(203, 213, 225, 0.5)",
+            },
+          },
+        },
+        plugins: {
+          ...commonOptions.plugins,
+          legend: {
+            display: false,
+          },
+        },
+      },
+    });
+
+    // Key usage chart
+    state.charts.keyUsage = new Chart(elements.keyUsageChart, {
+      type: "pie",
+      data: {
+        labels: [],
+        datasets: [
+          {
+            data: [],
+            backgroundColor: Object.values(CONFIG.chartColors).map(
+              (c) => c.primary
             ),
-            borderWidth: 1,
+            borderColor: document.documentElement.classList.contains("dark")
+              ? "rgba(15, 23, 42, 1)"
+              : "white",
+            borderWidth: 2,
           },
         ],
       },
       options: {
-        responsive: true,
-        maintainAspectRatio: false,
+        ...commonOptions,
         plugins: {
+          ...commonOptions.plugins,
           legend: {
-            position: "bottom",
+            position: "right",
+            labels: {
+              color: document.documentElement.classList.contains("dark")
+                ? "#e2e8f0"
+                : "#1e293b",
+              font: {
+                family:
+                  "'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif",
+                size: 11,
+              },
+              boxWidth: 12,
+              padding: 8,
+            },
           },
         },
       },
     });
-  }
+  },
 
-  // Create key usage distribution chart
-  const keyUsageCtx = document.getElementById("key-usage-chart");
-  if (keyUsageCtx) {
-    new Chart(keyUsageCtx.getContext("2d"), {
-      type: "pie",
-      data: {
-        labels: keyLabels,
-        datasets: [
-          {
-            data: keyData,
-            backgroundColor: generateColorPalette(keyLabels.length),
-            borderWidth: 1,
-          },
-        ],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            position: "bottom",
-          },
-        },
-      },
+  // Update all charts with current data
+  updateCharts() {
+    if (!state.analytics) return;
+
+    const data = state.analytics.data;
+
+    // Traffic chart (requests and errors over time)
+    state.charts.traffic.data.labels = data.time_intervals;
+    state.charts.traffic.data.datasets[0].data = data.requests_over_time;
+    state.charts.traffic.data.datasets[1].data = data.errors_over_time;
+    state.charts.traffic.update();
+
+    // Response time chart
+    state.charts.responseTime.data.labels = data.time_intervals;
+    state.charts.responseTime.data.datasets[0].data = data.avg_response_times;
+    state.charts.responseTime.update();
+
+    // Status code distribution chart
+    const statusCodes = Object.entries(
+      data.status_code_distribution || {}
+    ).sort(([a], [b]) => parseInt(a) - parseInt(b));
+
+    state.charts.statusCode.data.labels = statusCodes.map(
+      ([code]) => `Status ${code}`
+    );
+    state.charts.statusCode.data.datasets[0].data = statusCodes.map(
+      ([, count]) => count
+    );
+    state.charts.statusCode.data.datasets[0].backgroundColor = statusCodes.map(
+      ([code]) => utils.getStatusCodeColor(code)
+    );
+    state.charts.statusCode.update();
+
+    // API distribution chart
+    const apiDistribution = Object.entries(data.api_distribution || {})
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, CONFIG.maxItemsInCharts);
+
+    state.charts.apiDistribution.data.labels = apiDistribution.map(
+      ([api]) => api
+    );
+    state.charts.apiDistribution.data.datasets[0].data = apiDistribution.map(
+      ([, count]) => count
+    );
+    state.charts.apiDistribution.data.datasets[0].backgroundColor =
+      apiDistribution.map((_, i) => utils.randomColor(i));
+    state.charts.apiDistribution.update();
+
+    // Key usage chart
+    const keyDistribution = Object.entries(data.key_distribution || {})
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, CONFIG.maxItemsInCharts);
+
+    state.charts.keyUsage.data.labels = keyDistribution.map(([key]) =>
+      utils.truncate(key, 16)
+    );
+    state.charts.keyUsage.data.datasets[0].data = keyDistribution.map(
+      ([, count]) => count
+    );
+    state.charts.keyUsage.update();
+  },
+
+  // Update theme for charts when theme changes
+  updateChartsTheme() {
+    const isDark = document.documentElement.classList.contains("dark");
+    const textColor = isDark ? "#e2e8f0" : "#1e293b";
+    const gridColor = isDark
+      ? "rgba(71, 85, 105, 0.2)"
+      : "rgba(203, 213, 225, 0.5)";
+    const backgroundColor = isDark
+      ? "rgba(15, 23, 42, 0.95)"
+      : "rgba(255, 255, 255, 0.95)";
+
+    // Update common chart elements
+    Object.values(state.charts).forEach((chart) => {
+      // Update grid colors
+      if (chart.options.scales) {
+        for (const axisKey in chart.options.scales) {
+          if (chart.options.scales[axisKey].grid) {
+            chart.options.scales[axisKey].grid.color = gridColor;
+          }
+          if (chart.options.scales[axisKey].ticks) {
+            chart.options.scales[axisKey].ticks.color = isDark
+              ? "#cbd5e1"
+              : "#475569";
+          }
+        }
+      }
+
+      // Update legend colors
+      if (chart.options.plugins.legend && chart.options.plugins.legend.labels) {
+        chart.options.plugins.legend.labels.color = textColor;
+      }
+
+      // Update tooltip colors
+      if (chart.options.plugins.tooltip) {
+        chart.options.plugins.tooltip.backgroundColor = backgroundColor;
+        chart.options.plugins.tooltip.titleColor = textColor;
+        chart.options.plugins.tooltip.bodyColor = isDark
+          ? "#cbd5e1"
+          : "#475569";
+        chart.options.plugins.tooltip.borderColor = isDark
+          ? "rgba(30, 41, 59, 0.5)"
+          : "rgba(226, 232, 240, 0.5)";
+      }
+
+      // Update border colors for pie/doughnut charts
+      if (chart.config.type === "pie" || chart.config.type === "doughnut") {
+        chart.data.datasets[0].borderColor = isDark
+          ? "rgba(15, 23, 42, 1)"
+          : "white";
+      }
+
+      // Update bar borders
+      if (chart.config.type === "bar") {
+        chart.data.datasets[0].borderColor = isDark
+          ? "rgba(15, 23, 42, 1)"
+          : "white";
+      }
+
+      chart.update();
     });
-  }
-}
+  },
+};
 
-// Reset metrics
-async function resetMetrics() {
-  try {
-    const response = await fetch(API_ENDPOINTS.RESET_METRICS, {
-      method: "POST",
+// Event handlers
+const events = {
+  // Set up all event listeners
+  setupEventListeners() {
+    // Refresh button
+    elements.refreshButton.addEventListener("click", () => {
+      refreshData();
     });
 
-    if (response.ok) {
-      showToast("Metrics reset successfully", "success");
-      await fetchDashboardData();
-    } else {
-      const data = await response.json();
-      showToast(`Failed to reset metrics: ${data.error}`, "error");
+    // Reset metrics button
+    if (elements.resetMetricsBtn) {
+      elements.resetMetricsBtn.addEventListener("click", () => {
+        if (
+          confirm(
+            "Are you sure you want to reset all metrics? This cannot be undone."
+          )
+        ) {
+          apiService.resetMetrics().then(() => {
+            refreshData();
+          });
+        }
+      });
     }
-  } catch (error) {
-    console.error("Error resetting metrics:", error);
-    showToast(`Failed to reset metrics: ${error.message}`, "error");
-  }
-}
 
-// Clear queue for a specific API
-async function clearQueue(apiName) {
-  try {
-    const response = await fetch(API_ENDPOINTS.CLEAR_SPECIFIC_QUEUE(apiName), {
-      method: "POST",
+    // Clear all queues button
+    if (elements.clearAllQueuesBtn) {
+      elements.clearAllQueuesBtn.addEventListener("click", () => {
+        if (confirm("Are you sure you want to clear all queues?")) {
+          apiService.clearAllQueues().then(() => {
+            refreshData();
+          });
+        }
+      });
+    }
+
+    // API search input
+    elements.apiSearch.addEventListener("input", () => {
+      ui.renderApiTable();
     });
 
-    if (response.ok) {
-      const data = await response.json();
-      showToast(
-        `Cleared ${data.cleared_count} items from ${apiName} queue`,
-        "success"
+    // History search input
+    elements.historySearch.addEventListener("input", () => {
+      ui.renderHistoryTable();
+    });
+
+    // Filter change events
+    elements.apiFilter.addEventListener("change", () => {
+      state.filters.apiName = elements.apiFilter.value;
+      // Reset key filter when API changes
+      if (state.filters.apiName !== "all") {
+        state.filters.keyId = "all";
+      }
+      updateFilters();
+    });
+
+    elements.keyFilter.addEventListener("change", () => {
+      state.filters.keyId = elements.keyFilter.value;
+      updateFilters();
+    });
+
+    elements.timeRange.addEventListener("change", () => {
+      state.filters.timeRange = elements.timeRange.value;
+      updateFilters();
+    });
+
+    // Theme toggle
+    elements.themeToggle.addEventListener("click", () => {
+      document.documentElement.classList.toggle("dark");
+      localStorage.setItem(
+        "theme",
+        document.documentElement.classList.contains("dark") ? "dark" : "light"
       );
-      await fetchDashboardData();
-    } else {
-      const data = await response.json();
-      showToast(`Failed to clear queue: ${data.error}`, "error");
-    }
-  } catch (error) {
-    console.error("Error clearing queue:", error);
-    showToast(`Failed to clear queue: ${error.message}`, "error");
-  }
-}
 
-// Clear all queues
-async function clearAllQueues() {
-  try {
-    const response = await fetch(API_ENDPOINTS.CLEAR_QUEUE, {
-      method: "POST",
+      // Add rotation to the button
+      elements.themeToggle.classList.add("rotate-180");
+      setTimeout(() => {
+        elements.themeToggle.classList.remove("rotate-180");
+      }, 300);
+
+      // Update charts for the new theme
+      ui.updateChartsTheme();
     });
 
-    if (response.ok) {
-      const data = await response.json();
-      showToast(
-        `Cleared ${data.cleared_count} items from all queues`,
-        "success"
-      );
-      await fetchDashboardData();
-    } else {
-      const data = await response.json();
-      showToast(`Failed to clear queues: ${data.error}`, "error");
-    }
+    // Modal close button
+    elements.closeModal.addEventListener("click", () => {
+      ui.hideApiDetails();
+    });
+
+    // Close modal when clicking outside
+    elements.apiDetailsModal.addEventListener("click", (e) => {
+      if (e.target === elements.apiDetailsModal) {
+        ui.hideApiDetails();
+      }
+    });
+
+    // Escape key to close modal
+    document.addEventListener("keydown", (e) => {
+      if (
+        e.key === "Escape" &&
+        !elements.apiDetailsModal.classList.contains("hidden")
+      ) {
+        ui.hideApiDetails();
+      }
+    });
+
+    // Dynamic queue clear buttons (will be handled by event delegation)
+    elements.queueContainer.addEventListener("click", (e) => {
+      if (e.target.classList.contains("clear-queue-btn")) {
+        const apiName = e.target.getAttribute("data-api");
+        apiService.clearQueue(apiName).then(() => {
+          refreshData();
+        });
+      }
+    });
+  },
+};
+
+// Main refresh function
+async function refreshData() {
+  try {
+    // Show loading indicators
+    // You could add skeleton loading states here
+
+    // Fetch all data in parallel
+    const [metricsData, historyData, queueData] = await Promise.all([
+      apiService.fetchMetrics(),
+      apiService.fetchHistory(),
+      apiService.fetchQueueStatus(),
+    ]);
+
+    // Fetch analytics data with current filters
+    const analyticsData = await apiService.fetchAnalytics(
+      state.filters.apiName,
+      state.filters.keyId,
+      state.filters.timeRange
+    );
+
+    // Update UI components
+    ui.updateGlobalStats();
+    ui.updateFilterDropdowns();
+    ui.renderApiTable();
+    ui.renderHistoryTable();
+    ui.renderQueueStatus();
+    ui.updateCharts();
+
+    // Update last updated indicator
+    elements.lastUpdated.textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
   } catch (error) {
-    console.error("Error clearing all queues:", error);
-    showToast(`Failed to clear all queues: ${error.message}`, "error");
+    console.error("Error refreshing data:", error);
+    utils.showToast("Failed to refresh dashboard data", "error");
   }
 }
 
-// Update last updated time
-function updateLastUpdatedTime() {
-  const lastUpdated = document.getElementById("last-updated");
-  if (!lastUpdated) return;
+// Update filters and refresh analytics
+async function updateFilters() {
+  try {
+    const analyticsData = await apiService.fetchAnalytics(
+      state.filters.apiName,
+      state.filters.keyId,
+      state.filters.timeRange
+    );
 
-  const now = new Date();
-  lastUpdated.textContent = `Last updated: ${now.toLocaleTimeString()}`;
+    ui.updateFilterDropdowns();
+    ui.updateCharts();
+  } catch (error) {
+    console.error("Error updating filters:", error);
+    utils.showToast("Failed to update filters", "error");
+  }
 }
 
-// Show toast notification
-function showToast(message, type = "success") {
-  const toast = document.getElementById("toast");
-  const toastMessage = document.getElementById("toast-message");
-  const toastIcon = document.getElementById("toast-icon");
+// Initialize the application
+function initializeApp() {
+  // Cache DOM elements
+  ui.cacheElements();
 
-  if (!toast || !toastMessage || !toastIcon) return;
-
-  // Set message
-  toastMessage.textContent = message;
-
-  // Set icon based on type
-  if (type === "success") {
-    toastIcon.innerHTML = `
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-            </svg>
-        `;
-    toastIcon.className = "mr-3 text-green-500";
+  // Check for saved theme preference
+  const savedTheme = localStorage.getItem("theme");
+  if (
+    savedTheme === "dark" ||
+    (!savedTheme && window.matchMedia("(prefers-color-scheme: dark)").matches)
+  ) {
+    document.documentElement.classList.add("dark");
   } else {
-    toastIcon.innerHTML = `
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293-1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
-            </svg>
-        `;
-    toastIcon.className = "mr-3 text-red-500";
+    document.documentElement.classList.remove("dark");
   }
 
-  // Show toast
-  toast.classList.remove("toast-hidden");
-  toast.classList.add("toast-visible");
+  // Initialize charts
+  ui.initCharts();
 
-  // Hide toast after 3 seconds
-  setTimeout(() => {
-    toast.classList.remove("toast-visible");
-    toast.classList.add("toast-hidden");
-  }, 3000);
+  // Set up event listeners
+  events.setupEventListeners();
+
+  // Fetch initial data
+  refreshData();
+
+  // Set up auto-refresh timer
+  state.refreshTimer = setInterval(refreshData, CONFIG.refreshInterval);
 }
 
-// Helper functions
-function formatUptime(seconds) {
-  const days = Math.floor(seconds / 86400);
-  const hours = Math.floor((seconds % 86400) / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const remainingSeconds = Math.floor(seconds % 60);
-
-  if (days > 0) {
-    return `${days}d ${hours}h ${minutes}m`;
-  } else if (hours > 0) {
-    return `${hours}h ${minutes}m ${remainingSeconds}s`;
-  } else if (minutes > 0) {
-    return `${minutes}m ${remainingSeconds}s`;
-  } else {
-    return `${remainingSeconds}s`;
-  }
-}
-
-function formatTimestamp(timestamp) {
-  if (!timestamp) return "N/A";
-
-  const date = new Date(timestamp * 1000);
-  return date.toLocaleString();
-}
-
-function getApiStatusColor(apiData) {
-  if (!apiData.last_request_time) return "bg-slate-300 dark:bg-slate-600";
-
-  const now = Date.now() / 1000;
-  const timeSinceLastRequest = now - apiData.last_request_time;
-
-  if (timeSinceLastRequest < 60) {
-    return "bg-green-500"; // Active in the last minute
-  } else if (timeSinceLastRequest < 3600) {
-    return "bg-blue-500"; // Active in the last hour
-  } else if (timeSinceLastRequest < 86400) {
-    return "bg-yellow-500"; // Active in the last day
-  } else {
-    return "bg-red-500"; // Inactive for more than a day
-  }
-}
-
-function getApiStatusText(apiData) {
-  if (!apiData.last_request_time) return "Never used";
-
-  const now = Date.now() / 1000;
-  const timeSinceLastRequest = now - apiData.last_request_time;
-
-  if (timeSinceLastRequest < 60) {
-    return "Active (last minute)";
-  } else if (timeSinceLastRequest < 3600) {
-    return "Active (last hour)";
-  } else if (timeSinceLastRequest < 86400) {
-    return "Active (last day)";
-  } else {
-    return "Inactive";
-  }
-}
-
-function getStatusCodeColor(code) {
-  if (code >= 200 && code < 300) {
-    return "rgba(16, 185, 129, 0.7)"; // Green
-  } else if (code >= 400 && code < 500) {
-    return "rgba(245, 158, 11, 0.7)"; // Yellow
-  } else {
-    return "rgba(239, 68, 68, 0.7)"; // Red
-  }
-}
-
-function maskApiKey(key) {
-  if (!key) return "N/A";
-
-  // If key is shorter than 8 characters, mask all but first and last
-  if (key.length < 8) {
-    return key.charAt(0) + "•••" + key.charAt(key.length - 1);
-  }
-
-  // Otherwise, show first 4 and last 4 characters
-  return key.substring(0, 4) + "•••••••" + key.substring(key.length - 4);
-}
-
-function generateColorPalette(count) {
-  const colors = [];
-
-  for (let i = 0; i < count; i++) {
-    // Generate colors using HSL for better distribution
-    const hue = (i * 137) % 360; // Golden angle approximation
-    colors.push(`hsla(${hue}, 70%, 60%, 0.7)`);
-  }
-
-  return colors;
-}
+// Initialize when DOM is ready
+document.addEventListener("DOMContentLoaded", initializeApp);

@@ -54,7 +54,7 @@ apis:
         - "sk-your-openai-key-3"
       organization:
         - "org-your-organization-id"  # Remove if not using organization
-    load_balancing_strategy: "least_connections"
+    load_balancing_strategy: "least_requests"
     rate_limit:
       endpoint_rate_limit: "3500/m"  # Conservative estimate
       key_rate_limit: "1200/m"       # Depends on your OpenAI tier

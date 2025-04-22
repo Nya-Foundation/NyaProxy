@@ -1,363 +1,318 @@
 """
-Request executor for handling API requests with retry logic.
+Request execution with retry logic.
 """
 
 import asyncio
-import json
 import logging
 import random
-from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import urlparse
+import time
+from typing import TYPE_CHECKING, List, Optional
 
 import httpx
 
 from .models import NyaRequest
+from .utils import _mask_api_key, format_elapsed_time
 
-
-class RequestExecutorError(Exception):
-    """Exception raised for request executor errors."""
-
-    pass
+if TYPE_CHECKING:
+    from .config_manager import ConfigManager
+    from .metrics import MetricsCollector
 
 
 class RequestExecutor:
     """
-    Executes HTTP requests with retry logic.
+    Executes HTTP requests with customizable retry logic.
     """
 
     def __init__(
         self,
         client: httpx.AsyncClient,
-        default_settings: Dict[str, Any],
-        logger: logging.Logger,
-        metrics_collector: Optional[Any] = None,
+        config: "ConfigManager",
+        logger: Optional[logging.Logger] = None,
+        metrics_collector: Optional["MetricsCollector"] = None,
     ):
         """
         Initialize the request executor.
 
         Args:
-            client: HTTP client
-            default_settings: Default settings for the executor
+            client: HTTPX client for making requests
+            config: Configuration manager instance
             logger: Logger instance
-            metrics_collector: Optional metrics collector
+            metrics_collector: Metrics collector (optional)
         """
         self.client = client
-        self.logger = logger
+        self.config = config
+        self.logger = logger or logging.getLogger(__name__)
         self.metrics_collector = metrics_collector
 
-        # Extract settings from config
-        self._init_timeout_settings(default_settings)
-        self._init_retry_settings(default_settings)
-        self._init_error_handling(default_settings)
+    async def execute_request(self, r: NyaRequest) -> Optional[httpx.Response]:
+        """
+        Execute a single request to the target API.
 
-        # Stats
-        self.total_requests = 0
-        self.total_retries = 0
-        self.total_failures = 0
+        Args:
+            r: NyaRequest object with request details
 
-    def _init_timeout_settings(self, default_settings: Dict[str, Any]) -> None:
-        """Initialize timeout settings from config."""
-        timeout_settings = default_settings.get("timeouts", {})
-        self.default_timeout = timeout_settings.get("request_timeout_seconds", 30.0)
-        self.max_timeout = (
-            self.default_timeout * 2
-        )  # Maximum timeout is double the default
+        Returns:
+            HTTPX response or None if request failed
+        """
+        api_name = r.api_name
+        key_id = _mask_api_key(r.api_key)
+        start_time = time.time()
 
-    def _init_retry_settings(self, default_settings: Dict[str, Any]) -> None:
-        """Initialize retry settings from config."""
-        retry_settings: Dict = default_settings.get("retry", {})
-        self.default_max_attempts = retry_settings.get("attempts", 3)
-        self.default_retry_delay = retry_settings.get("retry_after_seconds", 10.0)
-        self.default_retry_mode = retry_settings.get("mode", "default")
-
-    def _init_error_handling(self, default_settings: Dict[str, Any]) -> None:
-        """Initialize error handling settings from config."""
-        error_handling = default_settings.get("error_handling", {})
-        self.retry_status_codes = error_handling.get(
-            "retry_status_codes", [429, 500, 502, 503, 504, 507, 524]
+        self.logger.debug(
+            f"Executing request to {r.url} with key_id {key_id} (attempt {r.attempts})"
         )
 
-    def _debug_request(self, request: Dict[str, Any]) -> None:
-        """Debug the request by logging its content and headers."""
-        headers: Dict = request.get("headers", {})
+        try:
+            # Get timeout from configuration
+            timeout_secs = self.config.get_api_default_timeout(r.api_name)
 
-        content_type = headers.get("content-type", None)
-        content = request.get("content", {})
-
-        if content_type == "application/json":
-            # Handle potential bytes content
-            if isinstance(content, bytes):
-                try:
-                    content = json.loads(content.decode("utf-8"))
-                except:
-                    content = f"<binary data: {len(content)} bytes>"
-            self.logger.debug(
-                f"Prepared Request JSON: {json.dumps(content, indent=4, ensure_ascii=False)}"
-            )
-        else:
-            # Handle different content types safely
-            if isinstance(content, bytes):
-                content = f"<binary data: {len(content)} bytes>"
-            self.logger.debug(
-                f"Prepared Request Content: {content if content else 'No Content Available'}"
+            # Create a composite timeout object
+            timeout = httpx.Timeout(
+                connect=min(10.0, timeout_secs / 2),  # Connection timeout
+                read=timeout_secs,  # Read timeout
+                write=timeout_secs,  # Write timeout
+                pool=timeout_secs,  # Pool timeout
             )
 
-        self.logger.debug(f"Prepared Request Headers: {headers}")
+            # Send the request
+            response = await self.client.request(
+                method=r.method,
+                url=r.url,
+                headers=r.headers,
+                content=r.content,
+                timeout=timeout,
+            )
+
+            # Log response time and status
+            elapsed = time.time() - start_time
+            self.logger.debug(
+                f"Response from {r.url}: status={response.status_code}, time={format_elapsed_time(elapsed)}"
+            )
+
+            # Record key performance in metrics
+            if self.metrics_collector:
+                self.metrics_collector.record_key_usage(
+                    api_name=api_name, key_id=key_id, status=response.status_code
+                )
+
+            return response
+
+        except httpx.ConnectError as e:
+            self._handle_request_error(r, e, "connection error", 0, start_time)
+            return None
+        except httpx.TimeoutException as e:
+            self._handle_request_error(r, e, "timeout", 0, start_time)
+            return None
+        except Exception as e:
+            self._handle_request_error(r, e, "unexpected error", 0, start_time)
+            return None
+
+    def _handle_request_error(
+        self,
+        r: NyaRequest,
+        error: Exception,
+        error_type: str,
+        status: int,
+        start_time: float,
+    ) -> None:
+        """
+        Handle request errors uniformly.
+
+        Args:
+            r: NyaRequest object
+            error: Exception that occurred
+            error_type: Type of error (connection, timeout, etc.)
+            status: Status code to record (0 for errors)
+            start_time: When the request started
+        """
+        elapsed = time.time() - start_time
+        self.logger.error(
+            f"{error_type.capitalize()} to {r.url}: {str(error)} after {format_elapsed_time(elapsed)}"
+        )
+
+        if self.metrics_collector:
+            self.metrics_collector.record_key_usage(
+                api_name=r.api_name,
+                key_id=_mask_api_key(r.api_key),
+                status=status,
+            )
 
     async def execute_with_retry(
         self,
         r: NyaRequest,
-        max_attempts: Optional[int] = None,
-        retry_delay: Optional[float] = None,
-        retry_mode: Optional[str] = None,
-    ) -> httpx.Response:
+        max_attempts: int = 3,
+        retry_delay: float = 10.0,
+        retry_mode: str = "default",
+    ) -> Optional[httpx.Response]:
         """
         Execute a request with retry logic.
 
         Args:
-            r: NyaRequest object containing request data
-            max_attempts: Maximum number of retry attempts (defaults to config value)
-            retry_delay: Base delay between retries in seconds (defaults to config value)
+            r: NyaRequest object with request details
+            max_attempts: Maximum number of retry attempts
+            retry_delay: Base delay in seconds between retries
+            retry_mode: Retry mode (default, backoff, key_rotation)
 
         Returns:
-            Response from the API
-
-        Raises:
-            RequestExecutorError: If all retry attempts fail
+            HTTPX response or None if all attempts failed
         """
-        # Use provided values or fall back to instance defaults from config
-        max_attempts = max_attempts or self.default_max_attempts
-        retry_delay = retry_delay or self.default_retry_delay
-        retry_mode = retry_mode or self.default_retry_mode
+        # Don't retry non-idempotent methods unless explicitly configured
+        if not self._is_method_retryable(r.method, retry_mode):
+            self.logger.debug(f"Skipping retries for non-idempotent method {r.method}")
+            return await self.execute_request(r)
 
-        attempt = 0
-        last_error = None
-        self.total_requests += 1
-        api_name = r.api_name
+        # Get retry status codes from API config or default
+        retry_status_codes = self.config.get_api_retry_status_codes(r.api_name)
 
-        # Prepare the request
-        request = self._prepare_request(r)
+        # Execute request with retries
+        response = None
+        current_delay = retry_delay
 
-        # debug log the request
-        self._debug_request(request)
+        for attempt in range(1, max_attempts + 1):
+            r.attempts = attempt
 
-        while attempt < max_attempts:
-            attempt += 1
-            try:
-                # Apply waiting period for retries
-                if attempt > 1:
-                    await self._handle_retry_wait(
-                        attempt, max_attempts, retry_delay, api_name
-                    )
+            # Execute the request
+            response = await self.execute_request(r)
 
-                # Execute the request
-                self.logger.debug(
-                    f"Executing request to {request['url']} (attempt {attempt}/{max_attempts})"
-                )
+            # Stop if we got a successful response
+            if not self._should_retry(response, retry_status_codes):
+                break
 
-                response = await self.client.request(
-                    **request,  # Pass all remaining parameters
-                )
-
-                # Check if we need to retry based on status
-                if self._should_default_retry(
-                    response, attempt, max_attempts, retry_mode
-                ):
-                    retry_delay = self._get_retry_delay(response, retry_delay)
-                    self.logger.warning(
-                        f"Got status {response.status_code} from {api_name}, will retry after {retry_delay:.2f}s"
-                    )
-                    await asyncio.sleep(retry_delay)
-                    continue
-
-                # If we get here, we've got a response we can use, skip retries
-                return response
-
-            except httpx.TimeoutException as e:
-                self._log_request_error("Timeout", api_name, attempt, max_attempts, e)
-                last_error = e
-
-            except httpx.NetworkError as e:
-                self._log_request_error(
-                    "Network Error", api_name, attempt, max_attempts, e
-                )
-                last_error = e
-                break  # Don't retry on network errors
-
-            except Exception as e:
-                self.logger.error(
-                    f"Unexpected error during request to {api_name}: {str(e)}"
-                )
-                last_error = e
-                break  # Don't retry on unexpected errors
-
-        # If we get here, all retries failed
-        self._handle_retry_failure(attempt, api_name, last_error)
-        raise RequestExecutorError(
-            f"Max retry attempts ({attempt}) reached for {api_name}"
-        )
-
-    def _prepare_request(self, request_data: NyaRequest) -> Dict[str, Any]:
-        """Prepare the request by cleaning headers and internal fields."""
-        # Convert RequestData to dictionary for backward compatibility
-        request = request_data.to_dict()
-
-        # Handle headers and host
-        headers = request.get("headers", {}) or {}
-
-        # Normalize headers to lowercase, and remove duplicates, removing x-forwarded headers
-        clean_headers = {
-            k.lower(): v
-            for k, v in headers.items()
-            if not k.startswith("x-forwarded") and k != "x-real-ip"
-        }
-
-        # If URL is present, extract the host from it and set in headers
-        if "url" in request and request["url"]:
-            try:
-                # Parse the requets URL to extract host
-                parsed_url = urlparse(request["url"])
-                target_host = parsed_url.netloc
-
-                # Remove port if present in netloc
-                if ":" in target_host:
-                    target_host = target_host.split(":", 1)[0]
-
-                # Update headers with proper host if not already set or different
-                if target_host and (
-                    "host" not in clean_headers or clean_headers["host"] != target_host
-                ):
-                    clean_headers["host"] = target_host
-
-            except Exception as e:
+            # If this was our last attempt, don't wait
+            if attempt >= max_attempts:
                 self.logger.warning(
-                    f"Failed to extract host from URL {request['url']}: {e}"
+                    f"Max retry attempts ({max_attempts}) reached for {r.api_name}"
                 )
+                break
 
-        # Set updated headers back to request
-        request["headers"] = clean_headers
-        return request
+            # Calculate delay for next attempt
+            next_delay = self._calculate_retry_delay(
+                response, current_delay, retry_mode, attempt
+            )
 
-    async def _handle_retry_wait(
-        self, attempt: int, max_attempts: int, retry_delay: float, api_name: str
-    ) -> None:
-        """Handle waiting between retry attempts with jitter."""
-        jitter = random.uniform(0.8, 1.2)  # 20% jitter
-        wait_time = retry_delay * jitter
-        self.logger.info(
-            f"Retry attempt {attempt}/{max_attempts} for {api_name}, waiting {wait_time:.2f}s"
-        )
-        await asyncio.sleep(wait_time)
-        self.total_retries += 1
+            self.logger.info(
+                f"Retrying request to {r.api_name} in {next_delay:.1f}s "
+                f"(attempt {attempt}/{max_attempts})"
+            )
 
-    def _should_default_retry(
-        self, response: httpx.Response, attempt: int, max_attempts: int, retry_mode: str
-    ) -> bool:
-        """Determine if a request should be retried based on its status code."""
+            # Wait before retry
+            await asyncio.sleep(next_delay)
+            current_delay = next_delay
 
-        self.logger.debug(
-            f"Checking if response status {response.status_code} should be handled with default retry policy, current attempt {attempt}/{max_attempts}, try mode: {retry_mode}"
-        )
-        return (
-            response.status_code in self.retry_status_codes
-            and attempt < max_attempts
-            and retry_mode == "default"
-        )
+        return response
 
-    def _get_retry_delay(self, response: httpx.Response, default_delay: float) -> float:
-        """Extract retry delay from response headers or use default."""
-        retry_after = response.headers.get("retry-after")
-        if retry_after:
-            try:
-                wait_time = float(retry_after)
-                self.logger.info(f"Got retry-after header: {wait_time}s")
-                # Cap the wait time to something reasonable
-                return min(wait_time, 60.0)
-            except (ValueError, TypeError):
-                pass
-        return default_delay
-
-    def _log_request_error(
-        self,
-        error_type: str,
-        api_name: str,
-        attempt: int,
-        max_attempts: int,
-        error: Exception,
-    ) -> None:
-        """Log a request error with consistent format."""
-        self.logger.warning(
-            f"{error_type} during request to {api_name} (attempt {attempt}/{max_attempts}): {str(error)}"
-        )
-
-    def _handle_retry_failure(
-        self, attempts: int, api_name: str, last_error: Optional[Exception]
-    ) -> None:
-        """Handle the case when all retries have failed."""
-        self.total_failures += 1
-
-        if attempts >= self.default_max_attempts:
-            error_message = f"Max retry attempts ({attempts}) reached for {api_name}"
-        else:
-            error_message = f"Request failed for {api_name} with non-retryable error"
-
-        if last_error:
-            error_message += f": {str(last_error)}"
-
-        self.logger.error(error_message)
-
-    async def execute_batch(
-        self,
-        requests: List[NyaRequest],
-        concurrency: int = 5,
-    ) -> List[Tuple[Optional[httpx.Response], Optional[Exception]]]:
+    def _is_method_retryable(self, method: str, retry_mode: str) -> bool:
         """
-        Execute a batch of requests with concurrency control.
+        Determine if an HTTP method should be retried.
 
         Args:
-            requests: List of RequestData objects
-            concurrency: Maximum number of concurrent requests
+            method: HTTP method (GET, POST, etc.)
+            retry_mode: Retry mode
 
         Returns:
-            List of (response, error) tuples for each request
+            True if method is safe to retry
         """
-        semaphore = asyncio.Semaphore(concurrency)
+        # Idempotent methods are always safe to retry
+        idempotent_methods = ["GET", "HEAD", "PUT", "DELETE", "OPTIONS", "TRACE"]
+        if method.upper() in idempotent_methods:
+            return True
 
-        async def execute_with_semaphore(
-            r: NyaRequest,
-        ) -> Tuple[Optional[httpx.Response], Optional[Exception]]:
-            async with semaphore:
-                try:
-                    # Execute the request
-                    retry_config: Dict = r.api_config.get("retry", {})
-                    max_attempts = retry_config.get("attempts", 1)
-                    retry_delay = retry_config.get("retry_after_seconds", 0)
-                    retry_mode = retry_config.get("mode", "default")
+        # Non-idempotent methods can be retried with key_rotation mode
+        if retry_mode == "key_rotation":
+            return True
 
-                    response = await self.execute_with_retry(
-                        r, max_attempts, retry_delay, retry_mode
-                    )
-                    return response, None
-                except Exception as e:
-                    return None, e
+        # Other non-idempotent methods should not be retried
+        return False
 
-        # Create tasks for all requests
-        tasks = [execute_with_semaphore(request) for request in requests]
-
-        # Wait for all tasks to complete
-        results = await asyncio.gather(*tasks, return_exceptions=False)
-
-        return results
-
-    def get_stats(self) -> Dict[str, int]:
+    def _should_retry(
+        self, response: Optional[httpx.Response], retry_status_codes: List[int]
+    ) -> bool:
         """
-        Get executor statistics.
+        Determine if a request should be retried based on the response.
+
+        Args:
+            response: HTTPX response or None
+            retry_status_codes: List of status codes that should trigger a retry
 
         Returns:
-            Dictionary with executor statistics
+            True if request should be retried
         """
-        return {
-            "total_requests": self.total_requests,
-            "total_retries": self.total_retries,
-            "total_failures": self.total_failures,
-        }
+        # Retry if no response (connection error)
+        if response is None:
+            return True
+
+        # Retry if status code is in retry list
+        if response.status_code in retry_status_codes:
+            return True
+
+        return False
+
+    def _calculate_retry_delay(
+        self,
+        response: Optional[httpx.Response],
+        current_delay: float,
+        retry_mode: str,
+        attempt: int,
+    ) -> float:
+        """
+        Calculate delay for next retry attempt.
+
+        Args:
+            response: HTTPX response
+            current_delay: Current delay in seconds
+            retry_mode: Retry mode (default, backoff, key_rotation)
+            attempt: Current attempt number
+
+        Returns:
+            Delay in seconds for next retry
+        """
+        # Check for Retry-After header
+        retry_after = self._get_retry_after(response)
+        if retry_after:
+            return retry_after
+
+        # Apply different retry strategies based on mode
+        if retry_mode == "backoff":
+            # Exponential backoff with jitter
+            jitter = random.uniform(0.75, 1.25)
+            return current_delay * (1.5 ** (attempt - 1)) * jitter
+        elif retry_mode == "key_rotation":
+            # Minimal delay for key rotation strategy
+            return 1.0
+        else:
+            # Default linear strategy
+            return current_delay
+
+    def _get_retry_after(self, response: Optional[httpx.Response]) -> Optional[float]:
+        """
+        Extract Retry-After header value from response.
+
+        Args:
+            response: HTTPX response
+
+        Returns:
+            Delay in seconds or None if not present
+        """
+        if not response:
+            return None
+
+        # Check for Retry-After header
+        retry_after = response.headers.get("Retry-After")
+        if not retry_after:
+            return None
+
+        try:
+            # Parse as integer seconds
+            return float(retry_after)
+        except ValueError:
+            try:
+                # Try to parse as HTTP date format
+                from datetime import datetime
+                from email.utils import parsedate_to_datetime
+
+                retry_date = parsedate_to_datetime(retry_after)
+                delta = retry_date - datetime.now(retry_date.tzinfo)
+                return max(0.1, delta.total_seconds())
+            except Exception:
+                self.logger.debug(f"Could not parse Retry-After header: {retry_after}")
+                return None

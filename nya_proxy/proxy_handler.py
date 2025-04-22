@@ -2,28 +2,31 @@
 Proxy handler for intercepting and forwarding HTTP requests with token rotation.
 """
 
-import gzip
+import asyncio
 import json
 import logging
 import time
 import traceback
-import zlib
-import asyncio
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
-import brotli
 import httpx
 from fastapi import Request
-from starlette.responses import JSONResponse, Response, StreamingResponse
+from starlette.responses import JSONResponse, Response
 
 from .config_manager import ConfigManager
+from .constants import API_PATH_PREFIX
+from .exceptions import ApiKeyRateLimitExceededError, EndpointRateLimitExceededError
+from .header_processor import HeaderProcessor
+from .key_manager import KeyManager
 from .load_balancer import LoadBalancer
 from .metrics import MetricsCollector
 from .models import NyaRequest
-from .rate_limiter import RateLimiter
 from .request_executor import RequestExecutor
 from .request_queue import RequestQueue
-from .utils import _get_key_id_for_metrics
+from .response_processor import ResponseProcessor
+
+if TYPE_CHECKING:
+    from .rate_limiter import RateLimiter  # Avoid circular import issues
 
 
 class ProxyHandler:
@@ -33,7 +36,7 @@ class ProxyHandler:
 
     def __init__(
         self,
-        config_manager: ConfigManager,
+        config: ConfigManager,
         logger: Optional[logging.Logger] = None,
         request_queue: Optional[RequestQueue] = None,
         metrics_collector: Optional[MetricsCollector] = None,
@@ -42,32 +45,34 @@ class ProxyHandler:
         Initialize the proxy handler.
 
         Args:
-            config_manager: Configuration manager instance
+            config: Configuration manager instance
             logger: Logger instance
             request_queue: Request queue instance (optional)
             metrics_collector: Metrics collector instance (optional)
         """
-        self.config_manager = config_manager
+        self.config = config
         self.logger = logger or logging.getLogger(__name__)
         self.request_queue = request_queue
         self.metrics_collector = metrics_collector
 
-        # Initialize dictionaries for load balancers and rate limiters
-        self.load_balancers: Dict[str, LoadBalancer] = {}
-        self.rate_limiters: Dict[str, RateLimiter] = {}
+        # Initialize helper components
+        self.header_processor = HeaderProcessor(logger=self.logger)
+        self.response_processor = ResponseProcessor(logger=self.logger)
 
-        # Set up HTTP client
-        self.client = None
-        self.setup_client()
+        # Initialize HTTP client, load balancers, and rate limiters
+        self.client = self._setup_client()
+        self.load_balancers = self._initialize_load_balancers()
+        self.rate_limiters = self._initialize_rate_limiters()
 
-        # Initialize load balancers and rate limiters
-        self.initialize_load_balancers()
-        self.initialize_rate_limiters()
+        # Create key manager
+        self.key_manager = KeyManager(
+            self.load_balancers, self.rate_limiters, logger=self.logger
+        )
 
         # Create request executor
         self.request_executor = RequestExecutor(
             self.client,
-            self.config_manager.get_default_settings(),
+            self.config,
             self.logger,
             self.metrics_collector,
         )
@@ -76,9 +81,13 @@ class ProxyHandler:
         if self.request_queue:
             self.request_queue.register_processor(self._process_queued_request)
 
-    def setup_client(self):
-        """Set up the HTTP client with proxy configuration if enabled."""
-        proxy_settings = self.config_manager.get_proxy_settings()
+        # Start metrics logging task if available
+        if self.metrics_collector:
+            self._start_metrics_logging()
+
+    def _setup_client(self) -> httpx.AsyncClient:
+        """Set up the HTTP client with appropriate configuration."""
+        proxy_settings = self.config.get_proxy_settings()
 
         # Configure client with appropriate settings
         client_kwargs = {
@@ -90,46 +99,48 @@ class ProxyHandler:
             client_kwargs["proxies"] = proxy_settings["address"]
             self.logger.info(f"Using proxy: {proxy_settings['address']}")
 
-        self.client = httpx.AsyncClient(**client_kwargs)
+        return httpx.AsyncClient(**client_kwargs)
 
-    def initialize_load_balancers(self):
+    def _initialize_load_balancers(self) -> Dict[str, LoadBalancer]:
         """Initialize load balancers for each API endpoint."""
-        apis = self.config_manager.get_apis()
-        default_settings = self.config_manager.get_default_settings()
+        load_balancers = {}
+        apis = self.config.get_apis()
+        default_settings = self.config.get_default_settings()
 
         default_strategy = default_settings.get(
             "load_balancing_strategy", "round_robin"
         )
 
         for api_name, api_config in apis.items():
-
             strategy = api_config.get("load_balancing_strategy", default_strategy)
             key_variable = api_config.get("key_variable", "keys")
 
             # Get tokens/keys for this API
-            keys = self.config_manager.get_api_variables(api_name, key_variable)
+            keys = self.config.get_api_variables(api_name, key_variable)
             if not keys:
                 self.logger.warning(f"No keys/tokens found for API: {api_name}")
                 continue
 
             # Create load balancer for this API
-            self.load_balancers[api_name] = LoadBalancer(keys, strategy, self.logger)
+            load_balancers[api_name] = LoadBalancer(keys, strategy, self.logger)
 
             # Initialize other variables if needed
-            for variable_name in api_config.get("variables", {}).keys():
+            variables = api_config.get("variables", {})
+            for variable_name in variables.keys():
                 if variable_name != key_variable:
-                    values = self.config_manager.get_api_variables(
-                        api_name, variable_name
-                    )
+                    values = self.config.get_api_variables(api_name, variable_name)
                     if values:
-                        self.load_balancers[f"{api_name}_{variable_name}"] = (
-                            LoadBalancer(values, strategy, self.logger)
+                        load_balancers[f"{api_name}_{variable_name}"] = LoadBalancer(
+                            values, strategy, self.logger
                         )
 
-    def initialize_rate_limiters(self):
+        return load_balancers
+
+    def _initialize_rate_limiters(self) -> Dict[str, Any]:
         """Initialize rate limiters for each API endpoint."""
-        apis = self.config_manager.get_apis()
-        default_settings = self.config_manager.get_default_settings()
+        rate_limiters = {}
+        apis = self.config.get_apis()
+        default_settings = self.config.get_default_settings()
         default_endpoint_limit = default_settings.get("rate_limit", {}).get(
             "endpoint_rate_limit", "0"
         )
@@ -146,14 +157,60 @@ class ProxyHandler:
             key_limit = rate_limit_config.get("key_rate_limit", default_key_limit)
 
             # Create endpoint rate limiter
-            self.rate_limiters[f"{api_name}_endpoint"] = RateLimiter(endpoint_limit)
+            rate_limiters[f"{api_name}_endpoint"] = self._create_rate_limiter(
+                endpoint_limit
+            )
 
             # Create rate limiter for each key
             key_variable = api_config.get("key_variable", "keys")
-            keys = self.config_manager.get_api_variables(api_name, key_variable)
+            keys = self.config.get_api_variables(api_name, key_variable)
 
             for key in keys:
-                self.rate_limiters[f"{api_name}_{key}"] = RateLimiter(key_limit)
+                key_id = f"{api_name}_{key}"
+                rate_limiters[key_id] = self._create_rate_limiter(key_limit)
+
+        return rate_limiters
+
+    def _create_rate_limiter(self, rate_limit: str) -> Any:
+        """Create a rate limiter with the specified limit."""
+        from .rate_limiter import RateLimiter
+
+        return RateLimiter(rate_limit, logger=self.logger)
+
+    def _start_metrics_logging(self) -> None:
+        """Start a background task to log metrics periodically for monitoring."""
+
+        async def log_metrics_task():
+            while True:
+                try:
+                    # Log metrics every 5 minutes
+                    await asyncio.sleep(300)
+
+                    if self.metrics_collector:
+                        metrics = self.metrics_collector.get_summary()
+                        self.logger.info(f"Metrics summary: {json.dumps(metrics)}")
+
+                        # Log individual API stats
+                        for api_name, stats in metrics.get("apis", {}).items():
+                            self.logger.info(
+                                f"API {api_name}: {stats['total_requests']} requests, "
+                                f"{stats['success_rate']:.1f}% success rate, "
+                                f"{stats['avg_response_time']:.2f}ms avg response time"
+                            )
+
+                        # Log queue stats if available
+                        if self.request_queue:
+                            queue_metrics = self.request_queue.get_metrics()
+                            self.logger.info(
+                                f"Queue metrics: {json.dumps(queue_metrics)}"
+                            )
+
+                except Exception as e:
+                    self.logger.error(f"Error in metrics logging task: {str(e)}")
+                    await asyncio.sleep(60)  # Retry after a minute if there's an error
+
+        # Start the background task
+        asyncio.create_task(log_metrics_task())
 
     async def handle_request(self, request: Request) -> Response:
         """
@@ -166,10 +223,10 @@ class ProxyHandler:
             Response to the client
         """
         start_time = time.time()
-        path = request.url.path
 
         # Identify target API based on path
-        api_name, trail_path, api_config = self._parse_request(path)
+        api_name, _ = self.parse_request(request)
+        api_config = self.config.get_api_config(api_name)
 
         if not api_name:
             return JSONResponse(
@@ -178,44 +235,52 @@ class ProxyHandler:
 
         try:
             # Check endpoint-level rate limiting
-            is_endpoint_allowed = await self._check_endpoint_rate_limit(
-                api_name, api_config, path
-            )
-
-            if not is_endpoint_allowed:
-                self.logger.warning(f"Rate limit exceeded for endpoint: {api_name}")
-                return await self._handle_rate_limit_exceeded(
-                    request,
-                    api_name,
-                    trail_path,
-                    api_config,
-                )
+            self._check_endpoint_rate_limit(api_name)
 
             # Get target endpoint configuration
-            target_endpoint = api_config.get("endpoint")
-            if not target_endpoint:
+            if not api_config.get("endpoint"):
                 self.logger.error(f"No target endpoint configured for API: {api_name}")
                 return JSONResponse(
                     status_code=500, content={"error": "API endpoint not configured"}
                 )
 
             # Prepare and execute request
-            request_data = await self._prepare_request(
-                request, api_name, trail_path, api_config
-            )
-
-            if isinstance(request_data, Response):  # Error occurred during preparation
-                return request_data
+            request_data = await self._prepare_request(request)
 
             # Process request and handle response
-            return await self._process_and_handle_response(request_data, start_time)
-
-        except Exception as e:
-            return self._handle_request_exception(
-                e, start_time, api_name if "api_name" in locals() else "unknown"
+            return await self._process_request_and_return_response(
+                request_data, start_time
             )
 
-    async def _process_and_handle_response(
+        except EndpointRateLimitExceededError as e:
+            return await self._handle_rate_limit_exceeded(request, api_name)
+        except ApiKeyRateLimitExceededError:
+            return await self._handle_rate_limit_exceeded(request, api_name)
+        except Exception as e:
+            return self._handle_request_exception(
+                e, start_time, api_name, request_data.api_key if request_data else None
+            )
+
+    def _check_endpoint_rate_limit(self, api_name: str) -> None:
+        """
+        Check if the endpoint rate limit is exceeded.
+
+        Args:
+            api_name: Name of the API
+
+        Raises:
+            RateLimitExceededError: If rate limit is exceeded
+        """
+        endpoint_limiter: RateLimiter = self.rate_limiters.get(f"{api_name}_endpoint")
+
+        if endpoint_limiter and not endpoint_limiter.allow_request():
+            remaining = endpoint_limiter.get_reset_time()
+            self.logger.warning(
+                f"Endpoint rate limit exceeded for {api_name}, reset in {remaining:.2f}s"
+            )
+            raise EndpointRateLimitExceededError(api_name, reset_in_seconds=remaining)
+
+    async def _process_request_and_return_response(
         self,
         r: NyaRequest,
         start_time: float,
@@ -224,20 +289,18 @@ class ProxyHandler:
         Process the prepared request and handle the response.
 
         Args:
-            nya_request: Prepared NyaRequest object
+            r: Prepared NyaRequest object
+            start_time: Request start time
 
         Returns:
             Response to the client
         """
-        self.logger.debug(f"Processing and handle request to {r.api_name}")
+        self.logger.debug(f"Processing request to {r.api_name}: {r.url}")
 
-        # Record request metrics
-        if self.metrics_collector:
-            key_id = _get_key_id_for_metrics(r.api_key)
-            self.metrics_collector.record_request(r.api_name, key_id)
+        # Get API request settings]
 
-        # Get API request settings
-        retry_config: Dict = r.api_config.get("retry", {})
+        api_config = self.config.get_api_config(r.api_name)
+        retry_config: Dict = api_config.get("retry", {})
         retry_enabled = retry_config.get("enabled", True)
         retry_mode = retry_config.get("mode", "default")
 
@@ -245,8 +308,8 @@ class ProxyHandler:
             retry_attempts = 1
             retry_delay = 0
         else:
-            retry_attempts = retry_config.get("attempts", None)
-            retry_delay = retry_config.get("retry_after_seconds", None)
+            retry_attempts = retry_config.get("attempts", 3)
+            retry_delay = retry_config.get("retry_after_seconds", 10)
 
         # Execute the request with retries if configured
         httpx_response = await self.request_executor.execute_with_retry(
@@ -256,178 +319,32 @@ class ProxyHandler:
             retry_mode=retry_mode,
         )
 
-        # Log request timing and record metrics
-        elapsed = time.time() - start_time
-        status_code = httpx_response.status_code if httpx_response else 502
-
-        self.logger.debug(
-            f"Received response from {r.api_name} with status {status_code} in {elapsed:.2f}s"
-        )
-
-        if self.metrics_collector:
-            self.metrics_collector.record_response(r.api_name, status_code, elapsed)
-
-        if not httpx_response:
-            return JSONResponse(
-                status_code=502,
-                content={"error": "Bad Gateway: No response from target API"},
-            )
-
-        # if rate limit exceeded, throw it back to the queue
+        # If rate limit exceeded, queue the request if enabled
         if (
-            httpx_response.status_code == 429
-            and self.config_manager.get_queue_enabled()
-            and self.config_manager.get_retry_mode() == "key_rotation"
+            httpx_response
+            and httpx_response.status_code == 429
+            and self.config.get_queue_enabled()
+            and self.request_queue
         ):
             return await self._handle_rate_limit_exceeded(
                 request=r._raw_request,
                 api_name=r.api_name,
-                trail_path=r.trail_path,
-                api_config=r.api_config,
             )
 
-        # Filter out unwanted headers
-        headers = dict(httpx_response.headers)
-        headers_to_remove = ["server", "date", "transfer-encoding"]
-
-        for header in headers_to_remove:
-            if header.lower() in headers:
-                del headers[header.lower()]
-
-        # Determine the response content type
-        content_type = httpx_response.headers.get("content-type", "application/json")
-
-        # Handle streaming response for event-stream
-        if "text/event-stream" in content_type:
-            self.logger.debug("Detected streaming response, forwarding as event-stream")
-
-            async def event_generator():
-                async for chunk in httpx_response.aiter_bytes():
-                    yield chunk  # Don't modify
-
-            headers.pop("transfer-encoding", None)  # Optional
-            headers["cache-control"] = "no-cache"  # Common in SSE
-
-            return StreamingResponse(
-                content=event_generator(),
-                status_code=status_code,
-                media_type="text/event-stream",
-                headers=headers,
-            )
-
-        # Check if response is JSON for debug logging
-        if content_type == "application/json":
-            try:
-                self.logger.debug(
-                    f"Response content:\n{json.dumps(httpx_response.json(), indent=4, ensure_ascii=False)}"
-                )
-            except Exception:
-                self.logger.debug("Response contains non-JSON content")
-
-        self.logger.debug(f"Response status code: {httpx_response.status_code}")
-        self.logger.debug(f"Response headers: {httpx_response.headers}")
-
-        # Handle content encoding for decompression (non_streaming responses)
-        content_encoding = httpx_response.headers.get("content-encoding", "identity")
-        headers.pop("content-encoding", None)
-
-        # Decode response body for normal responses (non-streaming)
-        raw_content = self.decode_content(httpx_response.content, content_encoding)
-
-        # Handle normal JSON response
-        return Response(
-            content=raw_content,
-            status_code=status_code,
-            media_type="application/json",
-            headers=headers,
+        # Process and return the response
+        return await self.response_processor.process_response(
+            httpx_response, start_time, r.api_name, r.api_key, self.metrics_collector
         )
 
-    def decode_content(self, content: bytes, encoding: str) -> bytes:
-        try:
-            if encoding == "gzip" and content and content[:2] == b"\x1f\x8b":
-                # GZIP magic number: 1f 8b
-                return gzip.decompress(content)
-            elif encoding == "deflate" and content and content[0] == 0x78:
-                # Zlib-wrapped deflate typically starts with 0x78
-                return zlib.decompress(content)
-            elif encoding == "br":
-                # No strict magic number for Brotli, but try-catch should works
-                return brotli.decompress(content)
-        except Exception as e:
-            self.logger.warning(f"Decompression failed for encoding '{encoding}': {e}")
-
-        return content  # fallback to raw
-
-    def _parse_request(
-        self, path: str
-    ) -> Tuple[Optional[str], Optional[str], Optional[Dict[str, Any]]]:
-        """
-        Determine which API to route to based on path and parse the remaining path.
-
-        Args:
-            path: Request path
-
-        Returns:
-            Tuple of (api_name, remaining_path, api_config)
-
-        Examples:
-            /api/openai/v1/chat/completions -> ("openai", "/v1/chat/completions", config_for_openai)
-
-            if api has aliases (/reddit, /r):
-                /api/r/v1/messages -> ("reddit", "/v1/messages", config_for_reddit)
-        """
-        self.logger.debug(f"Identifying target API for path: {path}")
-        apis = self.config_manager.get_apis()
-
-        # Handle non-API paths or malformed requests
-        if not path.startswith("/api/"):
-            return None, None, None
-
-        # Extract parts after "/api/"
-        api_path = path.removeprefix("/api/")
-        parts = api_path.split("/", 1)
-
-        endpoint = parts[0]
-        trail_path = "/" + parts[1] if len(parts) > 1 else ""
-
-        # Direct match with API name
-        if endpoint in apis:
-            return endpoint, trail_path, apis[endpoint]
-
-        # Check for aliases in aliases
-        for api_name, config in apis.items():
-            aliases = config.get("aliases", [])
-            if aliases and endpoint in aliases:
-                return api_name, trail_path, apis[api_name]
-
-        # No match found
-        return None, None, None
-
-    async def _check_endpoint_rate_limit(
-        self, api_name: str, api_config: Dict[str, Any], path: str
-    ) -> bool:
-        """
-        Check if endpoint rate limit is exceeded.
-
-        Args:
-            api_name: Name of the API
-            api_config: API configuration
-            path: Request path
-
-        Returns:
-            True if request is allowed, False if rate limited
-        """
-        endpoint_limiter = self.rate_limiters.get(f"{api_name}_endpoint")
-        if endpoint_limiter and not endpoint_limiter.allow_request():
-            self.logger.warning(f"Endpoint rate limit exceeded for {api_name}")
-            return False
-        return True
-
     def _handle_request_exception(
-        self, exception: Exception, start_time: float, api_name: str
+        self,
+        exception: Exception,
+        start_time: float,
+        api_name: str,
+        api_key: Optional[str] = None,
     ) -> Response:
         """
-        Handle any exception that occurs during request processing.
+        Handle any other exception that occurs during request processing.
 
         Args:
             exception: The exception that was raised
@@ -443,99 +360,98 @@ class ProxyHandler:
 
         # Record error in metrics if available
         if self.metrics_collector:
-            self.metrics_collector.record_response(api_name, 500, elapsed)
+            self.metrics_collector.record_response(
+                api_name, api_key if api_key else "unknown", 500, elapsed
+            )
 
-        return JSONResponse(
-            status_code=500,
-            content={"error": f"Internal proxy error: {str(exception)}"},
+        return self.response_processor.create_error_response(
+            exception, status_code=500, api_name=api_name
         )
 
     async def _handle_rate_limit_exceeded(
         self,
         request: Request,
         api_name: str,
-        trail_path: str,
-        api_config: Dict[str, Any],
     ) -> Response:
         """
-        Handle a rate-limited request, queueing it if enabled and waiting for response.
+        Handle a rate-limited request, queueing it if enabled.
 
         Args:
             request: Original request
             api_name: Name of the API
-            trail_path: The remaining path after the API name
-            api_config: API configuration
 
         Returns:
-            Response to the client - either the actual API response after processing from queue,
-            or an error response if queueing fails
+            Response to the client
         """
         # If queueing is enabled, try to queue and process the request
-        if self.request_queue and self.config_manager.get_queue_enabled():
+        if self.request_queue and self.config.get_queue_enabled():
             try:
-                # First, prepare the request as we would for direct execution
-                request_data = await self._prepare_request(
-                    request, api_name, trail_path, api_config
+                # Calculate appropriate reset time based on rate limit and queue wait time
+                reset_in_seconds = int(
+                    max(
+                        self.key_manager.get_rate_limit_reset_time(api_name),
+                        self.request_queue.get_estimated_wait_time(api_name),
+                    )
                 )
-                if isinstance(request_data, Response):  # Error during preparation
-                    return request_data
-
-                # Calculate appropriate expiry time based on rate limit reset
-                endpoint_limiter = self.rate_limiters.get(f"{api_name}_endpoint")
-                reset_in_seconds = (
-                    endpoint_limiter.get_reset_time() + 5.0
-                )  # Add a buffer
-
                 try:
-                    # Queue the request and get future
-                    response_future = await self.request_queue.enqueue_request(
-                        r=request_data,
-                        reset_in_seconds=int(reset_in_seconds),
+                    self.logger.info(
+                        f"Queueing request to {api_name} due to rate limiting"
                     )
 
                     # Record queue hit in metrics
                     if self.metrics_collector:
                         self.metrics_collector.record_queue_hit(api_name)
+                        self.metrics_collector.record_rate_limit_hit(
+                            api_name, "unknown"
+                        )
+
+                    request_data = NyaRequest(
+                        method=request.method,
+                        url=str(request.url),
+                        _raw_request=request,
+                        api_name=api_name,
+                    )
+
+                    # Enqueue the request and wait for response
+                    future = await self.request_queue.enqueue_request(
+                        r=request_data,
+                        reset_in_seconds=reset_in_seconds,
+                    )
 
                     self.logger.info(
-                        f"Request to {api_name} queued due to rate limiting, waiting for response"
+                        f"Waiting for queued request to {api_name} to complete"
                     )
 
-                    # Wait for the response
-                    return await asyncio.wait_for(
-                        response_future, timeout=reset_in_seconds
-                    )
+                    api_timeout = self.config.get_api_default_timeout(api_name)
+                    timeout = reset_in_seconds + api_timeout
+
+                    return await asyncio.wait_for(future, timeout=timeout)
 
                 except asyncio.TimeoutError:
-                    self.logger.error(
-                        f"Timeout waiting for queued request response after {reset_in_seconds}s"
-                    )
-                    return JSONResponse(
-                        status_code=504,  # Gateway Timeout
-                        content={
-                            "error": f"Request timed out after {reset_in_seconds} seconds"
-                        },
+                    return self.response_processor.create_error_response(
+                        Exception(f"Request timed out after {timeout} seconds"),
+                        status_code=504,
+                        api_name=api_name,
                     )
                 except ValueError as ve:
-                    # Handle queue full or duplicate request errors
+                    # Queue full or other queue errors
                     self.logger.warning(f"Request queuing failed: {str(ve)}")
-                    return JSONResponse(
-                        status_code=429,
-                        content={"error": str(ve)},
+                    return self.response_processor.create_error_response(
+                        ve, status_code=429, api_name=api_name
                     )
                 except Exception as e:
                     self.logger.error(f"Error processing queued request: {str(e)}")
-                    return JSONResponse(
-                        status_code=500,
-                        content={"error": f"Error processing queued request: {str(e)}"},
+                    return self.response_processor.create_error_response(
+                        e, status_code=500, api_name=api_name
                     )
 
             except Exception as queue_error:
                 self.logger.error(
-                    f"Error queueing request: {str(queue_error)}, {traceback.format_exc()}"
+                    f"Error queueing request: {str(queue_error)}, {traceback.format_exc() if self.config.get_debug_level().upper() == 'DEBUG' else ''}"
                 )
-                # Continue to normal rate limit response if queueing fails
+                # Continue to normal rate limit response
 
+        # Default rate limit response if queueing is disabled or failed
         return JSONResponse(
             status_code=429, content={"error": "Rate limit exceeded for this endpoint"}
         )
@@ -543,147 +459,115 @@ class ProxyHandler:
     async def _prepare_request(
         self,
         request: Request,
-        api_name: str,
-        trail_path: str,
-        api_config: Dict[str, Any],
-    ) -> Union[NyaRequest, Response]:
+    ) -> NyaRequest:
         """
         Prepare the request for forwarding to the target API.
 
         Args:
             request: Original request
-            api_name: Name of the API
-            trail_path: the remaining path after the API name
-            api_config: API configuration
 
         Returns:
-            RequestData object or Response if error
+            NyaRequest object or Response if error
+
+        Raises:
+            NoAvailableKeysError: If no API keys are available
         """
+
+        # Identify target API based on path
+        api_name, trail_path = self.parse_request(request)
+        api_config = self.config.get_api_config(api_name)
+
         # Get the load balancer for this API
         key_variable = api_config.get("key_variable", "keys")
         load_balancer = self.load_balancers.get(api_name)
 
         if not load_balancer:
             self.logger.error(f"No load balancer found for API: {api_name}")
-            return JSONResponse(
-                status_code=500, content={"error": "API configuration error"}
-            )
+            raise ValueError(f"API configuration error for {api_name}")
 
         # Get the next key/token and check its rate limit
-        key = await self._get_available_key(api_name, load_balancer)
+        api_key = await self.key_manager.get_available_key(api_name, load_balancer)
 
-        if key is None:
-            if self.metrics_collector:
-                key_id = _get_key_id_for_metrics(key)
-                self.metrics_collector.record_rate_limit_hit(api_name, key_id)
-
-            return JSONResponse(
-                status_code=429,
-                content={"error": "Rate limit exceeded for all available keys"},
-            )
+        if api_key is None:
+            raise ApiKeyRateLimitExceededError(api_name)
 
         # Read request body
         body = await request.body()
 
+        # Apply path rewriting if configured
+        target_path = self._rewrite_path(trail_path, api_config)
+
         # Construct target api endpoint URL
         target_endpoint: str = api_config.get("endpoint", "")
-        target_url = f"{target_endpoint}{trail_path}"
+        target_url = f"{target_endpoint}{target_path}"
 
         # Prepare headers with variable substitution
         headers = await self._prepare_custom_headers(
-            request, api_name, api_config, key_variable, key
+            request, api_name, api_config, key_variable, api_key
         )
 
-        # Create RequestData object
-        request_data = NyaRequest(
+        # Create NyaRequest object
+        req = NyaRequest(
             method=request.method,
             url=target_url,
             _raw_request=request,
             headers=headers,
             content=body or None,
             api_name=api_name,
-            api_config=api_config,
-            trail_path=trail_path,
-            api_key=key,
+            api_key=api_key,
         )
 
-        return request_data
+        # Record request metrics
+        if self.metrics_collector:
+            self.metrics_collector.record_request(api_name, api_key)
+            load_balancer.record_request_count(api_key)
 
-    async def _get_available_key(
-        self, api_name: str, load_balancer: LoadBalancer
-    ) -> Optional[str]:
+        return req
+
+    def _rewrite_path(self, path: str, api_config: Dict[str, Any]) -> str:
         """
-        Get an available key that hasn't exceeded its rate limit.
+        Apply path rewriting based on configuration.
 
         Args:
-            api_name: Name of the API
-            load_balancer: Load balancer for the API
+            path: Original path
+            api_config: API configuration
 
         Returns:
-            An available key or None if all keys are rate limited
+            Rewritten path
         """
-        # Try to find a key that isn't rate limited
-        tried_keys = set()
-        key = load_balancer.get_next()
+        # Check for path_rewrites in configuration
+        path_rewrites = api_config.get("path_rewrites", {})
 
-        while key not in tried_keys:
-            tried_keys.add(key)
-            key_limiter = self.rate_limiters.get(f"{api_name}_{key}")
+        if not path_rewrites:
+            # No rewrites, handle base_path
+            base_path = api_config.get("base_path", "")
+            if base_path:
+                # Ensure base_path starts with a slash but doesn't end with one
+                if not base_path.startswith("/"):
+                    base_path = "/" + base_path
+                if base_path.endswith("/"):
+                    base_path = base_path[:-1]
 
-            if not key_limiter or key_limiter.allow_request():
-                return key
+                # Combine base path with original path
+                return f"{base_path}{path}"
+            return path
 
-            # Try the next key
-            key = load_balancer.get_next()
+        # Apply path rewriting rules
+        rewritten_path = path
 
-        # If we've tried all keys and none are available, return None
-        return None
+        # Sort rules by specificity (longer patterns first)
+        sorted_rules = sorted(
+            path_rewrites.items(), key=lambda x: len(x[0]), reverse=True
+        )
 
-    def identify_template_variables(self, template_string: str) -> list:
-        """
-        Identify all dynamic variables in a template string using ${{var}} syntax.
-
-        Args:
-            template_string (str): The string containing potential template variables
-
-        Returns:
-            list: List of variable names found in the template
-        """
-        variables = []
-        i = 0
-        while i < len(template_string):
-            start_idx = template_string.find("${{", i)
-            if start_idx == -1:
+        # Apply the first matching rule
+        for pattern, replacement in sorted_rules:
+            if pattern in path:
+                rewritten_path = path.replace(pattern, replacement)
+                self.logger.debug(f"Rewriting path: {path} -> {rewritten_path}")
                 break
 
-            end_idx = template_string.find("}}", start_idx)
-            if end_idx == -1:
-                break
-
-            var_name = template_string[start_idx + 3 : end_idx].strip()
-            variables.append(var_name)
-            i = end_idx + 2
-
-        return variables
-
-    def replace_template_variables(
-        self, template_string: str, replacements: Dict[str, str]
-    ) -> str:
-        """
-        Replace all template variables in a string with their values.
-
-        Args:
-            template_string (str): The template string containing variables like ${{variable_name}}
-            replacements (dict): Dictionary mapping variable names to their values
-
-        Returns:
-            str: The template with all variables replaced
-        """
-        result = template_string
-        for var_name, value in replacements.items():
-            placeholder = f"${{{{{var_name}}}}}"
-            result = result.replace(placeholder, str(value))
-        return result
+        return rewritten_path
 
     async def _prepare_custom_headers(
         self,
@@ -706,71 +590,38 @@ class ProxyHandler:
         Returns:
             Headers dictionary
         """
-        # Start with configured headers
-        custom_headers = {}
+        # Get configured headers
         header_config: Dict[str, Any] = api_config.get("headers", {})
 
-        vars_set = set()
-        # Replace variables in headers
-        for header_name, header_value in header_config.items():
-            vars = self.identify_template_variables(header_value)
-            vars_set.update(vars)
+        # Identify all variables needed in headers
+        required_vars = self.header_processor.extract_required_variables(header_config)
 
-        vars_value = {}
-        for var in vars_set:
-            # Skip the key/token variable
+        # Prepare variable values
+        var_values = {key_variable: key}
+
+        # Get values for other variables from load balancers
+        for var in required_vars:
             if var == key_variable:
-                vars_value[var] = key
                 continue
-            # Get the load balancer for this variable
+
             variable_balancer = self.load_balancers.get(f"{api_name}_{var}")
             if variable_balancer:
                 variable_value = variable_balancer.get_next()
-                vars_value[var] = variable_value
+                var_values[var] = variable_value
             else:
-                vars_value[var] = var
+                # Try to get from single-value variables in config
+                variables = api_config.get("variables", {})
+                if var in variables and not isinstance(variables[var], list):
+                    var_values[var] = variables[var]
+                else:
+                    var_values[var] = var  # Fallback to variable name
 
-        # Replace template variables in custom headers
-        for header_name, header_value in header_config.items():
-            replaced_value = self.replace_template_variables(header_value, vars_value)
-            custom_headers[header_name] = replaced_value
-
-        # Copy original headers but allow config headers to override
-        for k, v in request.headers.items():
-            if k.lower() not in [h.lower() for h in custom_headers.keys()]:
-                custom_headers[k] = v
-
-        return custom_headers
-
-    def _get_target_path(
-        self, original_path: str, api_name: str, api_config: Dict[str, Any]
-    ) -> str:
-        """
-        Get the path to use for the target API, removing proxy routing prefixes.
-
-        Args:
-            original_path: Original request path
-            api_name: Name of the API
-            api_config: API configuration
-
-        Returns:
-            Target path for the API request
-        """
-        original_path = original_path.lstrip("/")
-
-        # Check if the path starts with the API name
-        if original_path.startswith(api_name):
-            return original_path[len(api_name) :]
-
-        # Check if path starts with any of the configured aliases
-        aliases = api_config.get("aliases", [])
-        for subpath in aliases:
-            subpath = subpath.lstrip("/")
-            if original_path.startswith(subpath):
-                return original_path[len(subpath) :]
-
-        # If no match found, return the original path
-        return original_path
+        # Process headers with variable substitution
+        return self.header_processor._process_headers(
+            header_templates=header_config,
+            variable_values=var_values,
+            original_headers=dict(request.headers),
+        )
 
     async def _process_queued_request(self, r: NyaRequest) -> Response:
         """
@@ -782,22 +633,57 @@ class ProxyHandler:
         Returns:
             Response from the target API
         """
-        try:
-            # Execute the request
-            retry_config: Dict = r.api_config.get("retry", {})
-            max_attempts = retry_config.get("attempts", 1)
-            retry_delay = retry_config.get("retry_after_seconds", 0)
-            retry_mode = retry_config.get("mode", "default")
+        return await self.handle_request(r._raw_request)
 
-            return await self.request_executor.execute_with_retry(
-                r=r,
-                max_attempts=max_attempts,
-                retry_delay=retry_delay,
-                retry_mode=retry_mode,
-            )
-        except Exception as e:
-            self.logger.error(f"Error processing queued request: {str(e)}")
-            raise  # Re-raise to allow the queue to handle retry logic
+    def parse_request(self, request: Request) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Determine which API to route to based on the request path.
+
+        Args:
+            request: FastAPI request object
+
+        Returns:
+            Tuple of (api_name, remaining_path)
+
+        Examples:
+            /api/openai/v1/chat/completions -> ("openai", "/v1/chat/completions")
+
+            if api has aliases (/reddit, /r):
+                /api/r/v1/messages -> ("reddit", "/v1/messages")
+        """
+        path = request.url.path
+        apis_config = self.config.get_apis()
+        self.logger.debug(f"Identifying target API for path: {path}")
+
+        # Handle non-API paths or malformed requests
+        if not path or not path.startswith(API_PATH_PREFIX):
+            return None, None
+
+        # Extract parts after "/api/"
+        api_path = path[len(API_PATH_PREFIX) :]
+
+        # Handle empty path after prefix
+        if not api_path:
+            return None, None
+
+        # Split into endpoint and trail path
+        parts = api_path.split("/", 1)
+        endpoint = parts[0]
+        trail_path = "/" + parts[1] if len(parts) > 1 else "/"
+
+        # Direct match with API name
+        if endpoint in apis_config:
+            return endpoint, trail_path
+
+        # Check for aliases in each API config
+        for api_name, config in apis_config.items():
+            aliases = config.get("aliases", [])
+            if aliases and endpoint in aliases:
+                return api_name, trail_path
+
+        # No match found
+        self.logger.warning(f"No API configuration found for endpoint: {endpoint}")
+        return None, None, None
 
     async def close(self):
         """Close the HTTP client."""

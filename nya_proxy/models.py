@@ -2,8 +2,10 @@
 Data models for request handling in NyaProxy.
 """
 
+import asyncio
+import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Optional
 
 if TYPE_CHECKING:
     from fastapi import Request
@@ -13,6 +15,9 @@ if TYPE_CHECKING:
 class NyaRequest:
     """
     Structured representation of an API request for processing.
+
+    This class encapsulates all the data and metadata needed to handle
+    a request throughout the proxy processing pipeline.
     """
 
     # Required request fields
@@ -27,44 +32,10 @@ class NyaRequest:
 
     # API Related metadata
     api_name: str = "unknown"
-    api_key: str = ""
-
-    api_config: Optional[Dict[str, Any]] = None
-    trail_path: Optional[str] = None
+    api_key: Optional[str] = None
 
     # Processing metadata
     attempts: int = 0
-    added_at: float = 0.0
-    request_id: str = ""
+    added_at: float = field(default_factory=time.time)
     expiry: float = 0.0
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for backward compatibility."""
-        result = {
-            "method": self.method,
-            "url": self.url,
-            "headers": self.headers,
-            "timeout": self.timeout,
-        }
-
-        if self.content is not None:
-            result["content"] = self.content
-
-        return result
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "NyaRequest":
-        """Create RequestData from dictionary."""
-        return cls(
-            method=data.get("method", "GET"),
-            url=data.get("url", ""),
-            headers=data.get("headers", {}),
-            content=data.get("content"),
-            timeout=data.get("timeout", 30.0),
-            api_name=data.get("_api_name", "unknown"),
-            key_used=data.get("_api_key", ""),
-            attempts=data.get("attempts", 0),
-            added_at=data.get("added_at", 0.0),
-            request_id=data.get("request_id", ""),
-            expiry=data.get("expiry", 0.0),
-        )
+    future: Optional[asyncio.Future] = None

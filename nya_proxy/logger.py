@@ -78,24 +78,3 @@ def setup_logger(log_config: Dict[str, Any], name: str = "nya_proxy") -> logging
             # Continue with console logging only
 
     return logger
-
-
-def get_child_logger(parent_logger: logging.Logger, suffix: str) -> logging.Logger:
-    """
-    Create a child logger with the parent logger's settings.
-
-    Args:
-        parent_logger: Parent logger instance
-        suffix: Child logger name suffix
-
-    Returns:
-        Child logger instance
-    """
-    logger_name = f"{parent_logger.name}.{suffix}"
-    child_logger = logging.getLogger(logger_name)
-
-    # Inherit parent's log level
-    child_logger.setLevel(parent_logger.level)
-
-    # Don't need to copy handlers as they are inherited by default
-    return child_logger

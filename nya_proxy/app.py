@@ -244,7 +244,7 @@ class NyaProxyApp:
             )
 
         self.proxy_handler = ProxyHandler(
-            config_manager=self.config_manager,
+            config=self.config_manager,
             logger=self.logger or logging.getLogger("nyaproxy"),
             request_queue=self.request_queue,
             metrics_collector=self.metrics_collector,
