@@ -29,14 +29,6 @@ default_settings:
     retry_after_seconds: 10
   timeouts:
     request_timeout_seconds: 30
-  error_handling:
-    report_api_errors: true
-    retry_status_codes:
-    - 429
-    - 500
-    - 502
-    - 503
-    - 504
 
 apis:
   reddit:
@@ -64,16 +56,3 @@ apis:
       retry_after_seconds: 60  # Reddit prefers longer waits between retries
     timeouts:
       request_timeout_seconds: 30
-    error_handling:
-      retry_status_codes: [429, 500, 502, 503, 504]
-      report_api_errors: true
-    
-    # Optional settings for Reddit OAuth setup
-    auth:
-      enabled: false  # Enable if you want NyaProxy to handle token refreshing
-      client_id: "your_client_id"
-      client_secret: "your_client_secret"
-      refresh_tokens:
-        - "your_refresh_token_1"
-        - "your_refresh_token_2"
-      refresh_before_expiry_seconds: 300  # Refresh 5 minutes before expiry

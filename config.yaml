@@ -4,7 +4,7 @@ nya_proxy:
   api_key: 
   logging:
     enabled: true
-    level: info
+    level: debug
     log_file: nya_proxy.log
   proxy:
     enabled: false
@@ -14,7 +14,7 @@ nya_proxy:
   queue:
     enabled: true
     max_size: 200
-    expiry_seconds: 300
+    expiry_seconds: 110
 
 default_settings:
   key_variable: keys
@@ -26,17 +26,12 @@ default_settings:
     enabled: true
     mode: key_rotation
     attempts: 3
-    retry_after_seconds: 10
+    retry_after_seconds: 1
+    retry_request_methods: [ POST, GET, PUT, DELETE, PATCH, OPTIONS ]
+    retry_status_codes: [ 429, 500, 502, 503, 504 ]
   timeouts:
-    request_timeout_seconds: 30
-  error_handling:
-    report_api_errors: true
-    retry_status_codes:
-    - 429
-    - 500
-    - 502
-    - 503
-    - 504
+    request_timeout_seconds: 110
+    
 
 apis:
   gemini:
@@ -56,11 +51,6 @@ apis:
     rate_limit:
       endpoint_rate_limit: 10/m
       key_rate_limit: 10/m
-    error_handling:
-      retry_status_codes:
-      - 429
-      - 500
-      - 503
   openai:
     name: OpenAI API
     endpoint: https://api.openai.com
@@ -87,6 +77,21 @@ apis:
       - your_test_key_1
       - your_test_key_2
       - your_test_key_3
+      agents:
+      - test_agent_1
+      - test_agent_2
+      - test_agent_3
+    load_balancing_strategy: least_requests
+    rate_limit:
+      endpoint_rate_limit: 20/m
+      key_rate_limit: 10/m
+  google:
+    name: Google Search
+    endpoint: https://google.com
+    key_variable: agents
+    headers:
+      Test-Header: ${{agents}}
+    variables:
       agents:
       - test_agent_1
       - test_agent_2

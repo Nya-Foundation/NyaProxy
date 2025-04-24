@@ -614,8 +614,8 @@ const ui = {
             entry.status_code.toString().includes(searchTerm)))
     );
 
-    // Limit to most recent 50 entries for performance
-    const limitedEntries = responseEntries.slice(0, 50);
+    // Limit to most recent 50 entries
+    const limitedEntries = responseEntries.slice(-50);
 
     if (limitedEntries.length === 0) {
       const emptyRow = document.createElement("tr");

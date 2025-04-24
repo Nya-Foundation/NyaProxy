@@ -7,6 +7,7 @@ import contextlib
 import logging
 import os
 import sys
+import time
 
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -18,9 +19,8 @@ from starlette.responses import JSONResponse
 from .config_manager import ConfigAPI, ConfigManager
 from .dashboard import DashboardAPI
 from .logger import setup_logger
-from .metrics import MetricsCollector
-from .proxy_handler import ProxyHandler
-from .request_queue import RequestQueue
+from .core import NyaProxyCore
+from .models import NyaRequest
 
 
 class RootPathMiddleware(BaseHTTPMiddleware):
@@ -46,9 +46,9 @@ class NyaProxyApp:
         )
 
         # Initialize instance variables
-        self.config_manager = None
+        self.config = None
         self.logger = None
-        self.proxy_handler = None
+        self.core = None
         self.metrics_collector = None
         self.request_queue = None
         self.api_key_header = APIKeyHeader(name="Authorization", auto_error=False)
@@ -97,8 +97,8 @@ class NyaProxyApp:
                 )
 
             apis = {}
-            if self.config_manager:
-                for name, config in self.config_manager.get_apis().items():
+            if self.config:
+                for name, config in self.config.get_apis().items():
                     apis[name] = {
                         "name": config.get("name", name),
                         "endpoint": config.get("endpoint", ""),
@@ -112,9 +112,7 @@ class NyaProxyApp:
         api_key: str = Depends(APIKeyHeader(name="Authorization", auto_error=False)),
     ):
         """Verify the API key if one is configured."""
-        configured_key = (
-            self.config_manager.get_api_key() if self.config_manager else ""
-        )
+        configured_key = self.config.get_api_key() if self.config else ""
 
         # No API key required if none is configured
         if not configured_key:
@@ -122,7 +120,9 @@ class NyaProxyApp:
 
         # API key required but not provided
         if not api_key:
-            raise HTTPException(status_code=401, detail="API key required")
+            raise HTTPException(
+                status_code=401, detail="Unauthorized: API key required"
+            )
 
         # Strip "Bearer " prefix if present
         if api_key.startswith("Bearer "):
@@ -130,7 +130,9 @@ class NyaProxyApp:
 
         # API key provided but invalid
         if api_key != configured_key:
-            raise HTTPException(status_code=403, detail="Invalid API key")
+            raise HTTPException(
+                status_code=403, detail="Unauthorized: Insufficient Permissions"
+            )
 
         return True
 
@@ -138,22 +140,29 @@ class NyaProxyApp:
         self, request: Request, path: str, api_key_valid: bool
     ):
         """Generic handler for all proxy requests."""
-        if not self.proxy_handler:
+        if not self.core:
             return JSONResponse(
                 status_code=503,
                 content={"error": "Proxy service is starting up or unavailable"},
             )
 
-        return await self.proxy_handler.handle_request(request)
+        req = NyaRequest(
+            method=request.method,
+            headers=dict(request.headers),
+            _url=request.url,
+            _raw=request,
+            content=await request.body(),
+            added_at=time.time(),
+        )
+
+        return await self.core.handle_request(req)
 
     async def initialize_proxy_services(self):
         """Initialize the proxy services."""
         try:
             self._init_config()
             self._init_logging()
-            self._init_metrics()
-            self._init_request_queue()
-            self._init_proxy_handler()
+            self._init_core()
 
             # Mount sub-applications for NyaProxy
             self._init_config_server()
@@ -172,68 +181,24 @@ class NyaProxyApp:
     def _init_config(self):
         """Initialize configuration manager."""
         config_path = os.environ.get("CONFIG_PATH", "config.yaml")
-        self.config_manager = ConfigManager(config_file=config_path, logger=self.logger)
+        self.config = ConfigManager(config_file=config_path, logger=self.logger)
 
         if self.logger:
             self.logger.info(f"Configuration loaded from {config_path}")
-        return self.config_manager
+        return self.config
 
     def _init_logging(self):
         """Initialize logging."""
-        if not self.config_manager:
-            logging.warning("Config manager not initialized, using default logging")
-            self.logger = logging.getLogger("nyaproxy")
-            return self.logger
-
-        log_config = self.config_manager.get_logging_config()
+        log_config = self.config.get_logging_config()
         self.logger = setup_logger(log_config)
         self.logger.info(
             f"Logging initialized with level {log_config.get('level', 'INFO')}"
         )
         return self.logger
 
-    def _init_metrics(self):
-        """Initialize metrics collector."""
-        if not self.logger:
-            logging.warning("Logger not initialized, metrics collection may be limited")
-
-        self.metrics_collector = MetricsCollector(
-            self.logger or logging.getLogger("nyaproxy")
-        )
-        if self.logger:
-            self.logger.info("Metrics collector initialized")
-        return self.metrics_collector
-
-    def _init_request_queue(self):
-        """Initialize request queue if enabled."""
-        if not self.config_manager:
-            if self.logger:
-                self.logger.warning(
-                    "Config manager not initialized, request queue disabled"
-                )
-            return None
-
-        if not self.config_manager.get_queue_enabled():
-            if self.logger:
-                self.logger.info("Request queuing disabled in configuration")
-            return None
-
-        queue_size = self.config_manager.get_queue_size()
-        queue_expiry = self.config_manager.get_queue_expiry()
-
-        self.request_queue = RequestQueue(
-            max_size=queue_size, expiry_seconds=queue_expiry, logger=self.logger
-        )
-
-        if self.logger:
-            self.logger.info(
-                f"Request queue initialized (size={queue_size}, expiry={queue_expiry}s)"
-            )
-        return self.request_queue
-
-    def _init_proxy_handler(self):
-        """Initialize proxy handler."""
-        if not self.config_manager:
+    def _init_core(self):
+        """Initialize the core proxy handler."""
+        if not self.config:
             raise RuntimeError(
                 "Config manager must be initialized before proxy handler"
             )
@@ -243,38 +208,36 @@ class NyaProxyApp:
                 "Logger not initialized, proxy handler will use default logging"
             )
 
-        self.proxy_handler = ProxyHandler(
-            config=self.config_manager,
+        self.core = NyaProxyCore(
+            config=self.config,
             logger=self.logger or logging.getLogger("nyaproxy"),
-            request_queue=self.request_queue,
-            metrics_collector=self.metrics_collector,
         )
 
         if self.logger:
             self.logger.info("Proxy handler initialized")
-        return self.proxy_handler
+        return self.core
 
     def _init_config_server(self):
         """Initialize and mount configuration web server if available."""
-        if not self.config_manager:
+        if not self.config:
             if self.logger:
                 self.logger.warning(
                     "Config manager not initialized, config server disabled"
                 )
             return False
 
-        if not hasattr(self.config_manager, "web_server") or not hasattr(
-            self.config_manager.web_server, "app"
+        if not hasattr(self.config, "web_server") or not hasattr(
+            self.config.web_server, "app"
         ):
             if self.logger:
                 self.logger.warning("Configuration web server not available")
             return False
 
         # Mount the config server app
-        host = self.config_manager.get_host()
-        port = self.config_manager.get_port()
+        host = self.config.get_host()
+        port = self.config.get_port()
 
-        nekoconf = self.config_manager.web_server.app
+        nekoconf = self.config.web_server.app
         self.app.mount("/config", nekoconf)
 
         if self.logger:
@@ -285,20 +248,20 @@ class NyaProxyApp:
 
     def _init_dashboard(self):
         """Initialize and mount dashboard if enabled."""
-        if not self.config_manager:
+        if not self.config:
             if self.logger:
                 self.logger.warning(
                     "Config manager not initialized, dashboard disabled"
                 )
             return False
 
-        if not self.config_manager.get_dashboard_enabled():
+        if not self.config.get_dashboard_enabled():
             if self.logger:
                 self.logger.info("Dashboard disabled in configuration")
             return False
 
-        host = self.config_manager.get_host()
-        port = self.config_manager.get_port()
+        host = self.config.get_host()
+        port = self.config.get_port()
 
         try:
             self.dashboard = DashboardAPI(
@@ -308,9 +271,9 @@ class NyaProxyApp:
             )
 
             # Set dependencies
-            self.dashboard.set_metrics_collector(self.metrics_collector)
-            self.dashboard.set_request_queue(self.request_queue)
-            self.dashboard.set_config_manager(self.config_manager)
+            self.dashboard.set_metrics_collector(self.core.metrics_collector)
+            self.dashboard.set_request_queue(self.core.request_queue)
+            self.dashboard.set_config_manager(self.config)
 
             # Mount the dashboard app
             self.app.mount("/dashboard", self.dashboard.app, name="dashboard_app")
@@ -392,8 +355,8 @@ class NyaProxyApp:
             self.logger.info("Shutting down NyaProxy")
 
         # Close proxy handler client
-        if self.proxy_handler:
-            await self.proxy_handler.close()
+        if self.core:
+            await self.core.request_executor.close()
 
 
 # Create a single instance of the application
@@ -479,7 +442,7 @@ def main():
         host=host,
         port=port,
         reload=True,
-        reload_includes=[config_path],  # Provide absolute path to config file
+        reload_includes=[config_path],  # Reload on config changes
     )
 
 

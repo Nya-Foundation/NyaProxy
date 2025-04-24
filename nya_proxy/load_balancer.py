@@ -6,6 +6,8 @@ import logging
 import random
 from typing import Callable, List, Optional, TypeVar
 
+from .constants import MAX_HISTORY
+
 T = TypeVar("T")
 
 
@@ -184,7 +186,7 @@ class LoadBalancer:
 
     def record_request_count(self, value: str, active: bool = True) -> None:
         """
-        Record a connection to a value for least_requests strategy.
+        Record request count to a value for least_requests strategy.
 
         Args:
             value: The value that is being connected to
@@ -214,6 +216,5 @@ class LoadBalancer:
         times.append(response_time)
 
         # Limit history length to last 10 responses
-        MAX_HISTORY = 100
         if len(times) > MAX_HISTORY:
             self.response_times[value] = times[-MAX_HISTORY:]

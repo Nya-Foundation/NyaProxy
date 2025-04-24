@@ -7,7 +7,7 @@ import time
 from collections import deque
 from typing import Any, Dict, List, Optional
 
-from .constants import METRICS_HISTORY_SIZE
+from .constants import MAX_HISTORY
 from .utils import _mask_api_key
 
 
@@ -131,35 +131,6 @@ class MetricsCollector:
             }
         )
 
-    def record_key_usage(self, api_name: str, key_id: str, status: int) -> None:
-        """
-        Record API key usage.
-
-        Args:
-            api_name: Name of the API
-            key_id: ID of the API key
-            status: HTTP status code
-        """
-        # Initialize API in dictionaries if not present
-        self._ensure_api_exists(api_name)
-        self._ensure_key_exists(api_name, key_id)
-
-        # Update key metrics
-        key_metrics = self._key_usage[api_name][key_id]
-        key_metrics["active"] = max(0, key_metrics["active"] - 1)
-
-        # Record status code
-        if status not in key_metrics["status_codes"]:
-            key_metrics["status_codes"][status] = 0
-
-        key_metrics["status_codes"][status] += 1
-
-        # Record success/error
-        if 200 <= status < 300:
-            key_metrics["success"] += 1
-        elif status >= 400:
-            key_metrics["error"] += 1
-
     def record_rate_limit_hit(self, api_name: str, api_key: Optional[str]) -> None:
         """
         Record a rate limit hit.
@@ -206,7 +177,7 @@ class MetricsCollector:
             self._status_codes[api_name] = {}
 
         if api_name not in self._response_times:
-            self._response_times[api_name] = deque(maxlen=METRICS_HISTORY_SIZE)
+            self._response_times[api_name] = deque(maxlen=MAX_HISTORY)
 
         if api_name not in self._rate_limit_hits:
             self._rate_limit_hits[api_name] = {}

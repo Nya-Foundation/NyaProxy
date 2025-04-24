@@ -249,11 +249,10 @@ default_settings:
     enabled: true                      # Enable automatic retries
     attempts: 3                        # Max retry attempts
     retry_after_seconds: 10            # Delay between retries
+    retry_status_codes: [429, 500, 502, 503, 504]  # HTTP status codes to retry
   timeouts:
     request_timeout_seconds: 30        # Request timeout
-  error_handling:
-    report_api_errors: true            # Report API errors
-    retry_status_codes: [429, 500, 502, 503, 504]  # HTTP status codes to retry
+    
 
 # API-specific configurations
 apis:
@@ -288,8 +287,6 @@ apis:
     rate_limit:
       endpoint_rate_limit: "10/m"
       key_rate_limit: "10/m"
-    error_handling:
-      retry_status_codes: [429, 500, 503]
 ```
 
 ## Usage
@@ -524,12 +521,11 @@ This allows for:
 Configure how NyaProxy handles specific response scenarios:
 
 ```yaml
-error_handling:
-  retry_status_codes: [429, 500, 502, 503, 504]  # HTTP status codes to trigger retries
 retry:
   enabled: true
   attempts: 3                      # Maximum number of retry attempts
   retry_after_seconds: 10          # Initial delay in seconds between retries
+  etry_status_codes: [429, 500, 502, 503, 504]  # HTTP status codes to trigger retries
 ```
 
 ## Troubleshooting

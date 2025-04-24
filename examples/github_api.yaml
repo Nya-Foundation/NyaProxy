@@ -29,14 +29,6 @@ default_settings:
     retry_after_seconds: 10
   timeouts:
     request_timeout_seconds: 30
-  error_handling:
-    report_api_errors: true
-    retry_status_codes:
-    - 429
-    - 500
-    - 502
-    - 503
-    - 504
 
 apis:
   github:
@@ -66,6 +58,3 @@ apis:
       retry_after_seconds: 5
     timeouts:
       request_timeout_seconds: 30
-    error_handling:
-      retry_status_codes: [429, 500, 502, 503, 504]
-      report_api_errors: true

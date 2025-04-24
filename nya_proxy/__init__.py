@@ -14,7 +14,7 @@ from .load_balancer import LoadBalancer
 from .logger import setup_logger
 from .metrics import MetricsCollector
 from .models import NyaRequest
-from .proxy_handler import ProxyHandler
+from .core import NyaProxyCore
 from .rate_limiter import RateLimiter
 from .request_executor import RequestExecutor
 from .request_queue import RequestQueue
@@ -36,7 +36,7 @@ __all__ = [
     "LoadBalancer",
     "MetricsCollector",
     "NyaRequest",
-    "ProxyHandler",
+    "NyaProxyCore",
     "RateLimiter",
     "RequestExecutor",
     "RequestQueue",

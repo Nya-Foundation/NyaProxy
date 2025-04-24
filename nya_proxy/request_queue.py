@@ -8,11 +8,24 @@ import logging
 import time
 import traceback
 import uuid
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, TypeVar
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+    TYPE_CHECKING,
+)
 
-from .exceptions import QueueFullError, RequestExpiredError
+from .exceptions import QueueFullError, RequestExpiredError, APIKeyExhaustedError
 from .models import NyaRequest
 from .utils import format_elapsed_time
+
+if TYPE_CHECKING:
+    from .key_manager import KeyManager
 
 # Type for the future response
 T = TypeVar("T")
@@ -28,12 +41,17 @@ class RequestQueue:
     """
 
     def __init__(
-        self, logger: logging.Logger, max_size: int = 100, expiry_seconds: int = 300
+        self,
+        key_manager: "KeyManager",
+        logger: logging.Logger,
+        max_size: int = 100,
+        expiry_seconds: int = 300,
     ):
         """
         Initialize the request queue.
 
         Args:
+            key_manager: KeyManager instance for managing API keys
             logger: Logger instance
             max_size: Maximum queue size per API
             expiry_seconds: Default expiry time for queued requests in seconds
@@ -41,9 +59,10 @@ class RequestQueue:
         self.logger = logger
         self.max_size = max_size
         self.default_expiry = expiry_seconds
+        self.key_manager = key_manager
 
         # Use a priority queue (min heap) for each API
-        # Each queue entry is a tuple of (scheduled_time, request_id, NyaRequest)
+        # Each queue entry is a tuple of api_name: List[(scheduled_time, request_id, NyaRequest)]
         self.queues: Dict[str, List[Tuple[float, str, NyaRequest]]] = {}
 
         # Track queue sizes for quick access
@@ -123,8 +142,8 @@ class RequestQueue:
 
             # Update request with queue metadata
             r.added_at = time.time()
-            r.expiry = scheduled_time
             r.attempts = 0
+            r.expiry = scheduled_time
             r.future = response_future
 
             # Add to priority queue (min heap based on scheduled time)
@@ -133,7 +152,7 @@ class RequestQueue:
             self.metrics["total_enqueued"] += 1
 
             self.logger.info(
-                f"Request enqueued for {r.api_name}, queue size: {self.get_queue_size(r.api_name)}, "
+                f"Request enqueued due to rate limit for {r.api_name}, queue size: {self.get_queue_size(r.api_name)}, "
                 f"scheduled in {format_elapsed_time(scheduled_time - time.time())}"
             )
 
@@ -150,7 +169,7 @@ class RequestQueue:
             self.queues[api_name] = []
             self.sizes[api_name] = 0
 
-    def get_estimated_wait_time(self, api_name: str) -> float:
+    async def get_estimated_wait_time(self, api_name: str) -> float:
         """
         Get the estimated wait time by checking the last scheduled request in the queue.
 
@@ -167,7 +186,9 @@ class RequestQueue:
         scheduled_time, _, _ = self.queues[api_name][-1]
         current_time = time.time()
         wait_time = scheduled_time - current_time
-        return max(0.0, wait_time)
+
+        next_key_rese = await self.key_manager.get_key_rate_limit_reset(api_name)
+        return max(next_key_rese, wait_time)
 
     def get_queue_size(self, api_name: str) -> int:
         """
@@ -206,19 +227,45 @@ class RequestQueue:
         """Background task for processing queued requests."""
         while self.running:
             try:
+                # Process queues for all APIs that have available keys
                 await self._process_all_queues()
-                await asyncio.sleep(1.0)  # Check queues every second
+                await asyncio.sleep(0.1)  # Check queues every second
             except Exception as e:
                 self.logger.error(f"Error in queue processing task: {str(e)}")
-                await asyncio.sleep(5.0)  # Backoff if there are errors
+                self.logger.debug(f"Traceback: {traceback.format_exc()}")
+
+                await asyncio.sleep(2.0)  # Backoff if there are errors
 
     async def _process_all_queues(self) -> None:
-        """Process all queues for all APIs."""
+        """Process all queues for all APIs that have available keys."""
         current_time = time.time()
 
-        # Process each API queue
+        # Process each API queue only if it has available keys
         for api_name in list(self.queues.keys()):
-            await self._process_api_queue(api_name, current_time)
+            # Skip processing this API's queue if it has no requests
+            if not self.queues[api_name]:
+                continue
+
+            # Check if this specific API has available keys
+            if await self._ready_to_process(api_name):
+                await self._process_api_queue(api_name, current_time)
+            else:
+                break
+
+    async def _ready_to_process(self, api_name: str) -> bool:
+        """
+        Check if the queue for a specific API is ready to process requests.
+
+        Args:
+            api_name: Name of the API
+
+        Returns:
+            True if the queue is ready to process, False otherwise
+        """
+        endpoint_cleared = await self.key_manager.is_api_available(api_name)
+        has_available_keys = await self.key_manager.has_available_keys(api_name)
+
+        return endpoint_cleared and has_available_keys and self.queues.get(api_name, [])
 
     async def _process_api_queue(self, api_name: str, current_time: float) -> None:
         """
@@ -228,22 +275,34 @@ class RequestQueue:
             api_name: Name of the API to process
             current_time: Current timestamp
         """
-        if not self.queues[api_name]:
-            return
-
         async with self.lock:
             # Check if the next request is ready to be processed (scheduled_time <= current_time)
             while self.queues[api_name] and self.queues[api_name][0][0] <= current_time:
+                # Check if we still have available keys for this API before processing each request
+                # This prevents processing multiple requests when only one key is available
+                if not await self._ready_to_process(api_name):
+                    break
+
+                # Try to get a key BEFORE popping from queue
+                try:
+                    available_key = await self.key_manager.get_available_key(api_name)
+                except APIKeyExhaustedError:
+                    # No keys available, exit loop
+                    break
+
                 # Pop the next request
-                scheduled_time, _, request = heapq.heappop(self.queues[api_name])
-                self.sizes[api_name] -= 1
+                _, _, request = heapq.heappop(self.queues[api_name])
+                self.sizes[request.api_name] -= 1
 
                 # Check if the request is expired
-                wait_time = current_time - request.added_at
-                if wait_time > self.default_expiry * 2:
+                waited_time = current_time - request.added_at
+                if waited_time > self.default_expiry:
                     # Handle expired request
-                    await self._handle_expired_request(request, wait_time)
+                    await self._handle_expired_request(request, waited_time)
                     continue
+
+                # assign an API key to the request
+                request.api_key = available_key
 
                 # Process the request outside the lock
                 asyncio.create_task(self._process_request_item(request))
@@ -262,11 +321,7 @@ class RequestQueue:
             f"Request in queue for {request.api_name} expired after waiting {format_elapsed_time(wait_time)}"
         )
         self.metrics["total_expired"] += 1
-
-        if hasattr(request, "future") and not request.future.done():
-            request.future.set_exception(
-                RequestExpiredError(request.api_name, wait_time)
-            )
+        self._fail_request(request, RequestExpiredError(request.api_name, wait_time))
 
     async def _process_request_item(self, request: NyaRequest) -> None:
         """
@@ -281,55 +336,15 @@ class RequestQueue:
             return
 
         api_name = request.api_name
-        max_attempts = 3  # Maximum number of retry attempts
+        response = await self.processor(request)
 
-        try:
-            # Increment attempts counter
-            request.attempts += 1
+        # Set the result on the future
+        if hasattr(request, "future") and not request.future.done():
+            request.future.set_result(response)
 
-            # Process the request
-            self.logger.info(
-                f"Processing queued request for {api_name} (attempt {request.attempts}/{max_attempts})"
-            )
-            response = await self.processor(request)
-
-            # Set the result on the future
-            if hasattr(request, "future") and not request.future.done():
-                request.future.set_result(response)
-
-            # Successfully processed
-            self.metrics["total_processed"] += 1
-            self.logger.info(f"Successfully processed queued request for {api_name}")
-
-        except Exception as e:
-            await self._handle_request_error(request, e, max_attempts)
-
-    async def _handle_request_error(
-        self, request: NyaRequest, error: Exception, max_attempts: int
-    ) -> None:
-        """
-        Handle errors during request processing.
-
-        Args:
-            request: The request that failed
-            error: The exception that occurred
-            max_attempts: Maximum number of retry attempts
-        """
-        api_name = request.api_name
-        self.logger.warning(
-            f"Error processing queued request for {api_name}: {str(error)}, traceback: {traceback.format_exc()}"
-        )
-
-        # If we haven't exceeded max attempts, requeue with a delay
-        if request.attempts < max_attempts:
-            await self._requeue_request_with_backoff(request)
-        else:
-            # If we've exceeded max attempts, fail the request
-            self.logger.error(
-                f"Max retry attempts ({max_attempts}) reached for queued request to {api_name}"
-            )
-            self.metrics["total_failed"] += 1
-            self._fail_request(request, error)
+        # Successfully processed
+        self.metrics["total_processed"] += 1
+        self.logger.info(f"Successfully processed queued request for {api_name}")
 
     def _fail_request(self, request: NyaRequest, error: Exception) -> None:
         """
@@ -342,46 +357,7 @@ class RequestQueue:
         if hasattr(request, "future") and not request.future.done():
             request.future.set_exception(error)
 
-    async def _requeue_request_with_backoff(self, request: NyaRequest) -> None:
-        """
-        Requeue a failed request with exponential backoff.
-
-        Args:
-            request: The request to requeue
-        """
-        # Calculate backoff delay based on attempt number (exponential with jitter)
-        base_delay = 2.0
-        attempt = request.attempts
-        max_jitter = 0.25  # 25% jitter
-
-        # Exponential backoff formula: base_delay * (2 ^ attempt) with jitter
-        import random
-
-        delay = base_delay * (2**attempt)
-        jitter = random.uniform(-max_jitter * delay, max_jitter * delay)
-        delay = max(0.1, delay + jitter)  # Ensure minimum delay of 0.1s
-
-        self.logger.info(
-            f"Requeueing request for {request.api_name} with {format_elapsed_time(delay)} delay "
-            f"(attempt {request.attempts})"
-        )
-
-        # Set new scheduled time with backoff
-        scheduled_time = time.time() + delay
-        request.expiry = scheduled_time
-
-        # Generate a new request ID
-        request_id = str(uuid.uuid4())
-
-        # Add to queue and update metrics
-        async with self.lock:
-            # Ensure queue exists (it might have been cleared)
-            self._ensure_queue_exists(request.api_name)
-
-            heapq.heappush(
-                self.queues[request.api_name], (scheduled_time, request_id, request)
-            )
-            self.sizes[request.api_name] += 1
+        self.metrics["total_failed"] += 1
 
     async def clear_queue(self, api_name: str) -> int:
         """

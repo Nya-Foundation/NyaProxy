@@ -5,10 +5,11 @@ Data models for request handling in NyaProxy.
 import asyncio
 import time
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING, Dict, Optional, Union, Any
 
 if TYPE_CHECKING:
     from fastapi import Request
+    from starlette.datastructures import URL
 
 
 @dataclass
@@ -22,11 +23,16 @@ class NyaRequest:
 
     # Required request fields
     method: str
-    url: str
+
+    # original url from the request, contains the full path of nya_proxy
+    _url: Union["URL", str]
+
+    # final url to be requested, differ from _url since the request is proxied
+    url: Optional[Union["URL", str]] = None
 
     # Optional request fields
-    _raw_request: Optional["Request"] = None
-    headers: Dict[str, str] = field(default_factory=dict)
+    _raw: Optional["Request"] = None
+    headers: Dict[str, Any] = field(default_factory=dict)
     content: Optional[bytes] = None
     timeout: float = 30.0
 

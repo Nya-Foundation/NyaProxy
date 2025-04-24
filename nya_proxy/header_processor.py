@@ -87,6 +87,10 @@ class HeaderProcessor:
             # Use the lowercase header name for case-insensitivity
             processed_headers[header_name.lower()] = header_value
 
+            # patch accept-encoding header to avoid issues with httpx
+            if header_name.lower() == "accept-encoding":
+                processed_headers[header_name.lower()] = "identity"
+
         return processed_headers
 
     def _substitute_variables(

@@ -15,6 +15,20 @@ class ConfigurationError(NyaProxyError):
     pass
 
 
+class VariablesConfigurationError(ConfigurationError):
+    """Exception raised for errors in variable configuration."""
+
+    def __init__(self, message: str):
+        """
+        Initialize variables configuration error.
+
+        Args:
+            message: Error message
+        """
+        super().__init__(f"Variables configuration error: {message}")
+        self.message = message
+
+
 class EndpointRateLimitExceededError(NyaProxyError):
     """Exception raised when rate limits are exceeded."""
 
@@ -68,7 +82,7 @@ class RequestExpiredError(NyaProxyError):
         )
 
 
-class ApiKeyRateLimitExceededError(NyaProxyError):
+class APIKeyExhaustedError(NyaProxyError):
     """Exception raised when no API keys are available (all key are rate limited)."""
 
     def __init__(self, api_name: str):

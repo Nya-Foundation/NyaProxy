@@ -7,7 +7,7 @@ import logging
 import time
 from typing import Dict, Optional, Tuple
 
-from .exceptions import ApiKeyRateLimitExceededError
+from .exceptions import APIKeyExhaustedError, VariablesConfigurationError
 from .load_balancer import LoadBalancer
 from .rate_limiter import RateLimiter
 
@@ -30,134 +30,191 @@ class KeyManager:
         Initialize the key manager.
 
         Args:
-            load_balancers: Dictionary of API load balancers
-            rate_limiters: Dictionary of rate limiters
+            load_balancers: Dictionary of API key load balancers
+            rate_limiters: Dictionary of API key rate limiters {api_}
             logger: Logger instance
         """
         self.load_balancers = load_balancers
         self.rate_limiters = rate_limiters
         self.logger = logger or logging.getLogger(__name__)
 
-        # Cache for rate limited keys (api_name -> dict of rate limited keys with expiry times)
-        self.rate_limited_keys: Dict[str, Dict[str, float]] = {}
-
         # Lock to prevent race conditions in key selection
-        self.key_selection_lock = asyncio.Lock()
+        self.lock = asyncio.Lock()
 
-    async def get_available_key(
-        self, api_name: str, load_balancer: LoadBalancer
-    ) -> Optional[str]:
+    def get_key_rate_limiter(
+        self, api_name: str, api_key: str
+    ) -> Optional[RateLimiter]:
+        """
+        Get the rate limiter for a specific API key.
+
+        Args:
+            api_name: Name of the API
+            api_key: The API key to get the rate limiter for
+
+        Returns:
+            RateLimiter instance or None if not found
+        """
+        return self.rate_limiters.get(f"{api_name}_{api_key}")
+
+    def get_api_rate_limiter(self, api_name: str) -> Optional[RateLimiter]:
+        """
+        Get the rate limiter for an API endpoint.
+
+        Args:
+            api_name: Name of the API
+
+        Returns:
+            RateLimiter instance or None if not found
+        """
+        return self.rate_limiters.get(f"{api_name}_endpoint")
+
+    async def is_api_available(self, api_name: str) -> bool:
+        """
+        Check if the API endpoint is available for requests.
+
+        Args:
+            api_name: Name of the API
+
+        Returns:
+            True if the API endpoint is not rate limited, False otherwise
+        """
+        async with self.lock:
+            endpoint_limiter = self.get_api_rate_limiter(api_name)
+            return not endpoint_limiter.is_rate_limited()
+
+    async def has_available_keys(self, api_name: str) -> bool:
+        """
+        Check if there is an available key for the given API that hasn't exceeded its rate limit.
+
+        Args:
+            api_name: Name of the API
+
+        Returns:
+            True if an available key exists, False otherwise
+        """
+
+        async with self.lock:
+            key_lb = self.load_balancers.get(api_name)
+
+            if not key_lb:
+                return False
+
+            all_keys = set(key_lb.values)
+            if not all_keys:
+                return False
+
+            # Check if any key is available
+            for key in all_keys:
+                key_limiter = self.get_key_rate_limiter(api_name, key)
+                if not key_limiter or not key_limiter.is_rate_limited():
+                    return True
+
+            return False
+
+    async def get_available_key(self, api_name: str) -> Optional[str]:
         """
         Get an available key that hasn't exceeded its rate limit.
 
         Args:
             api_name: Name of the API
-            load_balancer: Load balancer for the API
 
         Returns:
             An available key or None if all keys are rate limited
-
-        Raises:
-            NoAvailableKeysError: If all keys are rate limited
         """
-        # Use a lock to prevent race conditions when multiple requests try to get a key
-        async with self.key_selection_lock:
-            # Initialize rate limited keys cache for this API if needed
-            if api_name not in self.rate_limited_keys:
-                self.rate_limited_keys[api_name] = {}
+        key_lb = self.load_balancers.get(api_name)
+        if not key_lb:
+            raise VariablesConfigurationError(
+                f"No load balancer configured for API: {api_name}"
+            )
 
-            # Clean up expired rate limits
-            self._clean_rate_limited_keys(api_name)
-
+        # Use a lock to prevent race conditions
+        async with self.lock:
             # Get all keys from the load balancer
-            all_keys = set(load_balancer.values)
+            all_keys = set(key_lb.values)
             if not all_keys:
-                self.logger.warning(f"No API keys configured for {api_name}")
-                raise ApiKeyRateLimitExceededError(api_name)
+                self.logger.error(f"No API keys configured for {api_name}")
+                raise APIKeyExhaustedError(api_name)
 
-            # Get currently rate limited keys
-            current_time = time.time()
-            rate_limited = {
-                k
-                for k, expire_time in self.rate_limited_keys[api_name].items()
-                if expire_time > current_time
-            }
-
-            # Available keys are those not in the rate limited set
-            available_keys = all_keys - rate_limited
-
-            # If no keys are available, raise exception immediately
-            if not available_keys:
-                self.logger.warning(
-                    f"All API keys for {api_name} are rate limited by your configured limits (per key)"
-                )
-                raise ApiKeyRateLimitExceededError(api_name)
-
-            # Try keys from the load balancer until we find one that isn't rate limited
+            # Find a non-rate-limited key
             for _ in range(len(all_keys)):
-                key = load_balancer.get_next()
-
-                # Skip already known rate-limited keys
-                if key in rate_limited:
-                    continue
-
-                # Check rate limit for this specific key
-                key_limiter = self.rate_limiters.get(f"{api_name}_{key}")
+                key = key_lb.get_next()
+                key_limiter = self.get_key_rate_limiter(api_name, key)
 
                 # If no limiter exists or it allows the request, return the key
                 if not key_limiter or key_limiter.allow_request():
+                    key_lb.record_request_count(key)
                     return key
 
-                # Otherwise, mark this key as rate limited
-                reset_time = key_limiter.get_reset_time()
-                self.rate_limited_keys[api_name][key] = current_time + reset_time
-
-                # Add to our local rate limited set for this iteration
-                rate_limited.add(key)
-                available_keys.discard(key)
-
-                # If we've run out of available keys during this loop, break early
-                if not available_keys:
-                    break
-
             # If we've tried all keys and none are available, raise exception
-            self.logger.warning(f"All checked API keys for {api_name} are rate limited")
-            raise ApiKeyRateLimitExceededError(api_name)
+            self.logger.warning(f"All API keys for {api_name} are rate limited")
+            raise APIKeyExhaustedError(api_name)
 
     def _clean_rate_limited_keys(self, api_name: str) -> None:
         """
-        Remove expired rate limits from the cache.
+        Maunally reset rate limit for all keys rate limiters of an API.
 
         Args:
             api_name: Name of the API
         """
-        if api_name not in self.rate_limited_keys:
-            return
 
-        current_time = time.time()
-        self.rate_limited_keys[api_name] = {
-            k: expire_time
-            for k, expire_time in self.rate_limited_keys[api_name].items()
-            if expire_time > current_time
-        }
+        for name, limiter in self.rate_limiters.items():
+            if name.startswith(f"{api_name}_") and name != f"{api_name}_endpoint":
+                # Reset the key limiter
+                limiter.reset()
+                self.logger.info(f"Reset rate limit for key {name}")
 
-    def get_rate_limit_reset_time(self, api_name: str) -> float:
+    async def get_api_rate_limit_reset(
+        self, api_name: str, default: float = 1.0
+    ) -> float:
         """
-        Get the time in seconds until the rate limit resets.
+        Get the time in seconds until the rate limit resets on the endpoint level.
 
         Args:
             api_name: Name of the API
+            default: Default reset time if no limiter is found
 
         Returns:
             Time in seconds until reset, or 60.0 if unknown
         """
-        endpoint_limiter = self.rate_limiters.get(f"{api_name}_endpoint")
 
-        if endpoint_limiter:
-            return endpoint_limiter.get_reset_time()
+        async with self.lock:
+            endpoint_limiter = self.get_api_rate_limiter(api_name)
 
-        # Default reset time if limiter not found
-        return 60.0
+            if endpoint_limiter:
+                return endpoint_limiter.get_reset_time()
+
+            # Default reset time if limiter not found
+            return default
+
+    async def get_key_rate_limit_reset(self, api_name: str) -> float:
+        """
+        Fetch the earliest reset time for all keys of an API.
+
+        Args:
+            api_name: Name of the API
+        Returns:
+            Earliest reset time in seconds, or 60.0 if no keys are available
+        """
+        async with self.lock:
+
+            # Get all keys from the load balancer
+            key_lb = self.load_balancers.get(api_name)
+            all_keys = set(key_lb.values)
+
+            key_reset_times = []
+            for key in all_keys:
+                key_limiter = self.get_key_rate_limiter(api_name, key)
+                if not key_limiter:
+                    continue
+
+                key_reset_times.append(key_limiter.get_reset_time())
+
+            if not key_reset_times:
+                raise VariablesConfigurationError(
+                    f"Bad API key Configuration, or no rate limiters configured for API: {api_name}"
+                )
+
+            return min(key_reset_times)
 
     def get_remaining_quota(
         self, api_name: str, key: Optional[str] = None
@@ -173,7 +230,7 @@ class KeyManager:
             Tuple of (remaining_requests, reset_in_seconds)
         """
         # Check endpoint level quota
-        endpoint_limiter = self.rate_limiters.get(f"{api_name}_endpoint")
+        endpoint_limiter = self.get_api_rate_limiter(api_name)
         if not endpoint_limiter:
             return (999, 0)  # No limit
 
@@ -185,7 +242,7 @@ class KeyManager:
             return (endpoint_remaining, endpoint_reset)
 
         # Check key level quota
-        key_limiter = self.rate_limiters.get(f"{api_name}_{key}")
+        key_limiter = self.get_key_rate_limiter(api_name, key)
         if not key_limiter:
             return (endpoint_remaining, endpoint_reset)  # No key-specific limit
 
@@ -210,11 +267,15 @@ class KeyManager:
             key: The API key to mark
             reset_time: Seconds until the rate limit resets
         """
-        if api_name not in self.rate_limited_keys:
-            self.rate_limited_keys[api_name] = {}
+        key_limiter = self.get_key_rate_limiter(api_name, key)
 
-        current_time = time.time()
-        self.rate_limited_keys[api_name][key] = current_time + reset_time
+        if not key_limiter:
+            self.logger.warning(
+                f"Cannot mark key {key[:4]}... for {api_name} as rate limited: no rate limiter found"
+            )
+            return
+
+        key_limiter.mark_rate_limited(reset_time)
 
         self.logger.info(
             f"Manually marked key {key[:4]}... for {api_name} as rate limited for {reset_time:.1f}s"
@@ -228,12 +289,8 @@ class KeyManager:
             api_name: Optional API name to reset, or all if None
         """
         if api_name:
-            # Reset for specific API
-            if api_name in self.rate_limited_keys:
-                self.rate_limited_keys[api_name] = {}
-
             # Reset endpoint limiter
-            endpoint_limiter = self.rate_limiters.get(f"{api_name}_endpoint")
+            endpoint_limiter = self.get_api_rate_limiter(api_name)
             if endpoint_limiter:
                 endpoint_limiter.reset()
 
@@ -244,9 +301,7 @@ class KeyManager:
 
             self.logger.info(f"Reset rate limits for {api_name}")
         else:
-            # Reset all APIs
-            self.rate_limited_keys = {}
-
+            # Reset all limiters
             for _, limiter in self.rate_limiters.items():
                 limiter.reset()
 

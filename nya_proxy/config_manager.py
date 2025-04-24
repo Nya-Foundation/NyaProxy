@@ -46,9 +46,6 @@ class ConfigManager:
         try:
             self.config = ConfigAPI(config_path=config_file, schema_path="schema.json")
 
-            # Validate the configuration
-            self.validate_config()
-
             # Validate against the schema
             results = self.config.validate()
 
@@ -65,34 +62,6 @@ class ConfigManager:
 
         except Exception as e:
             raise ConfigError(f"Failed to load configuration: {str(e)}")
-
-    def validate_config(self) -> None:
-        """Validate the configuration."""
-        # Check if required sections exist
-        if not self.config.get("nya_proxy"):
-            raise ConfigError("Missing required section: nya_proxy")
-
-        # Check if at least one API is configured
-        apis = self.get_apis()
-        if not apis:
-            raise ConfigError(
-                "No APIs configured. Please add at least one API configuration."
-            )
-
-        # Validate API configurations
-        for api_name, api_config in apis.items():
-            if "endpoint" not in api_config:
-                self.logger.warning(
-                    f"No endpoint specified for API '{api_name}'. Using default."
-                )
-
-            # Check if key variable exists and has associated values
-            key_variable = api_config.get("key_variable", "keys")
-            keys = self.get_api_variables(api_name, key_variable)
-            if not keys:
-                self.logger.warning(
-                    f"No {key_variable} found for API '{api_name}'. This API may not work correctly."
-                )
 
     def get_port(self) -> int:
         """Get the port for the proxy server."""
@@ -217,6 +186,7 @@ class ConfigManager:
         Returns:
             The setting value from API config or default settings
         """
+
         # Get the default value first
         default_value = self.get_default_setting(setting_path)
 
@@ -261,6 +231,30 @@ class ConfigManager:
             Key variable name or default if not specified
         """
         return self.get_api_setting(api_name, "key_variable")
+
+    def get_api_custom_headers(self, api_name: str) -> Dict[str, Any]:
+        """
+        Get the custom headers for an API.
+
+        Args:
+            api_name: Name of the API
+
+        Returns:
+            Dictionary of headers or empty dict if not specified
+        """
+        return self.get_api_setting(api_name, "headers", "dict") or {}
+
+    def get_api_endpoint(self, api_name: str) -> str:
+        """
+        Get the endpoint URL for an API.
+
+        Args:
+            api_name: Name of the API
+
+        Returns:
+            Endpoint URL or default if not specified
+        """
+        return self.get_api_setting(api_name, "endpoint").rstrip("/")
 
     def get_api_load_balancing_strategy(self, api_name: str) -> str:
         """
@@ -346,20 +340,6 @@ class ConfigManager:
         """
         return self.get_api_setting(api_name, "retry.retry_after_seconds", "int")
 
-    def get_api_report_api_errors(self, api_name: str) -> bool:
-        """
-        Get the setting for reporting API errors for an API.
-
-        Args:
-            api_name: Name of the API
-
-        Returns:
-            Setting for reporting API errors or default if not specified
-        """
-        return self.get_api_setting(
-            api_name, "error_handling.report_api_errors", "bool"
-        )
-
     def get_api_retry_status_codes(self, api_name: str) -> List[int]:
         """
         Get the retry status codes for an API.
@@ -370,11 +350,45 @@ class ConfigManager:
         Returns:
             Retry status codes or default if not specified
         """
-        return self.get_api_setting(
-            api_name, "error_handling.retry_status_codes", "list"
-        )
+        return self.get_api_setting(api_name, "retry.retry_status_codes", "list")
 
-    def get_api_variables(self, api_name: str, variable_name: str) -> List[str]:
+    def get_api_retry_request_methods(self, api_name: str) -> List[str]:
+        """
+        Get the retry request methods for an API.
+
+        Args:
+            api_name: Name of the API
+
+        Returns:
+            List of request methods that should be retried or default if not specified
+        """
+        return self.get_api_setting(api_name, "retry.retry_request_methods", "list")
+
+    def get_api_variables(self, api_name: str) -> Dict[str, List[Any]]:
+        """
+        Get the names of all variables defined for an API.
+
+        Args:
+            api_name: Name of the API
+
+        Returns:
+            List of variable names or empty list if not found
+        """
+        return self.get_api_config(api_name).get("variables", {})
+
+    def get_api_aliases(self, api_name: str) -> List[str]:
+        """
+        Get the aliases defined for an API.
+
+        Args:
+            api_name: Name of the API
+
+        Returns:
+            Dictionary of aliases or empty dict if not found
+        """
+        return self.get_api_config(api_name).get("aliases", [])
+
+    def get_api_variable_values(self, api_name: str, variable_name: str) -> List[Any]:
         """
         Get variable values for an API.
 
@@ -389,11 +403,12 @@ class ConfigManager:
         if not api_config:
             return []
 
-        variables: Dict = api_config.get("variables", {})
+        variables = self.get_api_variables(api_name)
         values = variables.get(variable_name, [])
 
         if isinstance(values, list):
-            return values
+            # handle list of integers or strings
+            return [v for v in values if v is not None]
         elif isinstance(values, str):
             # Split comma-separated string values if provided as string
             return [v.strip() for v in values.split(",")]
@@ -405,7 +420,6 @@ class ConfigManager:
         """Reload the configuration from disk."""
         try:
             self.config = NekoConf(self.config_file)
-            self.validate_config()
             self.logger.info("Configuration reloaded successfully")
         except Exception as e:
             self.logger.error(f"Failed to reload configuration: {str(e)}")

@@ -147,6 +147,7 @@
                             "type": "string",
                             "enum": [
                                 "default",
+                                "backoff",
                                 "key_rotation"
                             ],
                             "description": "Retry mode"
@@ -160,6 +161,27 @@
                             "type": "integer",
                             "description": "Delay between retries",
                             "minimum": 0
+                        },
+                        "retry_status_codes": {
+                            "type": "array",
+                            "items": {
+                                "type": "integer",
+                                "description": "HTTP status codes to retry"
+                            }
+                        },
+                        "retry_request_methods": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "enum": [
+                                    "POST",
+                                    "GET",
+                                    "PUT",
+                                    "DELETE",
+                                    "PATCH",
+                                    "OPTIONS"
+                                ]
+                            }
                         }
                     }
                 },
@@ -170,22 +192,6 @@
                             "type": "integer",
                             "description": "Request timeout",
                             "minimum": 1
-                        }
-                    }
-                },
-                "error_handling": {
-                    "type": "object",
-                    "properties": {
-                        "report_api_errors": {
-                            "type": "boolean",
-                            "description": "Report API errors"
-                        },
-                        "retry_status_codes": {
-                            "type": "array",
-                            "items": {
-                                "type": "integer",
-                                "description": "HTTP status codes to retry"
-                            }
                         }
                     }
                 }
@@ -285,17 +291,47 @@
                             "properties": {
                                 "enabled": {
                                     "type": "boolean",
-                                    "description": "Enable automatic retries for this API"
+                                    "description": "Enable automatic retries"
+                                },
+                                "mode": {
+                                    "type": "string",
+                                    "enum": [
+                                        "default",
+                                        "backoff",
+                                        "key_rotation"
+                                    ],
+                                    "description": "Retry mode"
                                 },
                                 "attempts": {
                                     "type": "integer",
-                                    "description": "Max retry attempts for this API",
+                                    "description": "Max retry attempts",
                                     "minimum": 0
                                 },
                                 "retry_after_seconds": {
                                     "type": "integer",
-                                    "description": "Delay between retries for this API",
+                                    "description": "Delay between retries",
                                     "minimum": 0
+                                },
+                                "retry_status_codes": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "integer",
+                                        "description": "HTTP status codes to retry"
+                                    }
+                                },
+                                "retry_request_methods": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "string",
+                                        "enum": [
+                                            "POST",
+                                            "GET",
+                                            "PUT",
+                                            "DELETE",
+                                            "PATCH",
+                                            "OPTIONS"
+                                        ]
+                                    }
                                 }
                             }
                         },
@@ -306,22 +342,6 @@
                                     "type": "integer",
                                     "description": "Request timeout for this API",
                                     "minimum": 1
-                                }
-                            }
-                        },
-                        "error_handling": {
-                            "type": "object",
-                            "properties": {
-                                "report_api_errors": {
-                                    "type": "boolean",
-                                    "description": "Report API errors for this API"
-                                },
-                                "retry_status_codes": {
-                                    "type": "array",
-                                    "items": {
-                                        "type": "integer",
-                                        "description": "HTTP status codes to retry for this API"
-                                    }
                                 }
                             }
                         }

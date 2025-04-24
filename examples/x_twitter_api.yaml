@@ -29,14 +29,6 @@ default_settings:
     retry_after_seconds: 10
   timeouts:
     request_timeout_seconds: 30
-  error_handling:
-    report_api_errors: true
-    retry_status_codes:
-    - 429
-    - 500
-    - 502
-    - 503
-    - 504
     
 apis:
   x:
@@ -67,14 +59,3 @@ apis:
       retry_after_seconds: 5
     timeouts:
       request_timeout_seconds: 20
-    error_handling:
-      retry_status_codes: [429, 500, 502, 503, 504]
-      report_api_errors: true
-    
-    # For endpoints requiring OAuth 1.0a
-    v1_auth:
-      enabled: false  # Set to true for v1 API endpoints
-      consumer_key: "${{api_keys}}"
-      consumer_secret: "${{api_secrets}}"
-      access_token: "your_access_token"
-      access_token_secret: "your_access_token_secret"

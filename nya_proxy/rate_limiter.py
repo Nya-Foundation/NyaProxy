@@ -77,16 +77,16 @@ class RateLimiter:
 
         return requests_limit, window_seconds
 
-    def allow_request(self) -> bool:
+    def is_rate_limited(self) -> bool:
         """
-        Check if a request is allowed under the rate limit.
+        Check if a request would be rate limited without recording it.
 
         Returns:
-            True if request is allowed, False if rate limited
+            True if rate limited, False if request would be allowed
         """
-        # If no limit is set, always allow
+        # If no limit is set, never rate limited
         if self.requests_limit == 0 or self.window_seconds == 0:
-            return True
+            return False
 
         current_time = time.time()
 
@@ -94,11 +94,52 @@ class RateLimiter:
         self._clean_old_timestamps(current_time)
 
         # Check if we've hit the limit
-        if len(self.request_timestamps) >= self.requests_limit:
+        return len(self.request_timestamps) >= self.requests_limit
+
+    def record_request(self) -> None:
+        """
+        Record a request without checking rate limits.
+        This should be called after checking is_rate_limited() returns False.
+        """
+        current_time = time.time()
+        self.request_timestamps.append(current_time)
+
+    def mark_rate_limited(self, duration: float) -> None:
+        """
+        Explicitly mark this rate limiter as rate limited for a specific duration.
+
+        This is useful when receiving a 429 response from an API to avoid sending
+        requests for the specified time period.
+
+        Args:
+            duration: Number of seconds to mark as rate limited
+        """
+        current_time = time.time()
+
+        # Clear existing timestamps to avoid accumulation
+        self.request_timestamps = []
+
+        # Fill with enough timestamps to exceed the limit
+        # Use timestamps that will expire after the specified duration
+        expiry_time = current_time - self.window_seconds + duration
+        for _ in range(self.requests_limit):
+            self.request_timestamps.append(expiry_time)
+
+        self.last_cleanup_time = current_time
+
+    def allow_request(self) -> bool:
+        """
+        Check if a request is allowed under the rate limit and record it if allowed.
+
+        Returns:
+            True if request is allowed, False if rate limited
+        """
+        # Check if rate limited
+        if self.is_rate_limited():
             return False
 
         # Record this request
-        self.request_timestamps.append(current_time)
+        self.record_request()
         return True
 
     def _clean_old_timestamps(self, current_time: float) -> None:
