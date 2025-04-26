@@ -111,12 +111,15 @@ class KeyManager:
 
             return False
 
-    async def get_available_key(self, api_name: str) -> Optional[str]:
+    async def get_available_key(
+        self, api_name: str, apply_rate_limit: bool = True
+    ) -> Optional[str]:
         """
         Get an available key that hasn't exceeded its rate limit.
 
         Args:
             api_name: Name of the API
+            apply_rate_limit: Whether to apply rate limit checks
 
         Returns:
             An available key or None if all keys are rate limited
@@ -126,6 +129,10 @@ class KeyManager:
             raise VariablesConfigurationError(
                 f"No load balancer configured for API: {api_name}"
             )
+
+        # If rate limiting is not applied, just return the next key
+        if not apply_rate_limit:
+            return key_lb.get_next()
 
         # Use a lock to prevent race conditions
         async with self.lock:
@@ -142,7 +149,6 @@ class KeyManager:
 
                 # If no limiter exists or it allows the request, return the key
                 if not key_limiter or key_limiter.allow_request():
-                    key_lb.record_request_count(key)
                     return key
 
             # If we've tried all keys and none are available, raise exception
@@ -215,45 +221,6 @@ class KeyManager:
                 )
 
             return min(key_reset_times)
-
-    def get_remaining_quota(
-        self, api_name: str, key: Optional[str] = None
-    ) -> Tuple[int, float]:
-        """
-        Get the remaining quota for an API or specific key.
-
-        Args:
-            api_name: Name of the API
-            key: Optional specific key to check
-
-        Returns:
-            Tuple of (remaining_requests, reset_in_seconds)
-        """
-        # Check endpoint level quota
-        endpoint_limiter = self.get_api_rate_limiter(api_name)
-        if not endpoint_limiter:
-            return (999, 0)  # No limit
-
-        endpoint_remaining = endpoint_limiter.get_remaining_requests()
-        endpoint_reset = endpoint_limiter.get_reset_time()
-
-        # If no specific key requested, return endpoint level quota
-        if not key:
-            return (endpoint_remaining, endpoint_reset)
-
-        # Check key level quota
-        key_limiter = self.get_key_rate_limiter(api_name, key)
-        if not key_limiter:
-            return (endpoint_remaining, endpoint_reset)  # No key-specific limit
-
-        key_remaining = key_limiter.get_remaining_requests()
-        key_reset = key_limiter.get_reset_time()
-
-        # Return the more restrictive of the two limits
-        if key_remaining < endpoint_remaining:
-            return (key_remaining, key_reset)
-        else:
-            return (endpoint_remaining, endpoint_reset)
 
     def mark_key_rate_limited(self, api_name: str, key: str, reset_time: float) -> None:
         """

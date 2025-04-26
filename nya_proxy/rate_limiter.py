@@ -149,18 +149,10 @@ class RateLimiter:
         Args:
             current_time: Current time in seconds
         """
-        # Skip frequent cleanups (optimization)
-        if current_time - self.last_cleanup_time < 1.0:
-            return
-
         window_start = current_time - self.window_seconds
-
-        # Use list comprehension for better performance
         self.request_timestamps = [
             t for t in self.request_timestamps if t >= window_start
         ]
-
-        # Update last cleanup time
         self.last_cleanup_time = current_time
 
     def get_reset_time(self) -> float:

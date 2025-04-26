@@ -6,7 +6,7 @@ import logging
 import random
 from typing import Callable, List, Optional, TypeVar
 
-from .constants import MAX_HISTORY
+from .constants import MAX_QUEUE_SIZE
 
 T = TypeVar("T")
 
@@ -75,7 +75,11 @@ class LoadBalancer:
 
         # Select strategy function
         strategy_func = self._get_strategy_function()
-        return strategy_func()
+
+        obj = strategy_func()
+        self.record_request_count(obj, active=True)
+
+        return obj
 
     def _get_strategy_function(self) -> Callable[[], str]:
         """
@@ -216,5 +220,5 @@ class LoadBalancer:
         times.append(response_time)
 
         # Limit history length to last 10 responses
-        if len(times) > MAX_HISTORY:
-            self.response_times[value] = times[-MAX_HISTORY:]
+        if len(times) > MAX_QUEUE_SIZE:
+            self.response_times[value] = times[-MAX_QUEUE_SIZE:]

@@ -2,20 +2,21 @@
 Response processing utilities for NyaProxy.
 """
 
+import asyncio
 import json
 import logging
 import time
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Optional
 
 import httpx
 from fastapi import Response
 from starlette.responses import JSONResponse, StreamingResponse
 
-from .utils import decode_content
+from .utils import decode_content, json_safe_dumps
 
 if TYPE_CHECKING:
-    from .metrics import MetricsCollector
     from .load_balancer import LoadBalancer
+    from .metrics import MetricsCollector
     from .models import NyaRequest
 
 
@@ -58,22 +59,33 @@ class ResponseProcessor:
 
     def record_response_metrics(
         self,
-        api_name: str,
-        api_key: str,
-        status_code: int,
-        elapsed: float = 0.0,
-        response_time: float = 0.0,
+        r: "NyaRequest",
+        response: Optional[httpx.Response],
+        start_time: float = 0.0,
     ) -> None:
         """
         Record response metrics for the API.
         Args:
-            api_name: Name of the API
-            api_key: API key used for the request
-            status_code: HTTP status code of the response
-            elapsed: Time taken to process the request
-            response_time: Time taken to get the response
+            r: NyaRequest object containing request data
+            response: Response from httpx client
+            start_time: Request start time
         """
-        if self.metrics_collector:
+
+        api_name = r.api_name
+        api_key = r.api_key or "unknown"
+
+        now = time.time()
+
+        # Calculate elapsed time
+        elapsed = now - r.added_at
+        response_time = now - start_time
+        status_code = response.status_code if response else 502
+
+        self.logger.debug(
+            f"Received response from {api_name} with status {status_code} in {elapsed:.2f}s"
+        )
+
+        if self.metrics_collector and r.apply_rate_limit:
             self.metrics_collector.record_response(
                 api_name, api_key, status_code, elapsed
             )
@@ -99,20 +111,6 @@ class ResponseProcessor:
         Returns:
             Processed response for the client
         """
-
-        api_name = r.api_name
-        api_key = r.api_key or "unknown"
-
-        now = time.time()
-        # Calculate elapsed time
-        elapsed = now - r.added_at
-        response_time = now - start_time
-        status_code = httpx_response.status_code if httpx_response else 502
-
-        self.logger.debug(
-            f"Received response from {api_name} with status {status_code} in {elapsed:.2f}s"
-        )
-
         # Handle missing response
         if not httpx_response:
             return JSONResponse(
@@ -120,51 +118,63 @@ class ResponseProcessor:
                 content={"error": "Bad Gateway: No response from target API"},
             )
 
-        self.record_response_metrics(
-            api_name, api_key, status_code, elapsed, response_time
-        )
+        # Record metrics for successful responses
+        self.record_response_metrics(r, httpx_response, start_time)
 
-        # Filter out unwanted headers
-        headers = dict(httpx_response.headers)
+        # lowercase all headers and remove unnecessary ones
+        headers = {k.lower(): v for k, v in httpx_response.headers.items()}
         headers_to_remove = ["server", "date", "transfer-encoding", "content-length"]
 
         for header in headers_to_remove:
-            if header.lower() in headers:
-                del headers[header.lower()]
+            if header in headers:
+                del headers[header]
 
         # Determine the response content type
         content_type = httpx_response.headers.get("content-type", "application/json")
 
+        self.logger.debug(f"Response status code: {httpx_response.status_code}")
+        self.logger.debug(f"Response Headers\n: {json_safe_dumps(headers)}")
+
         # Handle streaming response (event-stream)
-        if "text/event-stream" in content_type:
-            return self._handle_streaming_response(httpx_response, headers, status_code)
+        stream_content_types = [
+            "text/event-stream",
+            "application/octet-stream",
+            "application/x-ndjson",
+            "multipart/x-mixed-replace ",
+            "video/*",
+            "audio/*",
+        ]
 
-        # Debug log JSON responses
-        if "application/json" in content_type:
-            self._log_json_response(httpx_response)
+        # Check if it's streaming based on headers
+        is_streaming = headers.get("transfer-encoding", "") == "chunked" or any(
+            ct in content_type for ct in stream_content_types
+        )
 
-        self.logger.debug(f"Response status code: {status_code}")
-        self.logger.debug(f"Response headers: {httpx_response.headers}")
+        if is_streaming:
+            return await self._handle_streaming_response(httpx_response)
 
-        # Handle content decoding if needed
-        content_encoding = httpx_response.headers.get("content-encoding", "")
-        raw_content = decode_content(httpx_response.content, content_encoding)
+        # If non-streaming, accumulate content
+        content_chunks = []
+        async for chunk in httpx_response.aiter_bytes():
+            content_chunks.append(chunk)
+        raw_content = b"".join(content_chunks)
+
+        # Decode content if encoded
+        content_encoding = headers.get("content-encoding", "")
+        raw_content = decode_content(raw_content, content_encoding)
         headers["content-encoding"] = ""
 
-        # broswer compatibility for HTML responses
+        # HTML specific handling
         if "text/html" in content_type:
-            # Ensure raw_content is decoded to string for HTML manipulation
-            if isinstance(raw_content, bytes):
-                raw_content = raw_content.decode("utf-8", errors="replace")
+            raw_content = raw_content.decode("utf-8", errors="replace")
             raw_content = self.add_base_tag(raw_content, original_host)
-            # Convert back to bytes if needed
-            if isinstance(raw_content, str):
-                raw_content = raw_content.encode("utf-8")
+            raw_content = raw_content.encode("utf-8")
 
-        # Return response
+        self.logger.debug(f"Raw Response Content: {json_safe_dumps(raw_content)}")
+
         return Response(
             content=raw_content,
-            status_code=status_code,
+            status_code=httpx_response.status_code,
             media_type=content_type,
             headers=headers,
         )
@@ -178,49 +188,78 @@ class ResponseProcessor:
             return modified_html
         return html_content
 
-    def _handle_streaming_response(
-        self, httpx_response: httpx.Response, headers: Dict[str, str], status_code: int
+    def _handle_streaming_header(self, headers: Dict[str, str]) -> Dict[str, str]:
+        """
+        Handle headers for streaming responses with SSE best practices.
+
+        Args:
+            headers: Headers from the httpx response
+
+        Returns:
+            Processed headers for streaming
+        """
+        # Headers to remove for streaming responses
+        headers_to_remove = [
+            "content-encoding",
+            "content-length",
+            "connection",
+        ]
+
+        for header in headers_to_remove:
+            if header in headers:
+                del headers[header]
+
+        # Set SSE-specific headers according to standards
+        headers["cache-control"] = "no-cache, no-transform"
+        headers["connection"] = "keep-alive"
+        headers["x-accel-buffering"] = "no"  # Prevent Nginx buffering
+        headers["transfer-encoding"] = "chunked"
+
+        return headers
+
+    async def _handle_streaming_response(
+        self, httpx_response: httpx.Response
     ) -> StreamingResponse:
         """
-        Handle a streaming response (SSE), Not working need to be fixed.
+        Handle a streaming response (SSE) with industry best practices.
 
         Args:
             httpx_response: Response from httpx client
-            headers: Response headers
-            status_code: Response status code
 
         Returns:
             Streaming response
         """
-        self.logger.debug("Detected streaming response, forwarding as event-stream")
+        self.logger.debug(
+            f"Handling streaming response with status {httpx_response.status_code}"
+        )
+        headers = dict(httpx_response.headers)
+        status_code = httpx_response.status_code
+        content_type = httpx_response.headers.get("content-type", "").lower()
+
+        # Process headers for streaming
+        headers = self._handle_streaming_header(headers)
 
         async def event_generator():
-            async for chunk in httpx_response.aiter_bytes():
-                yield chunk
-
-        # Stream-specific header setup
-        headers["cache-control"] = "no-cache"  # Common in SSE
+            try:
+                async for chunk in httpx_response.aiter_bytes():
+                    if chunk:
+                        self.logger.debug(
+                            f"Forwarding stream chunk: {len(chunk)} bytes"
+                        )
+                        asyncio.sleep(0.01)  # Yield control to event loop
+                        yield chunk
+            except Exception as e:
+                self.logger.error(f"Error in streaming response: {str(e)}")
+            finally:
+                if hasattr(httpx_response, "_stream_ctx"):
+                    await httpx_response._stream_ctx.__aexit__(None, None, None)
 
         return StreamingResponse(
             content=event_generator(),
             status_code=status_code,
-            media_type="text/event-stream",
+            media_type=content_type or "application/octet-stream",
             headers=headers,
         )
-
-    def _log_json_response(self, response: httpx.Response) -> None:
-        """
-        Log JSON response content for debugging.
-
-        Args:
-            response: API response
-        """
-        try:
-            self.logger.debug(
-                f"Response content:\n{json.dumps(response.json(), indent=4, ensure_ascii=False)}"
-            )
-        except Exception:
-            self.logger.debug("Response contains non-JSON content")
 
     def create_error_response(
         self, error: Exception, status_code: int = 500, api_name: str = "unknown"

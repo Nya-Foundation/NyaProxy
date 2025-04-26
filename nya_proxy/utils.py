@@ -4,15 +4,34 @@ Utility functions for NyaProxy.
 
 import gzip
 import zlib
-from typing import Optional
+import json
+from typing import Optional, Any
 
 import brotli
 
-__all__ = [
-    "_mask_api_key",
-    "format_elapsed_time",
-    "decode_content",
-]
+__all__ = ["_mask_api_key", "format_elapsed_time", "decode_content", "json_safe_dumps"]
+
+
+def json_safe_dumps(
+    obj: Any, indent: str = 4, ensure_ascii: bool = False, **kwargs
+) -> str:
+    """
+    Safely serialize any Python object to a JSON-formatted string.
+    If the object is not JSON serializable, it falls back to a string representation.
+
+    Args:
+        obj: Any Python object to serialize.
+        **kwargs: Optional keyword arguments for json.dumps (e.g., indent, separators).
+
+    Returns:
+        A JSON-formatted string or raw string representation if serialization fails.
+    """
+    try:
+        return json.dumps(
+            obj, default=str(obj), indent=indent, ensure_ascii=ensure_ascii, **kwargs
+        )
+    except (TypeError, ValueError) as e:
+        return str(obj)
 
 
 def _mask_api_key(key: Optional[str]) -> str:
@@ -69,7 +88,7 @@ def format_elapsed_time(elapsed_seconds: float) -> str:
         return f"{hours}h {minutes}m"
 
 
-def decode_content(content: bytes, encoding: str) -> bytes:
+def decode_content(content: bytes, encoding: Optional[str]) -> bytes:
     """
     Decode response content based on encoding.
 
@@ -81,6 +100,10 @@ def decode_content(content: bytes, encoding: str) -> bytes:
         Decoded content bytes
     """
     try:
+
+        if not encoding:
+            return content
+
         # Normalize encoding name to lowercase
         encoding = encoding.lower()
 

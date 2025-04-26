@@ -6,7 +6,7 @@ import logging
 import re
 from typing import Any, Dict, Optional, Set
 
-from .constants import EXCLUDED_HEADERS
+from .constants import EXCLUDED_REQUEST_HEADERS
 
 
 class HeaderProcessor:
@@ -23,7 +23,7 @@ class HeaderProcessor:
         """
         self.logger = logger or logging.getLogger(__name__)
         self._variable_pattern = re.compile(r"\$\{\{([^}]+)\}\}")
-        self.excluded_headers = EXCLUDED_HEADERS
+        self.excluded_headers = EXCLUDED_REQUEST_HEADERS
 
     def extract_required_variables(self, header_templates: Dict[str, Any]) -> Set[str]:
         """
@@ -65,9 +65,10 @@ class HeaderProcessor:
             Processed headers with variables substituted
         """
         # Start with a copy of filtered original headers
-        processed_headers = {}
+        final_headers = {}
         if original_headers:
-            processed_headers = {
+
+            final_headers = {
                 k.lower(): v
                 for k, v in original_headers.items()
                 if k.lower() not in self.excluded_headers
@@ -85,13 +86,13 @@ class HeaderProcessor:
             header_value = self._substitute_variables(template_str, variable_values)
 
             # Use the lowercase header name for case-insensitivity
-            processed_headers[header_name.lower()] = header_value
+            final_headers[header_name.lower()] = header_value
 
             # patch accept-encoding header to avoid issues with httpx
             if header_name.lower() == "accept-encoding":
-                processed_headers[header_name.lower()] = "identity"
+                final_headers[header_name.lower()] = "identity"
 
-        return processed_headers
+        return final_headers
 
     def _substitute_variables(
         self, template: str, variable_values: Dict[str, Any]

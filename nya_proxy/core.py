@@ -9,8 +9,9 @@ import time
 import traceback
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 from starlette.responses import JSONResponse, Response
+from urllib.parse import urlparse
 
-from .config_manager import ConfigManager
+from .config import ConfigManager
 from .constants import API_PATH_PREFIX
 from .exceptions import (
     APIKeyExhaustedError,
@@ -26,6 +27,7 @@ from .models import NyaRequest
 from .request_executor import RequestExecutor
 from .request_queue import RequestQueue
 from .response_processor import ResponseProcessor
+from .utils import json_safe_dumps
 
 if TYPE_CHECKING:
     from .rate_limiter import RateLimiter  # Avoid circular import issues
@@ -82,10 +84,6 @@ class NyaProxyCore:
         # Register request processor with queue if present
         if self.request_queue:
             self.request_queue.register_processor(self._process_queued_request)
-
-        # Start metrics logging task if available
-        if self.metrics_collector:
-            self._start_metrics_logging()
 
     def _init_metrics(self):
         """Initialize metrics collector."""
@@ -203,41 +201,6 @@ class NyaProxyCore:
 
         return RateLimiter(rate_limit, logger=self.logger)
 
-    def _start_metrics_logging(self) -> None:
-        """Start a background task to log metrics periodically for monitoring."""
-
-        async def log_metrics_task():
-            while True:
-                try:
-                    # Log metrics every 5 minutes
-                    await asyncio.sleep(300)
-
-                    if self.metrics_collector:
-                        metrics = self.metrics_collector.get_summary()
-                        self.logger.info(f"Metrics summary: {json.dumps(metrics)}")
-
-                        # Log individual API stats
-                        for api_name, stats in metrics.get("apis", {}).items():
-                            self.logger.info(
-                                f"API {api_name}: {stats['total_requests']} requests, "
-                                f"{stats['success_rate']:.1f}% success rate, "
-                                f"{stats['avg_response_time']:.2f}ms avg response time"
-                            )
-
-                        # Log queue stats if available
-                        if self.request_queue:
-                            queue_metrics = self.request_queue.get_metrics()
-                            self.logger.info(
-                                f"Queue metrics: {json.dumps(queue_metrics)}"
-                            )
-
-                except Exception as e:
-                    self.logger.error(f"Error in metrics logging task: {str(e)}")
-                    await asyncio.sleep(60)  # Retry after a minute if there's an error
-
-        # Start the background task
-        asyncio.create_task(log_metrics_task())
-
     async def handle_request(self, request: NyaRequest) -> Response:
         """
         Handle an incoming proxy request.
@@ -249,13 +212,17 @@ class NyaProxyCore:
             Response to the client
         """
         # Prepare the request for forwarding
-        await self._prepare_request(request)
-        api_name = request.api_name
+        api_name, path, _ = await self._prepare_request(request)
 
         if not api_name:
             return JSONResponse(
                 status_code=404, content={"error": "Unknown API endpoint"}
             )
+
+        # Skip rate limit verification if path is not rate-limited
+        if not self._should_apply_rate_limit(api_name, path):
+            request.apply_rate_limit = False
+            return await self._process_request(request)
 
         if not await self.key_manager.has_available_keys(api_name):
             self.logger.debug(
@@ -266,14 +233,6 @@ class NyaProxyCore:
         try:
             # Check endpoint-level rate limiting
             self._check_endpoint_rate_limit(api_name)
-
-            # Get target endpoint configuration
-            if not self.config.get_api_endpoint(api_name):
-                self.logger.error(f"No target endpoint configured for API: {api_name}")
-                return JSONResponse(
-                    status_code=500,
-                    content={"error": "API endpoint not configured or invalid"},
-                )
 
             # Process request and handle response
             return await self._process_request(request)
@@ -374,9 +333,9 @@ class NyaProxyCore:
         self.logger.debug(traceback.format_exc())
 
         # Record error in metrics if available
-        if self.metrics_collector:
+        if self.metrics_collector and r.apply_rate_limit:
             self.metrics_collector.record_response(
-                api_name, api_key if api_key else "unknown", status_code, elapsed
+                api_name, api_key, status_code, elapsed
             )
 
         return self.response_processor.create_error_response(
@@ -454,7 +413,7 @@ class NyaProxyCore:
     async def _prepare_request(
         self,
         r: NyaRequest,
-    ) -> None:
+    ) -> Tuple[str, str, str]:
         """
         Prepare the proxy request by identifying the target API
 
@@ -462,7 +421,7 @@ class NyaProxyCore:
             r: NyaRequest object containing the request data
 
         Returns:
-            None
+            Tuple of (api_name, trail_path, target_url)
         """
 
         # Identify target API based on path
@@ -474,6 +433,8 @@ class NyaProxyCore:
 
         r.api_name = api_name
         r.url = target_url
+
+        return api_name, trail_path, target_url
 
     async def _set_custom_request_headers(
         self,
@@ -498,7 +459,7 @@ class NyaProxyCore:
         r.api_key = (
             r.api_key
             if r.api_key
-            else await self.key_manager.get_available_key(api_name)
+            else await self.key_manager.get_available_key(api_name, r.apply_rate_limit)
         )
 
         # Get key variable for the API
@@ -533,7 +494,10 @@ class NyaProxyCore:
             original_headers=dict(r.headers),
         )
 
-        r.headers.update(headers)
+        parsed_url = urlparse(r.url)
+        headers["host"] = parsed_url.netloc
+
+        r.headers = headers
 
     async def _process_queued_request(self, r: NyaRequest) -> Response:
         """
@@ -561,7 +525,7 @@ class NyaProxyCore:
             /api/openai/v1/chat/completions -> ("openai", "/v1/chat/completions")
 
             if api has aliases (/reddit, /r):
-                /api/r/v1/messages -> ("reddit", "/v1/messages")
+                /api/reddit/v1/messages & /api/r/v1/messages -> ("reddit", "/v1/messages")
         """
         path = request._url.path
         apis_config = self.config.get_apis()
@@ -570,7 +534,7 @@ class NyaProxyCore:
         if not path or not path.startswith(API_PATH_PREFIX):
             return None, None
 
-        # Extract parts after "/api/"
+        # Extract parts after API_PATH_PREFIX, e.g., "/api/"
         api_path = path[len(API_PATH_PREFIX) :]
 
         # Handle empty path after prefix
@@ -595,3 +559,39 @@ class NyaProxyCore:
         # No match found
         self.logger.warning(f"No API configuration found for endpoint: {api_name}")
         return None, None
+
+    def _should_apply_rate_limit(self, api_name: str, path: str) -> bool:
+        """
+        Check if rate limiting should be applied to the given path.
+
+        Args:
+            api_name: Name of the API endpoint
+            path: Request path to check
+
+        Returns:
+            bool: True if rate limiting should be applied, False otherwise
+        """
+        # Get rate limit paths from config, default to ['*'] (all paths)
+        rate_limit_paths = self.config.get_api_rate_limit_paths(api_name)
+
+        # If no paths are specified or '*' is in the list, apply to all paths
+        if not rate_limit_paths or "*" in rate_limit_paths:
+            return True
+
+        # Check each pattern against the path
+        for pattern in rate_limit_paths:
+            # Simple wildcard matching (could be extended to use regex)
+            if pattern.endswith("*"):
+                # Check if path starts with the pattern minus the '*'
+                prefix = pattern[:-1]
+                if path.startswith(prefix):
+                    return True
+            # Exact match
+            elif pattern == path:
+                return True
+
+        # No matches found, don't apply rate limiting
+        self.logger.debug(
+            f"Path {path} not in rate_limit_paths for {api_name}, skipping rate limiting"
+        )
+        return False

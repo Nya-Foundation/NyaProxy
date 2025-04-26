@@ -5,7 +5,7 @@ Data models for request handling in NyaProxy.
 import asyncio
 import time
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Dict, Optional, Union, Any
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
 if TYPE_CHECKING:
     from fastapi import Request
@@ -45,3 +45,5 @@ class NyaRequest:
     added_at: float = field(default_factory=time.time)
     expiry: float = 0.0
     future: Optional[asyncio.Future] = None
+
+    apply_rate_limit: bool = True

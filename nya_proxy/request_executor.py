@@ -2,22 +2,25 @@
 Request execution with retry logic.
 """
 
+import asyncio
+import json
 import logging
+import random
 import time
+import traceback
 from typing import TYPE_CHECKING, List, Optional
 
-import random
 import httpx
-import asyncio
 from starlette.responses import JSONResponse
-from .models import NyaRequest
-from .utils import _mask_api_key, format_elapsed_time
+
 from .exceptions import APIKeyExhaustedError
+from .models import NyaRequest
+from .utils import _mask_api_key, format_elapsed_time, json_safe_dumps
 
 if TYPE_CHECKING:
-    from .config_manager import ConfigManager
-    from .metrics import MetricsCollector
+    from .config import ConfigManager
     from .key_manager import KeyManager
+    from .metrics import MetricsCollector
 
 
 class RequestExecutor:
@@ -49,7 +52,8 @@ class RequestExecutor:
 
     def _setup_client(self) -> httpx.AsyncClient:
         """Set up the HTTP client with appropriate configuration."""
-        proxy_settings = self.config.get_proxy_settings()
+        proxy_enabled = self.config.get_proxy_enabled()
+        proxy_address = self.config.get_proxy_address()
 
         # Configure client with appropriate settings
         client_kwargs = {
@@ -57,9 +61,9 @@ class RequestExecutor:
             "timeout": httpx.Timeout(60.0),  # Default timeout of 60 seconds
         }
 
-        if proxy_settings["enabled"] and proxy_settings["address"]:
-            client_kwargs["proxies"] = proxy_settings["address"]
-            self.logger.info(f"Using proxy: {proxy_settings['address']}")
+        if proxy_enabled and proxy_address:
+            client_kwargs["proxies"] = proxy_address
+            self.logger.info(f"Using proxy: {proxy_address}")
 
         return httpx.AsyncClient(**client_kwargs)
 
@@ -87,7 +91,7 @@ class RequestExecutor:
         )
 
         # Record request metrics
-        if self.metrics_collector:
+        if self.metrics_collector and r.apply_rate_limit:
             self.metrics_collector.record_request(api_name, r.api_key)
 
         try:
@@ -102,38 +106,35 @@ class RequestExecutor:
                 pool=timeout_secs,  # Pool timeout
             )
 
+            self.logger.debug(f"Request Content:\n{json_safe_dumps(r.content)}")
+            self.logger.debug(f"Request Header\n: {json_safe_dumps(r.headers)}")
+
             # Send the request
-            res = await self.client.request(
+            stream = self.client.stream(
                 method=r.method,
                 url=r.url,
                 headers=r.headers,
                 content=r.content,
                 timeout=timeout,
             )
-
-            # Log response time and status
+            response = await stream.__aenter__()
+            response._stream_ctx = stream
             elapsed = time.time() - start_time
             self.logger.debug(
-                f"Response from {r.url}: status={res.status_code}, time={format_elapsed_time(elapsed)}"
+                f"Response from {r.url}: status={response.status_code}, time={format_elapsed_time(elapsed)}"
             )
-
-            return res
+            return response
 
         except httpx.ConnectError as e:
-            return self._handle_request_error(
-                r, res, e, "connection error", 502, start_time
-            )
+            return self._handle_request_error(r, e, "connection error", 502, start_time)
         except httpx.TimeoutException as e:
-            return self._handle_request_error(r, res, e, "timeout", 504, start_time)
+            return self._handle_request_error(r, e, "timeout", 504, start_time)
         except Exception as e:
-            return self._handle_request_error(
-                r, res, e, "unexpected error", 500, start_time
-            )
+            return self._handle_request_error(r, e, "unexpected error", 500, start_time)
 
     def _handle_request_error(
         self,
         request: NyaRequest,
-        response: Optional[httpx.Response],
         error: Exception,
         error_type: str,
         status_code: int,
@@ -153,15 +154,10 @@ class RequestExecutor:
         self.logger.error(
             f"{error_type.capitalize()} to {request.url}: {str(error)} after {format_elapsed_time(elapsed)}"
         )
-
-        # Record the error in metrics
-        if self.metrics_collector:
-            self.metrics_collector.record_response(
-                request.api_name, request.api_key, status_code, elapsed
-            )
+        self.logger.debug(traceback.format_exc())
 
         return JSONResponse(
-            status_code=response.status_code if response else status_code,
+            status_code=status_code,
             content={
                 "error": f"{error_type.capitalize()} occurred while processing request",
                 "details": str(error),
@@ -210,9 +206,9 @@ class RequestExecutor:
             # Rotating api key if needed
             if retry_mode == "key_rotation" and r.attempts > 1:
                 try:
-                    new_key = await self.key_manager.get_available_key(r.api_name)
-                    r.api_key = new_key if new_key else r.api_key
-
+                    r.api_key = await self.key_manager.get_available_key(
+                        r.api_name, r.apply_rate_limit
+                    )
                 except APIKeyExhaustedError as e:
                     pass
 
@@ -235,7 +231,7 @@ class RequestExecutor:
                 response, current_delay, retry_mode, retry_delay, r.attempts
             )
 
-            # mark the key as rate limited for unsuccessful attempts
+            # mark the current key as rate limited for unsuccessful attempts
             self.key_manager.mark_key_rate_limited(r.api_name, r.api_key, next_delay)
 
             # If this was our last attempt, don't wait

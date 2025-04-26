@@ -17,7 +17,7 @@ from fastapi.templating import Jinja2Templates
 from .metrics import MetricsCollector
 
 if TYPE_CHECKING:
-    from .config_manager import ConfigManager
+    from .config import ConfigManager
     from .request_queue import RequestQueue
 
 

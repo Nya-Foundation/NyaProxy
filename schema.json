@@ -8,6 +8,116 @@
         "default_settings",
         "apis"
     ],
+    "$defs": {
+        "api_settings": {
+            "type": "object",
+            "properties": {
+                "key_variable": {
+                    "type": "string",
+                    "description": "Variable name for API keys"
+                },
+                "load_balancing_strategy": {
+                    "type": "string",
+                    "enum": [
+                        "round_robin",
+                        "random",
+                        "least_requests",
+                        "fastest_response",
+                        "weighted"
+                    ],
+                    "description": "Load balancing strategy"
+                },
+                "rate_limit": {
+                    "type": "object",
+                    "properties": {
+                        "endpoint_rate_limit": {
+                            "type": "string",
+                            "pattern": "^\\d+\\/(s|m|h|d)$",
+                            "description": "Global rate limit"
+                        },
+                        "key_rate_limit": {
+                            "type": "string",
+                            "pattern": "^\\d+\\/(s|m|h|d)$",
+                            "description": "Per-key rate limit"
+                        },
+                        "rate_limit_paths": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "description": "Path patterns to apply rate limits to, regex supported"
+                            }
+                        }
+                    },
+                    "additionalProperties": false
+                },
+                "retry": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "description": "Enable automatic retries"
+                        },
+                        "mode": {
+                            "type": "string",
+                            "enum": [
+                                "default",
+                                "backoff",
+                                "key_rotation"
+                            ],
+                            "description": "Retry mode"
+                        },
+                        "attempts": {
+                            "type": "integer",
+                            "description": "Max retry attempts",
+                            "minimum": 0
+                        },
+                        "retry_after_seconds": {
+                            "type": "integer",
+                            "description": "Delay between retries",
+                            "minimum": 0
+                        },
+                        "retry_status_codes": {
+                            "type": "array",
+                            "items": {
+                                "type": "integer",
+                                "description": "HTTP status codes to retry"
+                            }
+                        },
+                        "retry_request_methods": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "enum": [
+                                    "POST",
+                                    "GET",
+                                    "PUT",
+                                    "DELETE",
+                                    "PATCH",
+                                    "OPTIONS"
+                                ]
+                            }
+                        }
+                    },
+                    "additionalProperties": false
+                },
+                "timeouts": {
+                    "type": "object",
+                    "properties": {
+                        "request_timeout_seconds": {
+                            "type": "integer",
+                            "description": "Request timeout",
+                            "minimum": 1
+                        }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            "additionalProperties": false
+        },
+        "default_settings": {
+            "$ref": "#/$defs/api_settings"
+        }
+    },
     "properties": {
         "nya_proxy": {
             "type": "object",
@@ -104,98 +214,7 @@
             }
         },
         "default_settings": {
-            "type": "object",
-            "properties": {
-                "key_variable": {
-                    "type": "string",
-                    "description": "Default variable name for API keys"
-                },
-                "load_balancing_strategy": {
-                    "type": "string",
-                    "enum": [
-                        "round_robin",
-                        "random",
-                        "least_requests",
-                        "fastest_response",
-                        "weighted"
-                    ],
-                    "description": "Default load balancing strategy"
-                },
-                "rate_limit": {
-                    "type": "object",
-                    "properties": {
-                        "endpoint_rate_limit": {
-                            "type": "string",
-                            "pattern": "^\\d+\\/(s|m|h|d)$",
-                            "description": "Default global rate limit"
-                        },
-                        "key_rate_limit": {
-                            "type": "string",
-                            "pattern": "^\\d+\\/(s|m|h|d)$",
-                            "description": "Default per-key rate limit"
-                        }
-                    }
-                },
-                "retry": {
-                    "type": "object",
-                    "properties": {
-                        "enabled": {
-                            "type": "boolean",
-                            "description": "Enable automatic retries"
-                        },
-                        "mode": {
-                            "type": "string",
-                            "enum": [
-                                "default",
-                                "backoff",
-                                "key_rotation"
-                            ],
-                            "description": "Retry mode"
-                        },
-                        "attempts": {
-                            "type": "integer",
-                            "description": "Max retry attempts",
-                            "minimum": 0
-                        },
-                        "retry_after_seconds": {
-                            "type": "integer",
-                            "description": "Delay between retries",
-                            "minimum": 0
-                        },
-                        "retry_status_codes": {
-                            "type": "array",
-                            "items": {
-                                "type": "integer",
-                                "description": "HTTP status codes to retry"
-                            }
-                        },
-                        "retry_request_methods": {
-                            "type": "array",
-                            "items": {
-                                "type": "string",
-                                "enum": [
-                                    "POST",
-                                    "GET",
-                                    "PUT",
-                                    "DELETE",
-                                    "PATCH",
-                                    "OPTIONS"
-                                ]
-                            }
-                        }
-                    }
-                },
-                "timeouts": {
-                    "type": "object",
-                    "properties": {
-                        "request_timeout_seconds": {
-                            "type": "integer",
-                            "description": "Request timeout",
-                            "minimum": 1
-                        }
-                    }
-                }
-            }
+            "$ref": "#/$defs/default_settings"
         },
         "apis": {
             "type": "object",
@@ -205,8 +224,8 @@
                     "required": [
                         "name",
                         "endpoint",
-                        "key_variable",
                         "headers",
+                        "key_variable",
                         "variables"
                     ],
                     "properties": {
@@ -217,7 +236,8 @@
                         "endpoint": {
                             "type": "string",
                             "description": "Target API endpoint URL",
-                            "format": "uri"
+                            "format": "uri",
+                            "pattern": "^(http|https|ws|wss)://.+"
                         },
                         "aliases": {
                             "type": "array",
@@ -227,15 +247,15 @@
                             }
                         },
                         "key_variable": {
-                            "type": "string",
-                            "description": "Variable name for API keys in config"
+                            "$ref": "#/$defs/api_settings/properties/key_variable"
                         },
                         "headers": {
                             "type": "object",
                             "additionalProperties": {
                                 "type": "string",
                                 "description": "Header value that may contain variable substitutions"
-                            }
+                            },
+                            "minProperties": 1
                         },
                         "variables": {
                             "type": "object",
@@ -258,94 +278,23 @@
                                         }
                                     }
                                 ]
-                            }
+                            },
+                            "minProperties": 1
                         },
                         "load_balancing_strategy": {
-                            "type": "string",
-                            "enum": [
-                                "round_robin",
-                                "random",
-                                "least_requests",
-                                "fastest_response",
-                                "weighted"
-                            ],
-                            "description": "Load balancing strategy for this API"
+                            "$ref": "#/$defs/api_settings/properties/load_balancing_strategy"
                         },
                         "rate_limit": {
-                            "type": "object",
-                            "properties": {
-                                "endpoint_rate_limit": {
-                                    "type": "string",
-                                    "pattern": "^\\d+\\/(s|m|h|d)$",
-                                    "description": "Global rate limit for this API"
-                                },
-                                "key_rate_limit": {
-                                    "type": "string",
-                                    "pattern": "^\\d+\\/(s|m|h|d)$",
-                                    "description": "Per-key rate limit for this API"
-                                }
-                            }
+                            "$ref": "#/$defs/api_settings/properties/rate_limit"
                         },
                         "retry": {
-                            "type": "object",
-                            "properties": {
-                                "enabled": {
-                                    "type": "boolean",
-                                    "description": "Enable automatic retries"
-                                },
-                                "mode": {
-                                    "type": "string",
-                                    "enum": [
-                                        "default",
-                                        "backoff",
-                                        "key_rotation"
-                                    ],
-                                    "description": "Retry mode"
-                                },
-                                "attempts": {
-                                    "type": "integer",
-                                    "description": "Max retry attempts",
-                                    "minimum": 0
-                                },
-                                "retry_after_seconds": {
-                                    "type": "integer",
-                                    "description": "Delay between retries",
-                                    "minimum": 0
-                                },
-                                "retry_status_codes": {
-                                    "type": "array",
-                                    "items": {
-                                        "type": "integer",
-                                        "description": "HTTP status codes to retry"
-                                    }
-                                },
-                                "retry_request_methods": {
-                                    "type": "array",
-                                    "items": {
-                                        "type": "string",
-                                        "enum": [
-                                            "POST",
-                                            "GET",
-                                            "PUT",
-                                            "DELETE",
-                                            "PATCH",
-                                            "OPTIONS"
-                                        ]
-                                    }
-                                }
-                            }
+                            "$ref": "#/$defs/api_settings/properties/retry"
                         },
                         "timeouts": {
-                            "type": "object",
-                            "properties": {
-                                "request_timeout_seconds": {
-                                    "type": "integer",
-                                    "description": "Request timeout for this API",
-                                    "minimum": 1
-                                }
-                            }
+                            "$ref": "#/$defs/api_settings/properties/timeouts"
                         }
-                    }
+                    },
+                    "additionalProperties": false
                 }
             },
             "additionalProperties": false

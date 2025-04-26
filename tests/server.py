@@ -13,6 +13,9 @@ class SimpleHandler(BaseHTTPRequestHandler):
         if self.path == "/":
             self._set_headers()
             self.wfile.write(json.dumps({"message": "Hello, world!"}).encode())
+        elif self.path == "/v1/status":
+            self._set_headers()
+            self.wfile.write(json.dumps({"status": "OK"}).encode())
         else:
             self._set_headers(404)
             self.wfile.write(json.dumps({"error": "Not found"}).encode())

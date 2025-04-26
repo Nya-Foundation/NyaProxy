@@ -7,7 +7,7 @@ import time
 from collections import deque
 from typing import Any, Dict, List, Optional
 
-from .constants import MAX_HISTORY
+from .constants import MAX_QUEUE_SIZE
 from .utils import _mask_api_key
 
 
@@ -177,7 +177,7 @@ class MetricsCollector:
             self._status_codes[api_name] = {}
 
         if api_name not in self._response_times:
-            self._response_times[api_name] = deque(maxlen=MAX_HISTORY)
+            self._response_times[api_name] = deque(maxlen=MAX_QUEUE_SIZE)
 
         if api_name not in self._rate_limit_hits:
             self._rate_limit_hits[api_name] = {}

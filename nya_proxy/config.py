@@ -23,7 +23,7 @@ class ConfigManager:
 
     def __init__(
         self,
-        config_file: str,
+        config_path: str,
         logger: Optional[logging.Logger] = None,
         callback: Optional[callable] = None,
     ):
@@ -35,27 +35,23 @@ class ConfigManager:
             logger: Optional logger instance
         """
         self.config: ConfigAPI = None
-        self.web_server: NekoConf = None
+        self.server: NekoConf = None
 
-        self.config_file = config_file
+        self.config_file = config_path
         self.logger = logger or logging.getLogger("nya_proxy")
 
-        if not os.path.exists(config_file):
-            raise ConfigError(f"Configuration file not found: {config_file}")
+        if not os.path.exists(config_path):
+            raise ConfigError(f"Configuration file not found: {config_path}")
 
         try:
-            self.config = ConfigAPI(config_path=config_file, schema_path="schema.json")
+            self.config = ConfigAPI(config_path=config_path, schema_path="schema.json")
 
             # Validate against the schema
             results = self.config.validate()
 
             if results:
                 raise ConfigError(f"Configuration validation failed: {results}")
-
-            api_key = self.config.get("nya_proxy.api_key", None)
-            self.web_server = NekoConf(
-                self.config.config_manager, username="nya", password=api_key
-            )
+            self.server = NekoConf(self.config.config_manager)
 
             if callback:
                 self.config.observe(callback)
@@ -139,12 +135,13 @@ class ConfigManager:
             ),
         }
 
-    def get_proxy_settings(self) -> Dict[str, Any]:
-        """Get the proxy settings."""
-        return {
-            "enabled": self.config.get_bool("nya_proxy.proxy.enabled", False),
-            "address": self.config.get_str("nya_proxy.proxy.address", ""),
-        }
+    def get_proxy_enabled(self) -> bool:
+        """Check if the proxy is enabled."""
+        return self.config.get_bool("nya_proxy.proxy.enabled", False)
+
+    def get_proxy_address(self) -> str:
+        """Get the proxy address."""
+        return self.config.get_str("nya_proxy.proxy.address", "")
 
     def get_default_settings(self) -> Dict[str, Any]:
         """Get the default settings for endpoints."""
@@ -415,6 +412,30 @@ class ConfigManager:
         else:
             # If it's not a list or string, try to convert to string
             return [str(values)]
+
+    def get_api_rate_limit_paths(self, api_name: str) -> List[str]:
+        """
+        Get list of path patterns to which rate limiting should be applied.
+
+        Args:
+            api_name: Name of the API
+
+        Returns:
+            List of path patterns, defaults to ['*'] (all paths)
+        """
+        # Default to ['*'] if not specified
+        default_paths = ["*"]
+
+        # Try to get paths from API-specific config
+        api_rate_limit = self.get_api_setting(
+            api_name, "rate_limit.rate_limit_paths", "list"
+        )
+
+        # If it's a string, convert to list
+        if isinstance(api_rate_limit, str):
+            return [api_rate_limit]
+
+        return api_rate_limit or default_paths
 
     def reload(self) -> None:
         """Reload the configuration from disk."""

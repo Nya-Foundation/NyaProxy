@@ -9,6 +9,7 @@ import time
 import traceback
 import uuid
 from typing import (
+    TYPE_CHECKING,
     Any,
     Awaitable,
     Callable,
@@ -17,10 +18,9 @@ from typing import (
     Optional,
     Tuple,
     TypeVar,
-    TYPE_CHECKING,
 )
 
-from .exceptions import QueueFullError, RequestExpiredError, APIKeyExhaustedError
+from .exceptions import APIKeyExhaustedError, QueueFullError, RequestExpiredError
 from .models import NyaRequest
 from .utils import format_elapsed_time
 
