@@ -1,0 +1,56 @@
+# OpenAI API Configuration Example (Not yet tested)
+# Google Gemini API Configuration Example (Tested Working!)
+nya_proxy:
+  host: 0.0.0.0
+  port: 8080
+  api_key: YourNyaProxyAPIKey
+  logging:
+    enabled: true
+    level: debug
+    log_file: nya_proxy.log
+  proxy:
+    enabled: false
+    address: socks5://username:password@proxy.example.com:1080
+  dashboard:
+    enabled: true
+  queue:
+    enabled: true
+    max_size: 200
+    expiry_seconds: 300
+
+default_settings:
+  key_variable: keys
+  load_balancing_strategy: round_robin
+  rate_limit:
+    endpoint_rate_limit: 10/s
+    key_rate_limit: 10/m
+    rate_limit_paths: 
+      - "*"
+  retry:
+    enabled: true
+    mode: key_rotation
+    attempts: 3
+    retry_after_seconds: 1
+    retry_request_methods: [ POST, GET, PUT, DELETE, PATCH, OPTIONS ]
+    retry_status_codes: [ 429, 500, 502, 503, 504 ]
+  timeouts:
+    request_timeout_seconds: 300
+    
+
+apis:
+  novelai:
+    name: NovelAI API
+    endpoint: https://image.novelai.net
+    aliases:
+      - /novelai
+    key_variable: tokens
+    headers:
+      Authorization: 'Bearer ${{tokens}}'
+    variables:
+      tokens:
+        - your_novelai_token_1
+        - your_novelai_token_2
+    load_balancing_strategy: round_robin
+    rate_limit:
+      endpoint_rate_limit: 10/s
+      key_rate_limit: 2/s

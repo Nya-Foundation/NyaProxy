@@ -1,0 +1,68 @@
+name: Code Formatting
+
+# run black and isort on your local machine before pushing changes
+# isort --profile black .
+
+on:
+  pull_request:
+    branches: ["staging", "main"]
+    paths:
+      - '**/*.py'
+  push:
+    branches: ["dev"]
+    paths:
+      - '**/*.py'
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      pull-requests: write
+      
+    steps:
+      - name: Generate GitHub App Token
+        id: generate-token
+        # Uses App ID and Private Key secrets to generate a short-lived installation token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.CI_APP_ID }}
+          private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          token: ${{ steps.generate-token.outputs.token }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: |
+            pyproject.toml
+            setup.py
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install black isort
+
+      - name: Run isort with black profile
+        run: |
+          isort --profile black .
+          
+      - name: Check for changes
+        id: git-check
+        run: |
+          git diff --exit-code || echo "has_changes=true" >> $GITHUB_OUTPUT
+
+      - name: Commit changes
+        if: steps.git-check.outputs.has_changes == 'true' && github.event_name == 'pull_request'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git commit -am "chore(format): Apply automatic formatting [skip ci]" || echo "No changes to commit"
+          git push
