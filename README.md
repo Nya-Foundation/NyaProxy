@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # 🐾 NyaProxy - Universal API Proxy
 
 <img src="https://raw.githubusercontent.com/Nya-Foundation/NyaProxy/main/images/dashboard_ui.png" width="800" alt="NyaProxy Dashboard"/>
@@ -138,7 +137,3 @@ F --> H[🔍 Custom Metrics API]
 ## 📈 Project Growth
 
 [![Star History Chart](https://api.star-history.com/svg?repos=Nya-Foundation/NyaProxy&type=Date)](https://star-history.com/#Nya-Foundation/NyaProxy&Date)
-=======
-# NyaProxy
-A lightweight, flexible API proxy with dynamic token rotation, load balancing, and rate limiting capabilities.
->>>>>>> origin/staging
