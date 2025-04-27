@@ -3,25 +3,24 @@ import logging
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 import httpx  # For creating mock responses
+import pytest
+from fastapi.responses import JSONResponse
+
+from nya_proxy.common.exceptions import QueueFullError
+from nya_proxy.common.models import NyaRequest
+from nya_proxy.core.handler import NyaProxyCore
+from nya_proxy.core.header_processor import HeaderProcessor
+from nya_proxy.core.request_executor import RequestExecutor
+from nya_proxy.core.response_processor import ResponseProcessor
 
 # Adjust imports based on potential refactoring
 from nya_proxy.server.config import ConfigManager
-from nya_proxy.core.handler import NyaProxyCore
-from nya_proxy.common.models import NyaRequest
-
 from nya_proxy.services.key_manager import KeyManager
-from nya_proxy.services.rate_limiter import RateLimiter
-from nya_proxy.core.request_executor import RequestExecutor
-from nya_proxy.core.response_processor import ResponseProcessor
-from nya_proxy.services.request_queue import RequestQueue
-from nya_proxy.core.header_processor import HeaderProcessor
 from nya_proxy.services.load_balancer import LoadBalancer
 from nya_proxy.services.metrics import MetricsCollector
-
-from nya_proxy.common.exceptions import QueueFullError
-from fastapi.responses import JSONResponse
+from nya_proxy.services.rate_limiter import RateLimiter
+from nya_proxy.services.request_queue import RequestQueue
 
 
 # --- Fixtures ---

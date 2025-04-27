@@ -4,14 +4,15 @@ from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 
-# Adjust imports based on potential refactoring
-from nya_proxy.services.key_manager import KeyManager
-from nya_proxy.services.load_balancer import LoadBalancer
-from nya_proxy.services.rate_limiter import RateLimiter
 from nya_proxy.common.exceptions import (
     APIKeyExhaustedError,
     VariablesConfigurationError,
 )
+
+# Adjust imports based on potential refactoring
+from nya_proxy.services.key_manager import KeyManager
+from nya_proxy.services.load_balancer import LoadBalancer
+from nya_proxy.services.rate_limiter import RateLimiter
 
 
 @pytest.fixture

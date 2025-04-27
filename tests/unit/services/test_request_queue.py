@@ -1,18 +1,19 @@
 import asyncio
+import heapq
 import logging
 import time
-import heapq
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from nya_proxy.services.key_manager import KeyManager
 from nya_proxy.services.request_queue import (
-    RequestQueue,
+    APIKeyExhaustedError,
     NyaRequest,
     QueueFullError,
     RequestExpiredError,
-    APIKeyExhaustedError,
+    RequestQueue,
 )
-
-import pytest
 
 
 @pytest.fixture

@@ -1,15 +1,14 @@
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
+from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
-from unittest.mock import MagicMock, patch, AsyncMock
 
 # Assuming refactored structure, adjust imports as necessary
 # We need the main app instance created in app.py
 # We might need to mock dependencies during app creation for isolated testing
 from nya_proxy.server.app import NyaProxyApp
 from nya_proxy.server.config import ConfigManager
-
-from fastapi.responses import JSONResponse
-
 
 # --- Fixtures ---
 
