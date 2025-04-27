@@ -1,6 +1,20 @@
 # CHANGELOG
 
 
+## v0.0.4 (2025-04-27)
+
+### Bug Fixes
+
+- Adjust image size
+  ([`9d4386a`](https://github.com/Nya-Foundation/NyaProxy/commit/9d4386affd4b5407df0a1860df047eb690382189))
+
+### Chores
+
+- **README**: Update README.md file, add project banner image, update discord link, fix pypi upload,
+  bump version to v0.0.4
+  ([`d9a70ee`](https://github.com/Nya-Foundation/NyaProxy/commit/d9a70ee546811b2336de81c63dccbf438d1d6a5f))
+
+
 ## v0.0.3 (2025-04-27)
 
 
