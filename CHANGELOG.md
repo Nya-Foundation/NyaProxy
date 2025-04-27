@@ -1,14 +1,10 @@
 # CHANGELOG
 
 
+## v0.0.3 (2025-04-27)
+
+
 ## v0.0.2 (2025-04-27)
-
-### Bug Fixes
-
-- **security**: Remediate 2 critial vulnerabilities, optimize Dockerfil, reduce image size with
-  Alpine, fix config_path priority issue, fix pypi upload logic in ci, fix pyproject.toml format
-  issue
-  ([`ba1f338`](https://github.com/Nya-Foundation/NyaProxy/commit/ba1f33894acaa2a60256c1463cf94e2d0923168c))
 
 
 ## v0.0.1 (2025-04-27)
@@ -25,6 +21,9 @@
 - Resolve conflict
   ([`2bd8457`](https://github.com/Nya-Foundation/NyaProxy/commit/2bd8457f9143f07a27b67be6cc1abee3337124e9))
 
+- **ci**: Ad step to upload pypi, fix dependency-review.yml, bump version to v0.0.3
+  ([`ecc50d9`](https://github.com/Nya-Foundation/NyaProxy/commit/ecc50d955ad8f5f39b577e359b258f183fb13bc2))
+
 - **ci**: Fix pyproject.toml [dev] optional-dependencies
   ([`cdf6978`](https://github.com/Nya-Foundation/NyaProxy/commit/cdf6978bd739011760c58c71bac1bc9db26ef8cf))
 
@@ -34,6 +33,11 @@
 - **major**: Retry config consolidation, retry logic handling, metrics timeout issue, rate limit
   queue fix
   ([`4bb2773`](https://github.com/Nya-Foundation/NyaProxy/commit/4bb277337b3b49b0331050d89055365b4e7ba69a))
+
+- **security**: Remediate 2 critial vulnerabilities, optimize Dockerfil, reduce image size with
+  Alpine, fix config_path priority issue, fix pypi upload logic in ci, fix pyproject.toml format
+  issue
+  ([`ba1f338`](https://github.com/Nya-Foundation/NyaProxy/commit/ba1f33894acaa2a60256c1463cf94e2d0923168c))
 
 ### Chores
 
