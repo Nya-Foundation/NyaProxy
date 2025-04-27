@@ -23,7 +23,7 @@ def setup_logger(log_config: Dict[str, Any], name: str = "nya_proxy") -> logging
     # Extract configuration
     enabled = log_config.get("enabled", True)
     log_level_str = log_config.get("level", "INFO").upper()
-    log_file = log_config.get("log_file", "nya_proxy.log")
+    log_file = log_config.get("log_file", "app.log")
 
     # Map string log level to logging constant
     log_level_map = {

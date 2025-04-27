@@ -130,9 +130,7 @@ class ConfigManager:
         return {
             "enabled": self.config.get_bool("nya_proxy.logging.enabled", True),
             "level": self.config.get_str("nya_proxy.logging.level", "INFO"),
-            "log_file": self.config.get_str(
-                "nya_proxy.logging.log_file", "nya_proxy.log"
-            ),
+            "log_file": self.config.get_str("nya_proxy.logging.log_file", "app.log"),
         }
 
     def get_proxy_enabled(self) -> bool:
