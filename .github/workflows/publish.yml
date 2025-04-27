@@ -77,7 +77,6 @@ jobs:
         github_token: ${{ steps.generate-token.outputs.token }}
 
     - name: Publish package to PyPI
-      if: steps.semantic-release.outputs.released == 'true'
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
         verbose: true
