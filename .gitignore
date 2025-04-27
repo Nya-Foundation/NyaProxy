@@ -1,7 +1,4 @@
-<<<<<<< HEAD
 # ---> Python
-=======
->>>>>>> origin/staging
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -171,15 +168,7 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-<<<<<<< HEAD
 .metrics/
 .config.yaml
 .build.sh
 .toDo.md
-=======
-# Ruff stuff:
-.ruff_cache/
-
-# PyPI configuration file
-.pypirc
->>>>>>> origin/staging
