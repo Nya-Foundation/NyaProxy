@@ -6,7 +6,7 @@ nya_proxy:
   logging:
     enabled: true
     level: debug
-    log_file: nya_proxy.log
+    log_file: app.log
   proxy:
     enabled: false
     address: socks5://username:password@proxy.example.com:1080

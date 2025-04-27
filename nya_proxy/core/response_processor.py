@@ -246,7 +246,7 @@ class ResponseProcessor:
                         self.logger.debug(
                             f"Forwarding stream chunk: {len(chunk)} bytes"
                         )
-                        asyncio.sleep(0.01)  # Yield control to event loop
+                        await asyncio.sleep(0.01)  # Yield control to event loop
                         yield chunk
             except Exception as e:
                 self.logger.error(f"Error in streaming response: {str(e)}")
