@@ -67,7 +67,7 @@ class NyaProxyApp:
         app = FastAPI(
             title="NyaProxy",
             description="A simple low-level API proxy with dynamic token rotation and load balancing",
-            version="0.1.0",
+            version="0.1.1",
         )
 
         # Add CORS middleware
@@ -118,7 +118,7 @@ class NyaProxyApp:
                         "aliases": config.get("aliases", []),
                     }
 
-            return {"status": "running", "version": "0.1.0", "apis": apis}
+            return {"status": "running", "version": "0.1.1", "apis": apis}
 
     async def generic_proxy_request(self, request: Request):
         """Generic handler for all proxy requests."""
@@ -424,14 +424,15 @@ def main():
 
     try:
         # Configuration file validation
-        config = ConfigAPI(config_path, DEFAULT_SCHEMA_PATH)
+        config = ConfigAPI(config_path)
 
         if not host:
             host = config.get_str("nya_proxy.host", DEFAULT_HOST)
         if not port:
             port = config.get_int("nya_proxy.port", DEFAULT_PORT)
 
-        print(f"Configuration loaded from {config.config_manager.config_path}")
+        print(f"Configuration loaded from {config_path}")
+        os.environ["CONFIG_PATH"] = config_path
 
     except Exception as e:
         print(f"Error loading configuration: {str(e)}, invalid config file or schema.")

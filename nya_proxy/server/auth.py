@@ -21,18 +21,18 @@ class AuthManager:
         Args:
             config_manager: The configuration manager instance
         """
-        self.config_manager = config_manager
-        self.api_key_header = APIKeyHeader(name="Authorization", auto_error=False)
+        self.config = config_manager
+        self.header = APIKeyHeader(name="Authorization", auto_error=False)
 
     def set_config_manager(self, config_manager):
         """Set the configuration manager"""
-        self.config_manager = config_manager
+        self.config = config_manager
 
     def get_api_key(self):
         """Get the configured API key"""
-        if not self.config_manager:
+        if not self.config:
             return ""
-        return self.config_manager.get_api_key()
+        return self.config.get_api_key()
 
     async def verify_api_key(
         self,
@@ -87,12 +87,29 @@ class AuthManager:
         Returns:
             bool: True if valid, False otherwise
         """
+
+    def verify_session_cookie(self, request: Request):
+        """
+        Verify if the session cookie contains a valid API key.
+
+        Args:
+            request: The FastAPI request
+
+        Returns:
+            bool: True if valid, False otherwise
+        """
         configured_key = self.get_api_key()
         if not configured_key:
             return True
 
         # Get API key from session cookie
         cookie_key = request.cookies.get("nyaproxy_api_key", "")
+
+        # Trim any whitespace that might be added by some browsers
+        cookie_key = cookie_key.strip() if cookie_key else ""
+
+        # Log keys for debugging - remove in production
+        # print(f"Cookie key: '{cookie_key}', Configured key: '{configured_key}'")
 
         # Validate the key
         return cookie_key == configured_key

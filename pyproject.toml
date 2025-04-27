@@ -4,17 +4,22 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nya-proxy"
-version = "0.1.0"
+version = "0.1.1"
 description = "A lightweight, flexible API proxy with dynamic token rotation, load balancing, and rate limiting capabilities."
 readme = "README.md"
 authors = [
-    {name = "Nya Foundation Team", email = "k3scat@gmail.com"},
+    {name = "Nya Foundation Team (k3scat)", email = "k3scat@gmail.com"},
 ]
-license = {text = "MIT"}
+license = {file = "LICENSE"}
 classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
 ]
 requires-python = ">=3.8"
 dependencies = [
@@ -22,11 +27,10 @@ dependencies = [
     "uvicorn>=0.22.0",
     "httpx>=0.24.0",
     "nekoconf>=0.1.4",
-    "pyyaml>=6.0",
     "jinja2>=3.1.2",
     "setuptools>=42.0.0",
-    "watchfiles",
-    "brotli",
+    "watchfiles>=0.18.0",
+    "brotli>=1.0.9",
 ]
 
 [project.optional-dependencies]
@@ -60,7 +64,7 @@ exclude_lines = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Nya-Foundation/nyaproxy"
+"Homepage" = "https://github.com/Nya-Foundation/nyaproxy"
 "Bug Tracker" = "https://github.com/Nya-Foundation/nyaproxy/issues"
 
 [project.scripts]
@@ -71,16 +75,13 @@ packages = ["nya_proxy"]
 package-dir = {"nya_proxy" = "nya_proxy"}
 
 [tool.semantic_release]
-version_variable = "nya_proxy/__init__.py:__version__"
-branch = "main"
-upload_to_pypi = true
-upload_to_release = true
+tag_format = "v{version}"
+version_variables = ["nya_proxy/__init__.py:__version__"]
 build_command = "python -m pip install build && python -m build"
-
-# Changelog settings
-changelog_file = "CHANGELOG.md"
 commit_parser = "conventional"
-changelog_sections = "all"
-
 commit_message = "chore(release): bump version to v{version} [skip ci]"
 commit_author = "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+
+[tool.semantic_release.publish]
+dist_glob_patterns = ["dist/*"]
+upload_to_vcs_release = true
