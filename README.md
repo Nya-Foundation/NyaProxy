@@ -95,7 +95,7 @@ novelai:
 ## 🖥️ Management Interfaces
 
 ### Real-time Metrics Dashboard
-<img src="https://raw.githubusercontent.com/Nya-Foundation/NyaProxy/main/images/dashboard_ui.png" width="600" alt="Dashboard UI"/>
+<img src="https://raw.githubusercontent.com/Nya-Foundation/NyaProxy/main/images/dashboard_ui.png" width="800" alt="Dashboard UI"/>
 
 Monitor at `http://localhost:8080/dashboard`:
 - Request volumes and response times
@@ -104,7 +104,7 @@ Monitor at `http://localhost:8080/dashboard`:
 - Error rates and status codes
 
 ### Visual Configuration Interface
-<img src="https://raw.githubusercontent.com/Nya-Foundation/NyaProxy/main/images/config_ui.png" width="600" alt="Configuration UI"/>
+<img src="https://raw.githubusercontent.com/Nya-Foundation/NyaProxy/main/images/config_ui.png" width="800" alt="Configuration UI"/>
 
 Manage at `http://localhost:8080/config`:
 - Live configuration editing
