@@ -1,4 +1,7 @@
+<<<<<<< HEAD
 # ---> Python
+=======
+>>>>>>> origin/staging
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -95,6 +98,15 @@ ipython_config.py
 #   install all needed dependencies.
 #Pipfile.lock
 
+<<<<<<< HEAD
+=======
+# UV
+#   Similar to Pipfile.lock, it is generally recommended to include uv.lock in version control.
+#   This is especially recommended for binary packages to ensure reproducibility, and is more
+#   commonly ignored for libraries.
+#uv.lock
+
+>>>>>>> origin/staging
 # poetry
 #   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
 #   This is especially recommended for binary packages to ensure reproducibility, and is more
@@ -162,7 +174,15 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
+<<<<<<< HEAD
 .metrics/
 .config.yaml
 .build.sh
 .toDo.md
+=======
+# Ruff stuff:
+.ruff_cache/
+
+# PyPI configuration file
+.pypirc
+>>>>>>> origin/staging
