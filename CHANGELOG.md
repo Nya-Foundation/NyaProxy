@@ -1,6 +1,16 @@
 # CHANGELOG
 
 
+## v0.0.2 (2025-04-27)
+
+### Bug Fixes
+
+- **security**: Remediate 2 critial vulnerabilities, optimize Dockerfil, reduce image size with
+  Alpine, fix config_path priority issue, fix pypi upload logic in ci, fix pyproject.toml format
+  issue
+  ([`ba1f338`](https://github.com/Nya-Foundation/NyaProxy/commit/ba1f33894acaa2a60256c1463cf94e2d0923168c))
+
+
 ## v0.0.1 (2025-04-27)
 
 ### Bug Fixes
