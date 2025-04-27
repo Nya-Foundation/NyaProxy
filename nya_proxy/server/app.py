@@ -418,6 +418,7 @@ def main():
     port = args.port or os.environ.get("NYA_PROXY_PORT")
 
     import importlib.resources as pkg_resources
+
     import nya_proxy
 
     if not config_path_abs:
