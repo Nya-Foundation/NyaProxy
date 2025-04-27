@@ -46,8 +46,7 @@ jobs:
 
     - name: Run tests with coverage
       run: |
-        # Assumes your package source is in 'nekoconf' and tests are in 'tests/'
-        pytest --cov=nekoconf tests/ --cov-report=xml
+        pytest --cov=nya_proxy tests/ --cov-report=xml
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v5
