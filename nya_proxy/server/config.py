@@ -8,6 +8,8 @@ from typing import Any, Dict, List, Optional
 
 from nekoconf import ConfigAPI, NekoConf
 
+from ..common.constants import DEFAULT_SCHEMA_NAME
+
 
 class ConfigError(Exception):
     """Exception raised for configuration errors."""
@@ -44,7 +46,9 @@ class ConfigManager:
             raise ConfigError(f"Configuration file not found: {config_path}")
 
         try:
-            self.config = ConfigAPI(config_path=config_path, schema_path="schema.json")
+            self.config = ConfigAPI(
+                config_path=config_path, schema_path=DEFAULT_SCHEMA_NAME
+            )
 
             # Validate against the schema
             results = self.config.validate()

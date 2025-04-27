@@ -16,10 +16,10 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 
 from ..common.constants import (
-    DEFAULT_CONFIG_PATH,
+    DEFAULT_CONFIG_NAME,
     DEFAULT_HOST,
     DEFAULT_PORT,
-    DEFAULT_SCHEMA_PATH,
+    DEFAULT_SCHEMA_NAME,
 )
 from ..common.models import NyaRequest
 from ..core.handler import NyaProxyCore
@@ -42,7 +42,7 @@ class RootPathMiddleware(BaseHTTPMiddleware):
 class NyaProxyApp:
     """Main NyaProxy application class"""
 
-    def __init__(self):
+    def __init__(self, config_path=None):
         """Initialize the NyaProxy application"""
         # Initialize instance variables
         self.config = None
@@ -54,7 +54,7 @@ class NyaProxyApp:
         self.dashboard = None
 
         # Load config early to allow configuration of middleware
-        self._init_config()
+        self._init_config(config_path)
 
         # Set up the auth manager with config
         self._init_auth()
@@ -162,9 +162,9 @@ class NyaProxyApp:
                 self.logger.error(f"Error during startup: {str(e)}")
             raise
 
-    def _init_config(self):
+    def _init_config(self, config_path=None):
         """Initialize configuration manager."""
-        config_path = os.environ.get("CONFIG_PATH", "config.yaml")
+
         self.config = ConfigManager(config_path=config_path, logger=self.logger)
         return self.config
 
@@ -353,10 +353,8 @@ class NyaProxyApp:
             await self.core.request_executor.close()
 
 
-# Create a single instance of the application
-nya_proxy_app = NyaProxyApp()
-app = nya_proxy_app.app
-app.router.lifespan_context = nya_proxy_app.lifespan
+# Global app variable for ASGI
+app = None
 
 
 def parse_args():
@@ -380,6 +378,8 @@ def reload_server():
     try:
         import signal
 
+        print("[NyaProxy] Configuration changed.. Attempting to reload server...")
+
         # Send SIGUSR1 signal to the main process which uvicorn's reloader watches for
         os.kill(os.getpid(), signal.SIGUSR1)
         exit(0)
@@ -390,11 +390,17 @@ def reload_server():
         return True
     except Exception as e:
         error_msg = f"Failed to reload server: {str(e)}"
-        if nya_proxy_app.logger:
-            nya_proxy_app.logger.error(error_msg)
-        else:
-            logging.error(error_msg)
+        logging.error(error_msg)
         return False
+
+
+def create_app(config_path=None):
+    """Create the FastAPI application with the NyaProxy app"""
+    global app
+    nya_proxy_app = NyaProxyApp(config_path)
+    app = nya_proxy_app.app
+    app.router.lifespan_context = nya_proxy_app.lifespan
+    return app
 
 
 def main():
@@ -407,44 +413,60 @@ def main():
     # 3. Configuration file (DEFAULT_CONFIG_PATH)
     # 4. Default values (DEFAULT_HOST, DEFAULT_PORT)
 
-    # 1. Command line arguments
-    cli_config = args.config
-    cli_host = args.host
-    cli_port = args.port
+    config_path_abs = args.config or os.environ.get("CONFIG_PATH")
+    host = args.host or os.environ.get("NYA_PROXY_HOST")
+    port = args.port or os.environ.get("NYA_PROXY_PORT")
 
-    # 2. Environment variables
-    env_config = os.environ.get("CONFIG_PATH")
-    env_host = os.environ.get("NYA_PROXY_HOST")
-    env_port = os.environ.get("NYA_PROXY_PORT")
+    import importlib.resources as pkg_resources
 
-    # 3. Configuration file and 4. Defaults
-    config_path = cli_config or env_config or DEFAULT_CONFIG_PATH
-    host = cli_host or env_host
-    port = cli_port or env_port
+    import nya_proxy
+
+    if not config_path_abs:
+        # Create copies of the default config and schema in current directory
+        import shutil
+
+        cwd = os.getcwd()
+        config_path_abs = os.path.join(cwd, DEFAULT_CONFIG_NAME)
+
+        # if config file does not exist, copy the default config from package resources to current directory
+        if not os.path.exists(config_path_abs):
+            with pkg_resources.path(nya_proxy, DEFAULT_CONFIG_NAME) as default_config:
+                shutil.copy(default_config, config_path_abs)
+            print(
+                f"No config file provided, create default configuration at {config_path_abs}"
+            )
 
     try:
-        # Configuration file validation
-        config = ConfigAPI(config_path)
+
+        config = None
+        config_path_rel = os.path.relpath(config_path_abs, os.getcwd())
+
+        print(f"Loading configuration from {config_path_abs}, cwd: {os.getcwd()}")
+        # load validation schema from package resources
+        with pkg_resources.path(nya_proxy, DEFAULT_SCHEMA_NAME) as default_schema:
+            config = ConfigAPI(config_path_abs, default_schema)
 
         if not host:
             host = config.get_str("nya_proxy.host", DEFAULT_HOST)
         if not port:
             port = config.get_int("nya_proxy.port", DEFAULT_PORT)
 
-        print(f"Configuration loaded from {config_path}")
-        os.environ["CONFIG_PATH"] = config_path
+        print(f"Configuration loaded from {config_path_abs}")
 
     except Exception as e:
         print(f"Error loading configuration: {str(e)}, invalid config file or schema.")
         sys.exit(1)
 
+    # Create the app here instead of importing a global
+    app_instance = create_app(config_path_abs)
+
     # Run the server
     uvicorn.run(
-        "nya_proxy.server.app:app",
+        app_instance,
         host=host,
         port=int(port),
-        reload=True,
-        reload_includes=[config_path],  # Reload on config changes
+        # reload=True,
+        # reload_includes=[config_path_rel],  # Reload on config changes
     )
 
 
