@@ -73,8 +73,25 @@ exclude_lines = [
 nyaproxy = "nya_proxy.server.app:main"
 
 [tool.setuptools]
-packages = ["nya_proxy"]
+packages = [
+    "nya_proxy",
+    "nya_proxy.common",
+    "nya_proxy.core",
+    "nya_proxy.dashboard",
+    "nya_proxy.server",
+    "nya_proxy.services",
+]
 package-dir = {"nya_proxy" = "nya_proxy"}
+include-package-data = true
+
+[tool.setuptools.package-data]
+"nya_proxy" = ["config.yaml", "schema.json"]
+"nya_proxy.templates" = ["*.html"]
+"nya_proxy.templates.static.css" = ["*.css"]
+"nya_proxy.templates.static.js" = ["*.js"]
+
+[tool.setuptools.exclude-package-data]
+"*" = ["*.pyc", "*.pyo", "__pycache__/*"]
 
 [tool.semantic_release]
 tag_format = "v{version}"

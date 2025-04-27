@@ -2,11 +2,11 @@
 Constants used throughout the NyaProxy application.
 """
 
-# Default Config Oath
-DEFAULT_CONFIG_PATH = "config.yaml"
+# Default Config File Name
+DEFAULT_CONFIG_NAME = "config.yaml"
 
 # Default Config Validation Schema
-DEFAULT_SCHEMA_PATH = "schema.yaml"
+DEFAULT_SCHEMA_NAME = "schema.json"  # Previously schema.json, now using yaml format
 
 # Default Host and Port
 DEFAULT_HOST = "0.0.0.0"
