@@ -72,7 +72,7 @@ class DashboardAPI:
         self.app = FastAPI(
             title="NyaProxy Dashboard",
             description="Dashboard for monitoring and controlling NyaProxy",
-            version="0.0.3",
+            version="0.0.4",
         )
 
         # Set up templates for HTML views

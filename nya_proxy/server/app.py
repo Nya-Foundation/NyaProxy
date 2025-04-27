@@ -67,7 +67,7 @@ class NyaProxyApp:
         app = FastAPI(
             title="NyaProxy",
             description="A simple low-level API proxy with dynamic token rotation and load balancing",
-            version="0.0.3",
+            version="0.0.4",
         )
 
         # Add CORS middleware
@@ -118,7 +118,7 @@ class NyaProxyApp:
                         "aliases": config.get("aliases", []),
                     }
 
-            return {"status": "running", "version": "0.0.3", "apis": apis}
+            return {"status": "running", "version": "0.0.4", "apis": apis}
 
     async def generic_proxy_request(self, request: Request):
         """Generic handler for all proxy requests."""

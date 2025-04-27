@@ -7,6 +7,7 @@
 [![CI/CD](https://github.com/Nya-Foundation/nyaproxy/actions/workflows/publish.yml/badge.svg)](https://github.com/Nya-Foundation/nyaproxy/actions/workflows/publish.yml)
 [![Docker](https://img.shields.io/docker/pulls/k3scat/nya-proxy)](https://hub.docker.com/r/k3scat/nya-proxy)
 
+<img src="https://raw.githubusercontent.com/Nya-Foundation/NyaProxy/main/images/banner.png" alt="NyaProxy Banner"/>
 
 *Your Swiss Army Knife for API Proxy Management*
 
@@ -136,7 +137,7 @@ F --> H[🔍 Custom Metrics API]
 
 ## ❤️ Community
 
-[![Discord](https://img.shields.io/discord/1360834908314009771)](https://discord.gg/XU5qRyVyhm)
+[![Discord](https://img.shields.io/discord/1365929019714834493)](https://discord.gg/jXAxVPSs7K)
 
 *Need enterprise support? Contact [k3scat@gmail.com](mailto:k3scat@gmail.com)*
 
