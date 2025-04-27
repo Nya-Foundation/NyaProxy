@@ -1,5 +1,6 @@
 import pytest
-from nya_proxy.header_processor import HeaderProcessor
+
+from nya_proxy.core.header_processor import HeaderProcessor
 
 
 @pytest.fixture

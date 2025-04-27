@@ -1,17 +1,16 @@
 services:
-  nyaproxy:
+  nya-proxy:
     build:
       context: .
       dockerfile: Dockerfile
-    image: nyaproxy:latest
-    container_name: nyaproxy
+    image: k3scat/nya-proxy:latest
+    container_name: nya-proxy
     restart: unless-stopped
     ports:
       # Notes: change the host port if conflicting
       - "8080:8080"
     volumes:
       - ./config.yaml:/app/config.yaml
-      - logs:/app/logs
     environment:
       # Notes: CONFIG_PATH only supports relative paths
       - CONFIG_PATH=config.yaml
@@ -19,7 +18,7 @@ services:
       - DOCKER_BUILDKIT=1
       - COMPOSE_DOCKER_CLI_BUILD=1
     networks:
-      - nyaproxy-network
+      - nya-proxy-network
     deploy:
       resources:
         limits:
@@ -27,17 +26,8 @@ services:
           memory: 512M
 
 networks:
-  nyaproxy-network:
+  nya-proxy-network:
     driver: bridge
     driver_opts:
       # Avoid naming conflicts; optional, WSL-safe
-      com.docker.network.bridge.name: nyaproxy-br
-
-volumes:
-  logs:
-    driver: local
-    # Use cross-platform path expansion
-    driver_opts:
-      type: none
-      device: ${PWD}/logs
-      o: bind
+      com.docker.network.bridge.name: nya-proxy-br

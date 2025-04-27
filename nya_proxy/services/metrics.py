@@ -7,8 +7,8 @@ import time
 from collections import deque
 from typing import Any, Dict, List, Optional
 
-from .constants import MAX_QUEUE_SIZE
-from .utils import _mask_api_key
+from ..common.constants import MAX_QUEUE_SIZE
+from ..common.utils import _mask_api_key
 
 
 class MetricsCollector:

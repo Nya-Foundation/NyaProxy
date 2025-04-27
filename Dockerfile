@@ -65,5 +65,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8080/info || exit 1
 
 # Command to run the application
-ENTRYPOINT ["python", "-m", "nya_proxy.app"]
+ENTRYPOINT ["python", "-m", "nya_proxy.server.app"]
 CMD ["--config", "config.yaml"]

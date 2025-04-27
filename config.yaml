@@ -1,10 +1,10 @@
 nya_proxy:
   host: 0.0.0.0
   port: 8080
-  api_key: YourNyaProxyAPIKey
+  api_key: NyaProxyAPIKey
   logging:
     enabled: true
-    level: debug
+    level: info
     log_file: nya_proxy.log
   proxy:
     enabled: false
@@ -14,7 +14,7 @@ nya_proxy:
   queue:
     enabled: true
     max_size: 200
-    expiry_seconds: 110
+    expiry_seconds: 300
 
 default_settings:
   key_variable: keys
@@ -32,7 +32,7 @@ default_settings:
     retry_request_methods: [ POST, GET, PUT, DELETE, PATCH, OPTIONS ]
     retry_status_codes: [ 429, 500, 502, 503, 504 ]
   timeouts:
-    request_timeout_seconds: 110
+    request_timeout_seconds: 300
     
 
 apis:
@@ -68,7 +68,6 @@ apis:
         - "/v1/chat/*"
         - "/v1/images/*"
 
-      
   test:
     name: Test API
     endpoint: http://127.0.0.1:8000

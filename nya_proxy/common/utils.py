@@ -3,9 +3,9 @@ Utility functions for NyaProxy.
 """
 
 import gzip
-import zlib
 import json
-from typing import Optional, Any
+import zlib
+from typing import Any, Optional
 
 import brotli
 
@@ -27,8 +27,13 @@ def json_safe_dumps(
         A JSON-formatted string or raw string representation if serialization fails.
     """
     try:
+        json_data = json.loads(obj)
         return json.dumps(
-            obj, default=str(obj), indent=indent, ensure_ascii=ensure_ascii, **kwargs
+            json_data,
+            default=str(obj),
+            indent=indent,
+            ensure_ascii=ensure_ascii,
+            **kwargs,
         )
     except (TypeError, ValueError) as e:
         return str(obj)

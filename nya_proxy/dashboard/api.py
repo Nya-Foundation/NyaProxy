@@ -14,11 +14,11 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .metrics import MetricsCollector
+from ..services.metrics import MetricsCollector
 
 if TYPE_CHECKING:
-    from .config import ConfigManager
-    from .request_queue import RequestQueue
+    from ..server.config import ConfigManager
+    from ..services.request_queue import RequestQueue
 
 
 class DashboardAPI:
@@ -120,7 +120,7 @@ class DashboardAPI:
     def _setup_routes(self):
         """Set up API routes for the dashboard."""
 
-        @self.app.get("/", response_class=HTMLResponse)
+        @self.app.get("/")
         async def index(request: Request):
             """Render the dashboard HTML."""
             return self.templates.TemplateResponse(

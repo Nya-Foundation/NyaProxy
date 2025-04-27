@@ -10,24 +10,23 @@ import sys
 import time
 
 import uvicorn
-from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.security import APIKeyHeader
+from fastapi import Depends, FastAPI, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 
-from .auth import AuthManager, AuthMiddleware
-from .config import ConfigAPI, ConfigManager
-from .constants import (
+from ..common.constants import (
     DEFAULT_CONFIG_PATH,
     DEFAULT_HOST,
     DEFAULT_PORT,
     DEFAULT_SCHEMA_PATH,
 )
-from .core import NyaProxyCore
-from .dashboard import DashboardAPI
+from ..common.models import NyaRequest
+from ..core.handler import NyaProxyCore
+from ..dashboard.api import DashboardAPI
+from .auth import AuthManager, AuthMiddleware
+from .config import ConfigAPI, ConfigManager
 from .logger import setup_logger
-from .models import NyaRequest
 
 
 class RootPathMiddleware(BaseHTTPMiddleware):
@@ -213,11 +212,7 @@ class NyaProxyApp:
                 )
             return False
 
-        if (
-            not hasattr(self.config, "web_server")
-            or not hasattr(self.config, "server")
-            or not hasattr(self.config.server, "app")
-        ):
+        if not hasattr(self.config, "server") or not hasattr(self.config.server, "app"):
             if self.logger:
                 self.logger.warning("Configuration web server not available")
             return False
@@ -444,7 +439,7 @@ def main():
 
     # Run the server
     uvicorn.run(
-        "nya_proxy.app:app",
+        "nya_proxy.server.app:app",
         host=host,
         port=int(port),
         reload=True,

@@ -13,14 +13,14 @@ from typing import TYPE_CHECKING, List, Optional
 import httpx
 from starlette.responses import JSONResponse
 
-from .exceptions import APIKeyExhaustedError
-from .models import NyaRequest
-from .utils import _mask_api_key, format_elapsed_time, json_safe_dumps
+from ..common.exceptions import APIKeyExhaustedError
+from ..common.models import NyaRequest
+from ..common.utils import _mask_api_key, format_elapsed_time, json_safe_dumps
 
 if TYPE_CHECKING:
-    from .config import ConfigManager
-    from .key_manager import KeyManager
-    from .metrics import MetricsCollector
+    from ..server.config import ConfigManager
+    from ..services.key_manager import KeyManager
+    from ..services.metrics import MetricsCollector
 
 
 class RequestExecutor:

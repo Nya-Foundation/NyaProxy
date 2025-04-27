@@ -8,29 +8,30 @@ import logging
 import time
 import traceback
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
-from starlette.responses import JSONResponse, Response
 from urllib.parse import urlparse
 
-from .config import ConfigManager
-from .constants import API_PATH_PREFIX
-from .exceptions import (
+from starlette.responses import JSONResponse, Response
+
+from ..common.constants import API_PATH_PREFIX
+from ..common.exceptions import (
     APIKeyExhaustedError,
     EndpointRateLimitExceededError,
-    VariablesConfigurationError,
     RequestExpiredError,
+    VariablesConfigurationError,
 )
+from ..common.models import NyaRequest
+from ..common.utils import json_safe_dumps
+from ..server.config import ConfigManager
+from ..services.key_manager import KeyManager
+from ..services.load_balancer import LoadBalancer
+from ..services.metrics import MetricsCollector
+from ..services.request_queue import RequestQueue
 from .header_processor import HeaderProcessor
-from .key_manager import KeyManager
-from .load_balancer import LoadBalancer
-from .metrics import MetricsCollector
-from .models import NyaRequest
 from .request_executor import RequestExecutor
-from .request_queue import RequestQueue
 from .response_processor import ResponseProcessor
-from .utils import json_safe_dumps
 
 if TYPE_CHECKING:
-    from .rate_limiter import RateLimiter  # Avoid circular import issues
+    from ..services.rate_limiter import RateLimiter  # Avoid circular import issues
 
 
 class NyaProxyCore:
@@ -197,7 +198,7 @@ class NyaProxyCore:
 
     def _create_rate_limiter(self, rate_limit: str) -> Any:
         """Create a rate limiter with the specified limit."""
-        from .rate_limiter import RateLimiter
+        from ..services.rate_limiter import RateLimiter
 
         return RateLimiter(rate_limit, logger=self.logger)
 

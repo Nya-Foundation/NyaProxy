@@ -3,10 +3,12 @@ Authentication module for NyaProxy.
 Provides authentication mechanisms and middleware.
 """
 
+import importlib.resources
+
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import APIKeyHeader
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse, HTMLResponse, RedirectResponse
+from starlette.responses import HTMLResponse, JSONResponse
 
 
 class AuthManager:
@@ -152,9 +154,20 @@ class AuthMiddleware(BaseHTTPMiddleware):
         """Generate a login page for the dashboard or config app"""
         return_path = request.url.path
 
-        # load the login HTML template
-        with open("nya_proxy/templates/login.html", "r") as f:
-            html_content = f.read()
+        # load the login HTML template using importlib.resources
+        try:
+            template_path = (
+                importlib.resources.files("nya_proxy") / "templates" / "login.html"
+            )
+            with template_path.open("r") as f:
+                html_content = f.read()
+        except (FileNotFoundError, TypeError, ImportError):
+            # Log an error and return a generic error response
+            # Consider adding logging here if self.logger is available or passed
+            return JSONResponse(
+                status_code=500,
+                content={"error": "Internal server error: Login page unavailable"},
+            )
 
         # Replace placeholders in the HTML template
         html_content = html_content.replace("{{ return_path }}", return_path)

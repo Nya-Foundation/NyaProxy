@@ -12,12 +12,12 @@ import httpx
 from fastapi import Response
 from starlette.responses import JSONResponse, StreamingResponse
 
-from .utils import decode_content, json_safe_dumps
+from ..common.utils import decode_content, json_safe_dumps
 
 if TYPE_CHECKING:
-    from .load_balancer import LoadBalancer
-    from .metrics import MetricsCollector
-    from .models import NyaRequest
+    from ..common.models import NyaRequest
+    from ..services.load_balancer import LoadBalancer
+    from ..services.metrics import MetricsCollector
 
 
 class ResponseProcessor:
@@ -170,7 +170,7 @@ class ResponseProcessor:
             raw_content = self.add_base_tag(raw_content, original_host)
             raw_content = raw_content.encode("utf-8")
 
-        self.logger.debug(f"Raw Response Content: {json_safe_dumps(raw_content)}")
+        self.logger.debug(f"Response Content: {json_safe_dumps(raw_content)}")
 
         return Response(
             content=raw_content,

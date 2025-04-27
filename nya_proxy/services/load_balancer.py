@@ -6,7 +6,7 @@ import logging
 import random
 from typing import Callable, List, Optional, TypeVar
 
-from .constants import MAX_QUEUE_SIZE
+from ..common.constants import MAX_QUEUE_SIZE
 
 T = TypeVar("T")
 

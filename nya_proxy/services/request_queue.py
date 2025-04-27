@@ -20,9 +20,13 @@ from typing import (
     TypeVar,
 )
 
-from .exceptions import APIKeyExhaustedError, QueueFullError, RequestExpiredError
-from .models import NyaRequest
-from .utils import format_elapsed_time
+from ..common.exceptions import (
+    APIKeyExhaustedError,
+    QueueFullError,
+    RequestExpiredError,
+)
+from ..common.models import NyaRequest
+from ..common.utils import format_elapsed_time
 
 if TYPE_CHECKING:
     from .key_manager import KeyManager
@@ -46,6 +50,7 @@ class RequestQueue:
         logger: logging.Logger,
         max_size: int = 100,
         expiry_seconds: int = 300,
+        start_task: bool = True,  # New parameter to control background task
     ):
         """
         Initialize the request queue.
@@ -55,6 +60,7 @@ class RequestQueue:
             logger: Logger instance
             max_size: Maximum queue size per API
             expiry_seconds: Default expiry time for queued requests in seconds
+            start_task: Whether to start the background processing task
         """
         self.logger = logger
         self.max_size = max_size
@@ -84,7 +90,12 @@ class RequestQueue:
 
         # Start processing task
         self.running = True
-        self.processing_task = asyncio.create_task(self._process_queue_task())
+        self.processing_task = None
+        self._background_tasks = set()
+        if start_task:
+            self.processing_task = asyncio.create_task(self._process_queue_task())
+            self._background_tasks.add(self.processing_task)
+            self.processing_task.add_done_callback(self._background_tasks.discard)
 
     def register_processor(
         self, processor: Callable[[NyaRequest], Awaitable[Any]]
@@ -225,16 +236,21 @@ class RequestQueue:
 
     async def _process_queue_task(self) -> None:
         """Background task for processing queued requests."""
-        while self.running:
-            try:
-                # Process queues for all APIs that have available keys
-                await self._process_all_queues()
-                await asyncio.sleep(0.1)  # Check queues every second
-            except Exception as e:
-                self.logger.error(f"Error in queue processing task: {str(e)}")
-                self.logger.debug(f"Traceback: {traceback.format_exc()}")
+        try:
+            while self.running:
+                try:
+                    # Process queues for all APIs that have available keys
+                    await self._process_all_queues()
+                    await asyncio.sleep(0.1)  # Check queues every second
+                except Exception as e:
+                    self.logger.error(f"Error in queue processing task: {str(e)}")
+                    self.logger.debug(f"Traceback: {traceback.format_exc()}")
 
-                await asyncio.sleep(2.0)  # Backoff if there are errors
+                    await asyncio.sleep(2.0)  # Backoff if there are errors
+        except asyncio.CancelledError:
+            # Handle cancellation gracefully when the queue is stopped
+            self.logger.debug("Queue processing task cancelled")
+            return
 
     async def _process_all_queues(self) -> None:
         """Process all queues for all APIs that have available keys."""
@@ -304,7 +320,8 @@ class RequestQueue:
                 # assign an API key to the request
                 request.api_key = available_key
 
-                # Process the request outside the lock
+                # Process the request outside the lock using a task to avoid blocking
+                # This creates a new task but doesn't wait for it to complete
                 asyncio.create_task(self._process_request_item(request))
 
     async def _handle_expired_request(
@@ -336,15 +353,27 @@ class RequestQueue:
             return
 
         api_name = request.api_name
-        response = await self.processor(request)
+        try:
+            response = await self.processor(request)
 
-        # Set the result on the future
-        if hasattr(request, "future") and not request.future.done():
-            request.future.set_result(response)
+            # Ensure the future is properly set with the result
+            if hasattr(request, "future"):
+                if not request.future.done():
+                    request.future.set_result(response)
+                else:
+                    self.logger.warning(
+                        f"Future for request to {api_name} was already done when setting result"
+                    )
 
-        # Successfully processed
-        self.metrics["total_processed"] += 1
-        self.logger.info(f"Successfully processed queued request for {api_name}")
+            # Successfully processed
+            self.metrics["total_processed"] += 1
+            self.logger.info(f"Successfully processed queued request for {api_name}")
+        except Exception as e:
+            self.logger.error(
+                f"Error processing queued request for {api_name}: {str(e)}"
+            )
+            self._fail_request(request, e)
+            raise
 
     def _fail_request(self, request: NyaRequest, error: Exception) -> None:
         """

@@ -6,7 +6,7 @@ import logging
 import re
 from typing import Any, Dict, Optional, Set
 
-from .constants import EXCLUDED_REQUEST_HEADERS
+from ..common.constants import EXCLUDED_REQUEST_HEADERS
 
 
 class HeaderProcessor:

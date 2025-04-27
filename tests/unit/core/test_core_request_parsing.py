@@ -1,7 +1,8 @@
 import pytest
-from nya_proxy.core import NyaProxyCore
-from nya_proxy.models import NyaRequest
-from nya_proxy.constants import API_PATH_PREFIX
+
+from nya_proxy.common.constants import API_PATH_PREFIX
+from nya_proxy.core.handler import NyaProxyCore
+from nya_proxy.common.models import NyaRequest
 
 
 class MockConfig:

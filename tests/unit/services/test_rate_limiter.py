@@ -1,7 +1,9 @@
-import pytest
-import time
 import re
-from nya_proxy.rate_limiter import RateLimiter
+import time
+
+import pytest
+
+from nya_proxy.services.rate_limiter import RateLimiter
 
 
 @pytest.fixture

@@ -7,7 +7,7 @@ import logging
 import time
 from typing import Dict, Optional, Tuple
 
-from .exceptions import APIKeyExhaustedError, VariablesConfigurationError
+from ..common.exceptions import APIKeyExhaustedError, VariablesConfigurationError
 from .load_balancer import LoadBalancer
 from .rate_limiter import RateLimiter
 
@@ -80,6 +80,9 @@ class KeyManager:
         """
         async with self.lock:
             endpoint_limiter = self.get_api_rate_limiter(api_name)
+            # If there's no endpoint limiter, consider the API available
+            if not endpoint_limiter:
+                return True
             return not endpoint_limiter.is_rate_limited()
 
     async def has_available_keys(self, api_name: str) -> bool:
@@ -140,7 +143,7 @@ class KeyManager:
             all_keys = set(key_lb.values)
             if not all_keys:
                 self.logger.error(f"No API keys configured for {api_name}")
-                raise APIKeyExhaustedError(api_name)
+                raise APIKeyExhaustedError(f"No API keys configured for {api_name}")
 
             # Find a non-rate-limited key
             for _ in range(len(all_keys)):
@@ -152,7 +155,9 @@ class KeyManager:
                     return key
 
             # If we've tried all keys and none are available, raise exception
-            self.logger.warning(f"All API keys for {api_name} are rate limited")
+            self.logger.warning(
+                f"All API keys for {api_name} are exhausted or rate limited"
+            )
             raise APIKeyExhaustedError(api_name)
 
     def _clean_rate_limited_keys(self, api_name: str) -> None:

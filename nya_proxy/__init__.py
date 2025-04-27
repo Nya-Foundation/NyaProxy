@@ -4,22 +4,23 @@ NyaProxy - A cute and simple low-level API proxy with dynamic token rotation.
 
 __version__ = "0.1.0"
 
+from .common.models import NyaRequest
+from .common.utils import format_elapsed_time
+from .core.handler import NyaProxyCore
+from .core.header_processor import HeaderProcessor
+from .core.request_executor import RequestExecutor
+from .core.response_processor import ResponseProcessor
+from .dashboard.api import DashboardAPI
+
 # Import key components for easier access
 # from .app import NyaProxyApp, app, main
-from .config import ConfigError, ConfigManager
-from .core import NyaProxyCore
-from .dashboard import DashboardAPI
-from .header_processor import HeaderProcessor
-from .key_manager import KeyManager
-from .load_balancer import LoadBalancer
-from .logger import setup_logger
-from .metrics import MetricsCollector
-from .models import NyaRequest
-from .rate_limiter import RateLimiter
-from .request_executor import RequestExecutor
-from .request_queue import RequestQueue
-from .response_processor import ResponseProcessor
-from .utils import format_elapsed_time
+from .server.config import ConfigError, ConfigManager
+from .server.logger import setup_logger
+from .services.key_manager import KeyManager
+from .services.load_balancer import LoadBalancer
+from .services.metrics import MetricsCollector
+from .services.rate_limiter import RateLimiter
+from .services.request_queue import RequestQueue
 
 # Define __all__ to control what is imported with "from nya_proxy import *"
 __all__ = [
