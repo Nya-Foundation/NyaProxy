@@ -34,7 +34,7 @@ docker run -d \
 ### PyPI (Development)
 ```bash
 pip install nya-proxy
-nyaproxy --config config.yaml --log-level debug
+nyaproxy --config config.yaml
 ```
 
 ## 📡 Service Endpoints
