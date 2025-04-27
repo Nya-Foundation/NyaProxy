@@ -1,6 +1,25 @@
 # CHANGELOG
 
 
+## v0.0.5 (2025-04-27)
+
+### Bug Fixes
+
+- Move config.yaml and schema.json into the build folder.. fix build issue
+  ([`69fff5b`](https://github.com/Nya-Foundation/NyaProxy/commit/69fff5bfeb079e13cbaba999c2d07a4cf5bd57e6))
+
+### Chores
+
+- **format**: Apply automatic formatting [skip ci]
+  ([`5ad007c`](https://github.com/Nya-Foundation/NyaProxy/commit/5ad007c6f1f7e2ee5b02329a644f5ac8af5851c2))
+
+- **README**: Fix README error
+  ([`0b1c4b2`](https://github.com/Nya-Foundation/NyaProxy/commit/0b1c4b21c623b61a0e24227b52811f3c6e13c099))
+
+- **README**: Update README.md user guide
+  ([`3b1b05c`](https://github.com/Nya-Foundation/NyaProxy/commit/3b1b05c755e78e1b85139999a7d8b37c155cff1e))
+
+
 ## v0.0.4 (2025-04-27)
 
 ### Bug Fixes
