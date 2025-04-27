@@ -6,6 +6,7 @@ on:
     branches-ignore:
       - 'main'
       - 'staging'
+      - 'dev'
     paths:
       - 'pyproject.toml'
       - 'setup.py'
@@ -49,22 +50,16 @@ jobs:
         # See: https://github.com/actions/dependency-review-action
         uses: actions/dependency-review-action@v4
         with:
+          # The base branch for the pull request or the main branch for pushes
+          base-ref: ${{ github.event.pull_request.base.sha || 'main' }}
+          head-ref: ${{ github.sha }}
+
           # Scan for vulnerabilities reported in the GitHub Advisory Database
           vulnerability-check: true
-
           # Fail the workflow if any vulnerabilities with 'high' or 'critical' severity are found.
           # Allowed values: low, moderate, high, critical
           fail-on-severity: high
 
-          # --- Optional License Checks ---
-          # Uncomment and configure ONE of the following based on your policy:
+          # Uncomment based on your license policy
+          allow-licenses: MIT, Apache-2.0, BSD-3-Clause, ISC, 0BSD, Python-2.0
 
-          # Option 1: Specify allowed licenses (uses SPDX identifiers)
-          # allow-licenses: MIT, Apache-2.0, BSD-3-Clause
-
-          # Option 2: Specify denied licenses (uses SPDX identifiers)
-          # deny-licenses: GPL-*, AGPL-*, LGPL-*
-
-          # --- Optional Configuration File ---
-          # For more complex configurations (e.g., allow specific CVEs)
-          # config-file: './.github/dependency-review-config.yml'
