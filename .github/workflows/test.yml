@@ -1,0 +1,61 @@
+# .github/workflows/test.yml
+name: CI - Unit Test
+
+on:
+  push:
+    branches:
+      - dev
+  pull_request:
+    branches: ["dev", "staging", "main"]
+  workflow_dispatch:
+
+# Concurrency settings:
+# - For PRs: Cancel older runs for the same PR.
+# - For pushes: Cancel older runs for the same branch.
+# - workflow_dispatch runs will run independently.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11', '3.12']
+      fail-fast: false # Ensure all Python versions are tested
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      # fetch-depth: 0 # Usually not needed for tests unless testing git history itself
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+        cache-dependency-path: |
+          pyproject.toml
+          setup.py
+          # Add requirements*.txt if relevant
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .[dev]
+
+    - name: Run tests with coverage
+      run: |
+        pytest --cov=nya_proxy tests/ --cov-report=xml
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v5
+      with:
+        files: ./coverage.xml
+        token: ${{ secrets.CODECOV_TOKEN }} 
+        fail_ci_if_error: true # Recommended to fail the build if Codecov upload fails
+        name: codecov-${{ matrix.python-version }} # Optional: name the report based on Python version
+        flags: unittests
+        verbose: true
+      # Only upload coverage for one Python version to avoid duplicate reports (optional, but common)
+      # if: matrix.python-version == '3.12' # Or your primary test version

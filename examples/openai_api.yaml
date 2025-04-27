@@ -1,0 +1,63 @@
+# OpenAI API Configuration Example (Not yet tested)
+# Google Gemini API Configuration Example (Tested Working!)
+nya_proxy:
+  host: 0.0.0.0
+  port: 8080
+  api_key: YourNyaProxyAPIKey
+  logging:
+    enabled: true
+    level: debug
+    log_file: nya_proxy.log
+  proxy:
+    enabled: false
+    address: socks5://username:password@proxy.example.com:1080
+  dashboard:
+    enabled: true
+  queue:
+    enabled: true
+    max_size: 200
+    expiry_seconds: 300
+
+default_settings:
+  key_variable: keys
+  load_balancing_strategy: round_robin
+  rate_limit:
+    endpoint_rate_limit: 10/s
+    key_rate_limit: 10/m
+    rate_limit_paths: 
+      - "*"
+  retry:
+    enabled: true
+    mode: key_rotation
+    attempts: 3
+    retry_after_seconds: 1
+    retry_request_methods: [ POST, GET, PUT, DELETE, PATCH, OPTIONS ]
+    retry_status_codes: [ 429, 500, 502, 503, 504 ]
+  timeouts:
+    request_timeout_seconds: 300
+    
+
+apis:
+  openai:
+    # Any OpenAI-Compatible API
+    name: OpenAI API
+    endpoint: https://api.openai.com/v1
+    aliases:
+    - /openai
+    key_variable: keys
+    headers:
+      Authorization: 'Bearer ${{keys}}'
+    variables:
+      keys:
+      - your_openai_key_1
+      - your_openai_key_2
+      - your_openai_key_3
+    load_balancing_strategy: least_requests
+    rate_limit:
+      # Ideally, the endpoint rate limit should be n x Per-Key-RPD, where n is the number of keys
+      endpoint_rate_limit: 75/d
+      key_rate_limit: 5/m
+      # Rate limit paths are optional, but you can configure which paths to apply the rate limits to (regex supported), default is all paths "*"
+      rate_limit_paths:
+        - "/v1/chat/*"
+        - "/v1/images/*"

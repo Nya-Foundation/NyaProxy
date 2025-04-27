@@ -1,0 +1,86 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nya-proxy"
+version = "0.1.0"
+description = "A lightweight, flexible API proxy with dynamic token rotation, load balancing, and rate limiting capabilities."
+readme = "README.md"
+authors = [
+    {name = "Nya Foundation Team", email = "k3scat@gmail.com"},
+]
+license = {text = "MIT"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "fastapi>=0.95.0",
+    "uvicorn>=0.22.0",
+    "httpx>=0.24.0",
+    "nekoconf>=0.1.4",
+    "pyyaml>=6.0",
+    "jinja2>=3.1.2",
+    "setuptools>=42.0.0",
+    "watchfiles",
+    "brotli",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+    "pytest-mock>=3.10.0",
+    "aioresponses>=0.7.4",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --cov=nya_proxy --cov-report=term-missing"
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+source = ["nya_proxy"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "pass",
+    "raise ImportError"
+]
+
+[project.urls]
+Homepage = "https://github.com/Nya-Foundation/nyaproxy"
+"Bug Tracker" = "https://github.com/Nya-Foundation/nyaproxy/issues"
+
+[project.scripts]
+nyaproxy = "nya_proxy.server.app:main"
+
+[tool.setuptools]
+packages = ["nya_proxy"]
+package-dir = {"nya_proxy" = "nya_proxy"}
+
+[tool.semantic_release]
+version_variable = "nya_proxy/__init__.py:__version__"
+branch = "main"
+upload_to_pypi = true
+upload_to_release = true
+build_command = "python -m pip install build && python -m build"
+
+# Changelog settings
+changelog_file = "CHANGELOG.md"
+commit_parser = "conventional"
+changelog_sections = "all"
+
+commit_message = "chore(release): bump version to v{version} [skip ci]"
+commit_author = "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"

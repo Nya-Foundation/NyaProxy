@@ -1,0 +1,163 @@
+# .github/workflows/publish.yml
+# 
+# Standard Publish Workflow for Nya Foundation
+# 
+# This workflow handles the full CI/CD pipeline for Foundation:
+# 1. Runs tests and checks
+# 2. Uses semantic-release to automatically version the project based on commit messages
+# 3. Publishes the package to PyPI
+# 4. Builds and pushes Docker images to both Docker Hub and GitHub Container Registry
+# 5. Creates GitHub releases with changelog
+#
+# Required Secrets:
+# - CI_APP_ID: GitHub App ID for token generation
+# - CI_APP_PRIVATE_KEY: GitHub App private key for token generation  
+# - DOCKERHUB_USERNAME: Username for Docker Hub
+# - DOCKERHUB_TOKEN: Access token for Docker Hub (not password)
+#
+# Optional Variables (set in repository variables):
+# - GCR_IMAGE_NAME: Image name for GitHub Container Registry (example: nya-foundation/nya-proxy)
+# - DOCKERHUB_IMAGE_NAME: Image name for Docker Hub (example: k3scat/nya-proxy)
+#
+# Permissions needed:
+# - contents: write (for creating GitHub releases)
+# - id-token: write (for PyPI trusted publishing)
+# - packages: write (for publishing to GitHub Container Registry)
+
+name: CI - Publish and Release
+
+on:
+  push:
+    branches:
+      - main # Trigger release only on pushes to main
+
+# Prevent multiple concurrent releases
+concurrency:
+  group: ${{ github.workflow }}-release
+  cancel-in-progress: false # Do not cancel releases once started
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: Publish and Release
+    permissions:
+      contents: write # Needed to create GitHub releases and tags
+      id-token: write # Needed for PyPI trusted publishing (OIDC) - Recommended!
+      packages: write # Needed for publishing Docker images
+    steps:
+      # Generate Token for the GitHub App
+    - name: Generate GitHub App Token
+      id: generate-token
+      # Uses App ID and Private Key secrets to generate a short-lived installation token
+      uses: actions/create-github-app-token@v2
+      with:
+        app-id: ${{ secrets.CI_APP_ID }}
+        private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        token: ${{ steps.generate-token.outputs.token }}
+        fetch-depth: 0
+        persist-credentials: true
+
+    # Setup Python - semantic-release might need it or specific tools
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+        cache: 'pip'
+
+    # Configured with PyPI Trusted Publishing (OIDC)
+    # https://docs.pypi.org/trusted-publishers/
+    - name: Python Semantic Release
+      id: semantic-release
+      uses: python-semantic-release/python-semantic-release@v9
+      with:
+        github_token: ${{ steps.generate-token.outputs.token }}
+        
+    # Set up QEMU for multi-platform builds
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+      
+    # Set up Docker Buildx
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    # Define image name variables for reusability
+    - name: Set image name variables
+      id: image-names
+      run: |
+        # Define the GitHub Container Registry image name (using organization)
+        GITHUB_IMG="${{ vars.GCR_IMAGE_NAME }}"
+        # Define the Docker Hub image name (using personal account)
+        DOCKERHUB_IMG="${{ vars.DOCKERHUB_IMAGE_NAME }}"
+        
+        # Convert to lowercase (Docker best practice)
+        GITHUB_IMG=$(echo "$GITHUB_IMG" | tr '[:upper:]' '[:lower:]')
+        DOCKERHUB_IMG=$(echo "$DOCKERHUB_IMG" | tr '[:upper:]' '[:lower:]')
+        
+        echo "GCR_IMAGE_NAME=$GITHUB_IMG" >> $GITHUB_ENV
+        echo "DOCKERHUB_IMAGE_NAME=$DOCKERHUB_IMG" >> $GITHUB_ENV
+      
+    # Log in to Docker Hub
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+        
+    # Extract version for tagging
+    - name: Get project version
+      id: get-version
+      run: |
+        # If semantic release created a new version, use it; otherwise extract from pyproject.toml
+        if [ "${{ steps.semantic-release.outputs.released }}" == "true" ]; then
+          VERSION="${{ steps.semantic-release.outputs.version }}"
+        else
+          VERSION=$(grep -m 1 'version = ' pyproject.toml | sed 's/version = //; s/"//g; s/^[[:space:]]*//; s/[[:space:]]*$//')
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "version_tag=v$VERSION" >> $GITHUB_OUTPUT
+
+    # Log in to GitHub Container Registry
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.repository_owner }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      
+    # Build and push Docker image
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        platforms: linux/amd64,linux/arm64
+        tags: |
+          ${{ env.DOCKERHUB_IMAGE_NAME }}:latest
+          ${{ env.DOCKERHUB_IMAGE_NAME }}:${{ steps.get-version.outputs.version }}
+          ghcr.io/${{ env.GCR_IMAGE_NAME }}:latest
+          ghcr.io/${{ env.GCR_IMAGE_NAME }}:${{ steps.get-version.outputs.version }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        labels: |
+          org.opencontainers.image.title=NyaProxy
+          org.opencontainers.image.description=A lightweight, flexible API proxy with dynamic token rotation
+          org.opencontainers.image.url=https://github.com/Nya-Foundation/nyaproxy
+          org.opencontainers.image.source=https://github.com/Nya-Foundation/nyaproxy
+          org.opencontainers.image.version=${{ steps.get-version.outputs.version }}
+          org.opencontainers.image.created=${{ github.event.repository.updated_at }}
+          org.opencontainers.image.revision=${{ github.sha }}
+
+    - name: Scan Docker image
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ env.DOCKERHUB_IMAGE_NAME }}:${{ steps.get-version.outputs.version }}
+        format: 'table'
+        exit-code: '1'
+        ignore-unfixed: true
+        vuln-type: 'os,library'
+        severity: 'CRITICAL,HIGH'

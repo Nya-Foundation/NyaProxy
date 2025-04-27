@@ -1,0 +1,70 @@
+# .github/workflows/dependency-review.yml
+name: Dependency Review and Vulnerability Scan
+
+on:
+  push:
+    branches-ignore:
+      - 'main'
+      - 'staging'
+    paths:
+      - 'pyproject.toml'
+      - 'setup.py'
+      - 'setup.cfg'
+      - '**/*requirements*.txt'
+      - 'Pipfile'
+      - 'Pipfile.lock'
+  pull_request:
+    branches: ['main', 'staging', 'dev']
+    paths:
+      - 'pyproject.toml'
+      - 'setup.py'
+      - 'setup.cfg'
+      - '**/*requirements*.txt'
+      - 'Pipfile'
+      - 'Pipfile.lock'
+  workflow_dispatch:
+
+# Minimal permissions required for checkout and dependency review
+permissions:
+  contents: read
+
+# Cancel outdated workflow runs on the same branch/PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dependency-review:
+    name: Scan Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Dependency Review
+        # This action scans dependency manifest files for known vulnerabilities
+        # using the GitHub Advisory Database and can check for license compliance.
+        # See: https://github.com/actions/dependency-review-action
+        uses: actions/dependency-review-action@v4
+        with:
+          # Scan for vulnerabilities reported in the GitHub Advisory Database
+          vulnerability-check: true
+
+          # Fail the workflow if any vulnerabilities with 'high' or 'critical' severity are found.
+          # Allowed values: low, moderate, high, critical
+          fail-on-severity: high
+
+          # --- Optional License Checks ---
+          # Uncomment and configure ONE of the following based on your policy:
+
+          # Option 1: Specify allowed licenses (uses SPDX identifiers)
+          # allow-licenses: MIT, Apache-2.0, BSD-3-Clause
+
+          # Option 2: Specify denied licenses (uses SPDX identifiers)
+          # deny-licenses: GPL-*, AGPL-*, LGPL-*
+
+          # --- Optional Configuration File ---
+          # For more complex configurations (e.g., allow specific CVEs)
+          # config-file: './.github/dependency-review-config.yml'

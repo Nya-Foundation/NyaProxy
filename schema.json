@@ -1,0 +1,303 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "NyaProxy Configuration Schema",
+    "description": "Schema for validating NyaProxy configuration files",
+    "type": "object",
+    "required": [
+        "nya_proxy",
+        "default_settings",
+        "apis"
+    ],
+    "$defs": {
+        "api_settings": {
+            "type": "object",
+            "properties": {
+                "key_variable": {
+                    "type": "string",
+                    "description": "Variable name for API keys"
+                },
+                "load_balancing_strategy": {
+                    "type": "string",
+                    "enum": [
+                        "round_robin",
+                        "random",
+                        "least_requests",
+                        "fastest_response",
+                        "weighted"
+                    ],
+                    "description": "Load balancing strategy"
+                },
+                "rate_limit": {
+                    "type": "object",
+                    "properties": {
+                        "endpoint_rate_limit": {
+                            "type": "string",
+                            "pattern": "^\\d+\\/(s|m|h|d)$",
+                            "description": "Global rate limit"
+                        },
+                        "key_rate_limit": {
+                            "type": "string",
+                            "pattern": "^\\d+\\/(s|m|h|d)$",
+                            "description": "Per-key rate limit"
+                        },
+                        "rate_limit_paths": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "description": "Path patterns to apply rate limits to, regex supported"
+                            }
+                        }
+                    },
+                    "additionalProperties": false
+                },
+                "retry": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "description": "Enable automatic retries"
+                        },
+                        "mode": {
+                            "type": "string",
+                            "enum": [
+                                "default",
+                                "backoff",
+                                "key_rotation"
+                            ],
+                            "description": "Retry mode"
+                        },
+                        "attempts": {
+                            "type": "integer",
+                            "description": "Max retry attempts",
+                            "minimum": 0
+                        },
+                        "retry_after_seconds": {
+                            "type": "integer",
+                            "description": "Delay between retries",
+                            "minimum": 0
+                        },
+                        "retry_status_codes": {
+                            "type": "array",
+                            "items": {
+                                "type": "integer",
+                                "description": "HTTP status codes to retry"
+                            }
+                        },
+                        "retry_request_methods": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "enum": [
+                                    "POST",
+                                    "GET",
+                                    "PUT",
+                                    "DELETE",
+                                    "PATCH",
+                                    "OPTIONS"
+                                ]
+                            }
+                        }
+                    },
+                    "additionalProperties": false
+                },
+                "timeouts": {
+                    "type": "object",
+                    "properties": {
+                        "request_timeout_seconds": {
+                            "type": "integer",
+                            "description": "Request timeout",
+                            "minimum": 1
+                        }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            "additionalProperties": false
+        },
+        "default_settings": {
+            "$ref": "#/$defs/api_settings"
+        }
+    },
+    "properties": {
+        "nya_proxy": {
+            "type": "object",
+            "required": [
+                "host",
+                "port"
+            ],
+            "properties": {
+                "host": {
+                    "type": "string",
+                    "description": "Host for NyaProxy to bind to"
+                },
+                "port": {
+                    "type": "integer",
+                    "description": "Port for NyaProxy to listen on",
+                    "minimum": 1,
+                    "maximum": 65535
+                },
+                "api_key": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "description": "API key for authenticating requests (optional)"
+                },
+                "logging": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "description": "Enable logging"
+                        },
+                        "level": {
+                            "type": "string",
+                            "enum": [
+                                "debug",
+                                "info",
+                                "warning",
+                                "error",
+                                "DEBUG",
+                                "INFO",
+                                "WARNING",
+                                "ERROR"
+                            ],
+                            "description": "Log level"
+                        },
+                        "log_file": {
+                            "type": "string",
+                            "description": "Log file name"
+                        }
+                    }
+                },
+                "proxy": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "description": "Enable outbound proxy"
+                        },
+                        "address": {
+                            "type": "string",
+                            "description": "Proxy address URI"
+                        }
+                    }
+                },
+                "dashboard": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "description": "Enable/disable the metrics dashboard"
+                        }
+                    }
+                },
+                "queue": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "description": "Enable request queuing when rate limits are hit"
+                        },
+                        "max_size": {
+                            "type": "integer",
+                            "description": "Maximum queue size per API",
+                            "minimum": 1
+                        },
+                        "expiry_seconds": {
+                            "type": "integer",
+                            "description": "How long to keep requests in queue before expiry",
+                            "minimum": 1
+                        }
+                    }
+                }
+            }
+        },
+        "default_settings": {
+            "$ref": "#/$defs/default_settings"
+        },
+        "apis": {
+            "type": "object",
+            "patternProperties": {
+                "^[a-zA-Z0-9_-]+$": {
+                    "type": "object",
+                    "required": [
+                        "name",
+                        "endpoint",
+                        "headers",
+                        "key_variable",
+                        "variables"
+                    ],
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Human-readable API name"
+                        },
+                        "endpoint": {
+                            "type": "string",
+                            "description": "Target API endpoint URL",
+                            "format": "uri",
+                            "pattern": "^(http|https|ws|wss)://.+"
+                        },
+                        "aliases": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "description": "URL path aliases for this API"
+                            }
+                        },
+                        "key_variable": {
+                            "$ref": "#/$defs/api_settings/properties/key_variable"
+                        },
+                        "headers": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string",
+                                "description": "Header value that may contain variable substitutions"
+                            },
+                            "minProperties": 1
+                        },
+                        "variables": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "oneOf": [
+                                    {
+                                        "type": "array",
+                                        "items": {
+                                            "oneOf": [
+                                                {
+                                                    "type": "string"
+                                                },
+                                                {
+                                                    "type": "number"
+                                                },
+                                                {
+                                                    "type": "integer"
+                                                }
+                                            ]
+                                        }
+                                    }
+                                ]
+                            },
+                            "minProperties": 1
+                        },
+                        "load_balancing_strategy": {
+                            "$ref": "#/$defs/api_settings/properties/load_balancing_strategy"
+                        },
+                        "rate_limit": {
+                            "$ref": "#/$defs/api_settings/properties/rate_limit"
+                        },
+                        "retry": {
+                            "$ref": "#/$defs/api_settings/properties/retry"
+                        },
+                        "timeouts": {
+                            "$ref": "#/$defs/api_settings/properties/timeouts"
+                        }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            "additionalProperties": false
+        }
+    }
+}

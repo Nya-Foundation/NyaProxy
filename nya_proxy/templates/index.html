@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NyaProxy Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link
+      rel="stylesheet"
+      href="{{ request.scope.root_path }}/static/css/styles.css"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body
+    class="bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white transition-colors duration-200"
+  >
+    <div class="min-h-screen flex flex-col">
+      <!-- Header -->
+      <header
+        class="bg-white/80 dark:bg-slate-800/80 header-blur fixed top-0 left-0 right-0 z-10 transition-all duration-200"
+      >
+        <div
+          class="container mx-auto px-4 py-3.5 flex justify-between items-center"
+        >
+          <div class="flex items-center space-x-3">
+            <div
+              class="w-8 h-8 bg-gradient-to-br from-pink-500 to-purple-500 rounded-lg flex items-center justify-center shadow-lg shadow-pink-500/20"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-5 w-5 text-white"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M12.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-2.293-2.293a1 1 0 010-1.414z"
+                  clip-rule="evenodd"
+                />
+              </svg>
+            </div>
+            <h1 class="text-xl font-bold">
+              NyaProxy
+              <span
+                class="bg-clip-text text-transparent bg-gradient-to-r from-pink-500 to-purple-500"
+                >Dashboard</span
+              >
+            </h1>
+          </div>
+          <div class="flex items-center space-x-4">
+            <button
+              id="theme-toggle"
+              class="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors duration-200 transition-transform"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-5 w-5 dark:hidden"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path
+                  d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"
+                />
+              </svg>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-5 w-5 hidden dark:block"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"
+                  clip-rule="evenodd"
+                />
+              </svg>
+            </button>
+            <div class="relative" id="refresh-container">
+              <button
+                id="refresh-button"
+                class="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors duration-200 interactive-hover"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-5 w-5"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path
+                    fill-rule="evenodd"
+                    d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
+                    clip-rule="evenodd"
+                  />
+                </svg>
+              </button>
+              <span
+                id="last-updated"
+                class="text-xs text-slate-500 dark:text-slate-400 absolute -bottom-6 right-0 whitespace-nowrap"
+              ></span>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Main Content -->
+      <main class="flex-grow container mx-auto px-4 pt-20 pb-6 page-transition">
+        <!-- Global Stats -->
+        <section class="mb-8">
+          <h2 class="text-lg font-semibold mb-4 flex items-center">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-5 w-5 mr-2 text-pink-500"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"
+              />
+            </svg>
+            Global Statistics
+          </h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="modern-card gradient-card-blue p-5">
+              <div class="flex items-center justify-between">
+                <h3
+                  class="text-sm font-medium text-slate-500 dark:text-slate-400"
+                >
+                  Total Requests
+                </h3>
+                <span
+                  class="badge bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 text-xs"
+                  >All Time</span
+                >
+              </div>
+              <p id="total-requests" class="text-2xl font-bold mt-3 mb-2">0</p>
+              <div
+                class="mt-2 h-1 w-full bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden"
+              >
+                <div
+                  id="total-requests-bar"
+                  class="h-1 bg-gradient-to-r from-blue-500 to-blue-600"
+                  style="width: 0%"
+                ></div>
+              </div>
+            </div>
+            <div class="modern-card gradient-card-red p-5">
+              <div class="flex items-center justify-between">
+                <h3
+                  class="text-sm font-medium text-slate-500 dark:text-slate-400"
+                >
+                  Total Errors
+                </h3>
+                <span
+                  class="badge bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 text-xs"
+                  >All Time</span
+                >
+              </div>
+              <p id="total-errors" class="text-2xl font-bold mt-3 mb-2">0</p>
+              <div
+                class="mt-2 h-1 w-full bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden"
+              >
+                <div
+                  id="total-errors-bar"
+                  class="h-1 bg-gradient-to-r from-red-500 to-red-600"
+                  style="width: 0%"
+                ></div>
+              </div>
+            </div>
+            <div class="modern-card gradient-card-yellow p-5">
+              <div class="flex items-center justify-between">
+                <h3
+                  class="text-sm font-medium text-slate-500 dark:text-slate-400"
+                >
+                  Rate Limit Hits
+                </h3>
+                <span
+                  class="badge bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 text-xs"
+                  >All Time</span
+                >
+              </div>
+              <p id="total-rate-limits" class="text-2xl font-bold mt-3 mb-2">
+                0
+              </p>
+              <div
+                class="mt-2 h-1 w-full bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden"
+              >
+                <div
+                  id="total-rate-limits-bar"
+                  class="h-1 bg-gradient-to-r from-yellow-500 to-yellow-600"
+                  style="width: 0%"
+                ></div>
+              </div>
+            </div>
+            <div class="modern-card gradient-card-green p-5">
+              <div class="flex items-center justify-between">
+                <h3
+                  class="text-sm font-medium text-slate-500 dark:text-slate-400"
+                >
+                  Uptime
+                </h3>
+                <span
+                  class="badge bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 text-xs"
+                  >Current</span
+                >
+              </div>
+              <p id="uptime" class="text-2xl font-bold mt-3 mb-2">0s</p>
+              <div class="mt-2 flex items-center">
+                <span
+                  class="inline-block h-2.5 w-2.5 rounded-full bg-green-500 mr-2 pulse-animation"
+                ></span>
+                <span class="text-xs text-slate-500 dark:text-slate-400"
+                  >System Online</span
+                >
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- API Traffic Overview -->
+        <section class="mb-8">
+          <h2 class="text-lg font-semibold mb-4 flex items-center">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-5 w-5 mr-2 text-pink-500"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                fill-rule="evenodd"
+                d="M3 3a1 1 0 000 2v8a2 2 0 002 2h2.586l-1.293 1.293a1 1 0 101.414 1.414L10 15.414l2.293 2.293a1 1 0 001.414-1.414L12.414 15H15a2 2 0 002-2V5a1 1 0 100-2H3zm11.707 4.707a1 1 0 00-1.414-1.414L10 9.586 8.707 8.293a1 1 0 00-1.414 0l-2 2a1 1 0 101.414 1.414L8 10.414l1.293 1.293a1 1 0 001.414 0l4-4z"
+                clip-rule="evenodd"
+              />
+            </svg>
+            API Traffic Overview
+          </h2>
+          <div class="modern-card p-5">
+            <div class="flex flex-col md:flex-row gap-4 mb-4">
+              <div class="flex-1">
+                <label
+                  for="api-filter"
+                  class="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1"
+                  >Filter by API</label
+                >
+                <select
+                  id="api-filter"
+                  class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500 transition-shadow duration-200"
+                >
+                  <option value="all">All APIs</option>
+                  <!-- API options will be added dynamically -->
+                </select>
+              </div>
+              <div class="flex-1">
+                <label
+                  for="key-filter"
+                  class="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1"
+                  >Filter by API Key</label
+                >
+                <select
+                  id="key-filter"
+                  class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500 transition-shadow duration-200"
+                >
+                  <option value="all">All Keys</option>
+                  <!-- Key options will be added dynamically -->
+                </select>
+              </div>
+              <div class="flex-1">
+                <label
+                  for="time-range"
+                  class="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-1"
+                  >Time Range</label
+                >
+                <select
+                  id="time-range"
+                  class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500 transition-shadow duration-200"
+                >
+                  <option value="1h">Last Hour</option>
+                  <option value="24h" selected>Last 24 Hours</option>
+                  <option value="7d">Last 7 Days</option>
+                  <option value="30d">Last 30 Days</option>
+                  <option value="all">All Time</option>
+                </select>
+              </div>
+            </div>
+            <div
+              id="filter-summary"
+              class="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-3 italic"
+            >
+              Showing data for all APIs over the last 24h
+            </div>
+            <div class="h-72 md:h-64 mt-2">
+              <canvas id="traffic-chart"></canvas>
+            </div>
+          </div>
+        </section>
+
+        <!-- Advanced Analytics Section (New) -->
+        <section class="mb-8">
+          <h2 class="text-lg font-semibold mb-4 flex items-center">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-5 w-5 mr-2 text-pink-500"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                fill-rule="evenodd"
+                d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z"
+              />
+            </svg>
+            Advanced Analytics
+          </h2>
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div class="modern-card p-5">
+              <h3 class="text-md font-semibold mb-3">Response Time Analysis</h3>
+              <div class="h-60">
+                <canvas id="response-time-chart"></canvas>
+              </div>
+            </div>
+            <div class="modern-card p-5">
+              <h3 class="text-md font-semibold mb-3">
+                Status Code Distribution
+              </h3>
+              <div class="h-60">
+                <canvas id="status-code-chart"></canvas>
+              </div>
+            </div>
+            <div class="modern-card p-5">
+              <h3 class="text-md font-semibold mb-3">API Usage Distribution</h3>
+              <div class="h-60">
+                <canvas id="api-distribution-chart"></canvas>
+              </div>
+            </div>
+            <div class="modern-card p-5">
+              <h3 class="text-md font-semibold mb-3">API Key Usage</h3>
+              <div class="h-60">
+                <canvas id="key-usage-chart"></canvas>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- API Details -->
+        <section class="mb-8">
+          <div
+            class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3 sm:gap-0"
+          >
+            <h2 class="text-lg font-semibold flex items-center">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-5 w-5 mr-2 text-pink-500"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M2 5a2 2 0 012-2h12a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V5zm3.293 1.293a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 01-1.414-1.414L7.586 10 5.293 7.707a1 1 0 010-1.414zM11 12a1 1 0 100 2h3a1 1 0 100-2h-3z"
+                  clip-rule="evenodd"
+                />
+              </svg>
+              API Details
+            </h2>
+            <div class="flex items-center w-full sm:w-auto">
+              <div class="relative flex-grow sm:flex-grow-0 mr-2">
+                <input
+                  type="text"
+                  id="api-search"
+                  placeholder="Search APIs..."
+                  class="w-full sm:w-auto rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 pl-8 pr-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500 transition-shadow duration-200"
+                />
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-4 w-4 text-slate-400 absolute left-2.5 top-1/2 transform -translate-y-1/2"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path
+                    fill-rule="evenodd"
+                    d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"
+                    clip-rule="evenodd"
+                  />
+                </svg>
+              </div>
+              <button
+                id="reset-metrics-btn"
+                class="btn-modern bg-red-500 hover:bg-red-600 text-white text-xs py-1.5 px-3 rounded-lg transition-all duration-200 flex items-center"
+                style="display: {{ enable_control and 'flex' or 'none' }}"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-3 w-3 mr-1.5"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path
+                    fill-rule="evenodd"
+                    d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
+                    clip-rule="evenodd"
+                  />
+                </svg>
+                Reset Metrics
+              </button>
+            </div>
+          </div>
+          <div class="overflow-x-auto responsive-table">
+            <table class="min-w-full modern-card">
+              <thead>
+                <tr
+                  class="bg-slate-50 dark:bg-slate-700/50 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider"
+                >
+                  <th class="px-6 py-3 rounded-tl-lg">API Name</th>
+                  <th class="px-6 py-3">Requests</th>
+                  <th class="px-6 py-3">Errors</th>
+                  <th class="px-6 py-3">Avg Response Time</th>
+                  <th class="px-6 py-3">Last Request</th>
+                  <th class="px-6 py-3 rounded-tr-lg">Actions</th>
+                </tr>
+              </thead>
+              <tbody
+                id="api-table-body"
+                class="divide-y divide-slate-200 dark:divide-slate-700"
+              >
+                <!-- API rows will be added dynamically -->
+                <tr class="skeleton-pulse">
+                  <td
+                    colspan="6"
+                    class="px-6 py-4 text-center text-sm text-slate-500 dark:text-slate-400"
+                  >
+                    Loading API data...
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <!-- Mobile view for API table -->
+          <div id="api-cards-container" class="md:hidden mt-4 space-y-4">
+            <!-- Will be populated via JS -->
+          </div>
+        </section>
+
+        <!-- Queue Status -->
+        <section class="mb-8">
+          <h2 class="text-lg font-semibold mb-4 flex items-center">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-5 w-5 mr-2 text-pink-500"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z"
+              />
+            </svg>
+            Queue Status
+          </h2>
+          <div
+            class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+            id="queue-container"
+          >
+            <!-- Queue cards will be added dynamically -->
+            <div class="modern-card p-5 skeleton-pulse">
+              <div
+                class="h-6 bg-slate-200 dark:bg-slate-700 rounded w-1/2 mb-4"
+              ></div>
+              <div
+                class="h-10 bg-slate-200 dark:bg-slate-700 rounded mb-4"
+              ></div>
+              <div
+                class="h-4 bg-slate-200 dark:bg-slate-700 rounded w-3/4"
+              ></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Recent Requests -->
+        <section>
+          <div
+            class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3 sm:gap-0"
+          >
+            <h2 class="text-lg font-semibold flex items-center">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-5 w-5 mr-2 text-pink-500"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"
+                  clip-rule="evenodd"
+                />
+              </svg>
+              Recent Requests
+            </h2>
+            <div class="flex items-center gap-2">
+              <div class="relative flex-grow sm:flex-grow-0">
+                <input
+                  type="text"
+                  id="history-search"
+                  placeholder="Filter history..."
+                  class="w-full sm:w-auto rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 pl-8 pr-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500 transition-shadow duration-200"
+                />
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-4 w-4 text-slate-400 absolute left-2.5 top-1/2 transform -translate-y-1/2"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path
+                    fill-rule="evenodd"
+                    d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"
+                    clip-rule="evenodd"
+                  />
+                </svg>
+              </div>
+              <button
+                id="clear-all-queues-btn"
+                class="btn-modern bg-yellow-500 hover:bg-yellow-600 text-white text-xs py-1.5 px-3 rounded-lg transition-all duration-200 flex items-center"
+                style="display: {{ enable_control and 'flex' or 'none' }}"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-3 w-3 mr-1.5"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path
+                    fill-rule="evenodd"
+                    d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z"
+                    clip-rule="evenodd"
+                  />
+                </svg>
+                Clear All Queues
+              </button>
+            </div>
+          </div>
+          <div class="modern-card overflow-hidden">
+            <div class="overflow-x-auto responsive-table">
+              <table class="min-w-full">
+                <thead>
+                  <tr
+                    class="bg-slate-50 dark:bg-slate-700/50 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider"
+                  >
+                    <th class="px-6 py-3">Time</th>
+                    <th class="px-6 py-3">API</th>
+                    <th class="px-6 py-3">Status</th>
+                    <th class="px-6 py-3">Response Time</th>
+                    <th class="px-6 py-3">Key</th>
+                  </tr>
+                </thead>
+                <tbody
+                  id="history-table-body"
+                  class="divide-y divide-slate-200 dark:divide-slate-700"
+                >
+                  <!-- History rows will be added dynamically -->
+                  <tr class="skeleton-pulse">
+                    <td
+                      colspan="5"
+                      class="px-6 py-4 text-center text-sm text-slate-500 dark:text-slate-400"
+                    >
+                      Loading request history...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <!-- Mobile view for history -->
+            <div id="history-cards-container" class="md:hidden p-4 space-y-4">
+              <!-- Will be populated via JS -->
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <!-- Footer -->
+      <footer
+        class="bg-white/80 dark:bg-slate-800/80 backdrop-blur border-t border-slate-200 dark:border-slate-700 py-4 mt-auto"
+      >
+        <div
+          class="container mx-auto px-4 flex flex-col md:flex-row justify-between items-center"
+        >
+          <p class="text-sm text-slate-500 dark:text-slate-400">
+            &copy; 2023 NyaProxy Dashboard
+          </p>
+          <div class="flex items-center space-x-6 mt-2 md:mt-0">
+            <a
+              href="#"
+              class="text-sm text-slate-500 dark:text-slate-400 hover:text-pink-500 dark:hover:text-pink-400 transition-colors duration-200"
+              >Documentation</a
+            >
+            <a
+              href="#"
+              class="text-sm text-slate-500 dark:text-slate-400 hover:text-pink-500 dark:hover:text-pink-400 transition-colors duration-200"
+              >GitHub</a
+            >
+            <a
+              href="#"
+              class="text-sm text-slate-500 dark:text-slate-400 hover:text-pink-500 dark:hover:text-pink-400 transition-colors duration-200"
+              >Support</a
+            >
+          </div>
+        </div>
+      </footer>
+
+      <!-- API Details Modal -->
+      <div
+        id="api-details-modal"
+        class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 hidden transition-opacity duration-300"
+      >
+        <div
+          class="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto modern-card m-4"
+        >
+          <div
+            class="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center"
+          >
+            <h3 class="text-lg font-semibold" id="modal-title">API Details</h3>
+            <button
+              id="close-modal"
+              class="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors duration-200"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-5 w-5"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                  clip-rule="evenodd"
+                />
+              </svg>
+            </button>
+          </div>
+          <div class="p-4" id="modal-content">
+            <!-- Modal content will be added dynamically -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div
+      id="toast"
+      class="fixed bottom-4 right-4 toast-modern bg-white/90 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg p-4 transform translate-y-full opacity-0 transition-all duration-300 flex items-center max-w-sm z-50"
+    >
+      <div id="toast-icon" class="mr-3 text-green-500">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-5 w-5"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+        >
+          <path
+            fill-rule="evenodd"
+            d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+            clip-rule="evenodd"
+          />
+        </svg>
+      </div>
+      <div>
+        <p id="toast-message" class="text-sm font-medium">Success message</p>
+      </div>
+    </div>
+
+    <script src="{{ request.scope.root_path }}/static/js/dashboard.js"></script>
+  </body>
+</html>
