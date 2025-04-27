@@ -67,7 +67,6 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: '3.12'
-        cache: 'pip'
 
     # Configured with PyPI Trusted Publishing (OIDC)
     # https://docs.pypi.org/trusted-publishers/
@@ -76,6 +75,13 @@ jobs:
       uses: python-semantic-release/python-semantic-release@v9
       with:
         github_token: ${{ steps.generate-token.outputs.token }}
+
+    - name: Publish package to PyPI
+      if: steps.semantic-release.outputs.released == 'true'
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        verbose: true
+        print-hash: true
         
     # Set up QEMU for multi-platform builds
     - name: Set up QEMU
