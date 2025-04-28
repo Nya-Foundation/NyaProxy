@@ -4,24 +4,29 @@ Provides authentication mechanisms and middleware.
 """
 
 import importlib.resources
+import logging
+from typing import TYPE_CHECKING, Optional
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import APIKeyHeader
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import HTMLResponse, JSONResponse
 
+if TYPE_CHECKING:
+    from nya_proxy.server.config import ConfigManager  # pragma: no cover
+
 
 class AuthManager:
     """Centralized authentication manager for NyaProxy"""
 
-    def __init__(self, config_manager=None):
+    def __init__(self, config: "ConfigManager" = None):
         """
         Initialize the authentication manager.
 
         Args:
             config_manager: The configuration manager instance
         """
-        self.config = config_manager
+        self.config = config
         self.header = APIKeyHeader(name="Authorization", auto_error=False)
 
     def set_config_manager(self, config_manager):
@@ -87,17 +92,6 @@ class AuthManager:
         Returns:
             bool: True if valid, False otherwise
         """
-
-    def verify_session_cookie(self, request: Request):
-        """
-        Verify if the session cookie contains a valid API key.
-
-        Args:
-            request: The FastAPI request
-
-        Returns:
-            bool: True if valid, False otherwise
-        """
         configured_key = self.get_api_key()
         if not configured_key:
             return True
@@ -118,9 +112,10 @@ class AuthManager:
 class AuthMiddleware(BaseHTTPMiddleware):
     """Authentication middleware for FastAPI applications"""
 
-    def __init__(self, app, auth_manager: AuthManager):
+    def __init__(self, app, auth: AuthManager, logger: Optional[logging.Logger] = None):
         super().__init__(app)
-        self.auth_manager = auth_manager
+        self.auth = auth
+        self.logger = logger or logging.getLogger(__name__)
 
     async def dispatch(self, request: Request, call_next):
         # Skip auth for OPTIONS requests (CORS preflight)
@@ -128,22 +123,18 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         # Skip auth for specific paths if needed
-        excluded_paths = ["/docs", "/redoc", "/openapi.json", "/auth/login"]
+        excluded_paths = ["/docs", "/redoc", "/openapi.json"]
         if any(request.url.path.startswith(path) for path in excluded_paths):
             return await call_next(request)
 
-        configured_key = self.auth_manager.get_api_key()
+        configured_key = self.auth.get_api_key()
 
         # No API key required if none is configured
         if not configured_key:
             return await call_next(request)
 
-        # Check if this is a login form submission
-        if request.url.path.endswith("/auth/verify") and request.method == "POST":
-            return await call_next(request)
-
         # First, check for valid session cookie
-        if self.auth_manager.verify_session_cookie(request):
+        if self.auth.verify_session_cookie(request):
             return await call_next(request)
 
         # Then, check for valid Authorization header
@@ -164,7 +155,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         # For API and other paths, return JSON error
         return JSONResponse(
-            status_code=403, content={"error": "Unauthorized: Invalid API key"}
+            status_code=403,
+            content={"error": "Unauthorized: NyaProxy - Invalid API key"},
         )
 
     def _generate_login_page(self, request: Request):
