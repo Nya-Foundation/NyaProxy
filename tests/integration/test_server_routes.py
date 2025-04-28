@@ -37,7 +37,7 @@ def test_app_no_auth():
 
     # Patch the ConfigManager instance within the NyaProxyApp scope during init
     # and the AuthManager's use of it.
-    # This is tricky because the app and auth_manager are created early.
+    # This is tricky because the app and auth are created early.
     # A cleaner way might involve a factory fixture for NyaProxyApp.
     # For now, let's try patching where it's used.
 

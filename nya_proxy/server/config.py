@@ -6,7 +6,7 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 
-from nekoconf import ConfigAPI, NekoConf
+from nekoconf import NekoConfigClient, NekoConfigServer
 
 from ..common.constants import DEFAULT_SCHEMA_NAME
 
@@ -26,8 +26,8 @@ class ConfigManager:
     def __init__(
         self,
         config_path: str,
+        schema_path: Optional[str] = None,
         logger: Optional[logging.Logger] = None,
-        callback: Optional[callable] = None,
     ):
         """
         Initialize the configuration manager.
@@ -36,32 +36,43 @@ class ConfigManager:
             config_file: Path to the configuration file
             logger: Optional logger instance
         """
-        self.config: ConfigAPI = None
-        self.server: NekoConf = None
+        self.config: NekoConfigClient = None
+        self.server: NekoConfigServer = None
 
-        self.config_file = config_path
-        self.logger = logger or logging.getLogger("nya_proxy")
+        self.config_path = config_path
+        self.schema_path = schema_path
+
+        self.logger = logger or logging.getLogger(__name__)
 
         if not os.path.exists(config_path):
             raise ConfigError(f"Configuration file not found: {config_path}")
 
         try:
-            self.config = ConfigAPI(
-                config_path=config_path, schema_path=DEFAULT_SCHEMA_NAME
-            )
-
+            self.config = self._load_config_client()
             # Validate against the schema
             results = self.config.validate()
 
             if results:
                 raise ConfigError(f"Configuration validation failed: {results}")
-            self.server = NekoConf(self.config.config_manager)
+            else:
+                self.logger.info("Configuration loaded and validated successfully")
 
-            if callback:
-                self.config.observe(callback)
-
+            self.server = NekoConfigServer(
+                config=self.config.config, logger=self.logger
+            )
         except Exception as e:
-            raise ConfigError(f"Failed to load configuration: {str(e)}")
+            error_msg = f"Failed to load configuration from {config_path}: {str(e)}"
+            self.logger.error(f"Failed to load configuration: {error_msg}")
+            raise ConfigError(error_msg)
+
+    def _load_config_client(self) -> NekoConfigClient:
+        """Initialize the NekoConfigClient."""
+        client = NekoConfigClient(
+            config_path=self.config_path,
+            schema_path=self.schema_path,
+            logger=self.logger,
+        )
+        return client
 
     def get_port(self) -> int:
         """Get the port for the proxy server."""
@@ -442,7 +453,11 @@ class ConfigManager:
     def reload(self) -> None:
         """Reload the configuration from disk."""
         try:
-            self.config = NekoConf(self.config_file)
+            self.config = self._load_config_client()
+            self.server = NekoConfigServer(
+                config=self.config.config, llogger=self.logger
+            )
+
             self.logger.info("Configuration reloaded successfully")
         except Exception as e:
             self.logger.error(f"Failed to reload configuration: {str(e)}")
