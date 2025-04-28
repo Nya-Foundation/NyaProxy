@@ -10,11 +10,12 @@ import sys
 import time
 
 import uvicorn
-from fastapi import Depends, FastAPI, Request
+from fastapi import FastAPI, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 
+from .. import __version__
 from ..common.constants import (
     DEFAULT_CONFIG_NAME,
     DEFAULT_HOST,
@@ -25,7 +26,7 @@ from ..common.models import NyaRequest
 from ..core.handler import NyaProxyCore
 from ..dashboard.api import DashboardAPI
 from .auth import AuthManager, AuthMiddleware
-from .config import ConfigAPI, ConfigManager
+from .config import ConfigManager, NekoConfigClient
 from .logger import setup_logger
 
 
@@ -42,7 +43,7 @@ class RootPathMiddleware(BaseHTTPMiddleware):
 class NyaProxyApp:
     """Main NyaProxy application class"""
 
-    def __init__(self, config_path=None):
+    def __init__(self, config_path=None, schema_path=None):
         """Initialize the NyaProxy application"""
         # Initialize instance variables
         self.config = None
@@ -50,11 +51,14 @@ class NyaProxyApp:
         self.core = None
         self.metrics_collector = None
         self.request_queue = None
-        self.auth_manager = AuthManager()
+        self.auth = AuthManager()
         self.dashboard = None
 
+        self.config_path = config_path or os.environ.get("CONFIG_PATH")
+        self.schema_path = schema_path or os.environ.get("SCHEMA_PATH")
+
         # Load config early to allow configuration of middleware
-        self._init_config(config_path)
+        self._init_config()
 
         # Set up the auth manager with config
         self._init_auth()
@@ -67,7 +71,7 @@ class NyaProxyApp:
         app = FastAPI(
             title="NyaProxy",
             description="A simple low-level API proxy with dynamic token rotation and load balancing",
-            version="0.0.5",
+            version=__version__,
         )
 
         # Add CORS middleware
@@ -80,7 +84,7 @@ class NyaProxyApp:
         )
 
         # Add auth middleware
-        app.add_middleware(AuthMiddleware, auth_manager=self.auth_manager)
+        app.add_middleware(AuthMiddleware, auth=self.auth)
 
         # Set up basic routes
         self._setup_routes(app)
@@ -107,7 +111,7 @@ class NyaProxyApp:
 
         # Info endpoint
         @app.get("/info")
-        async def info(api_key_valid: bool = Depends(self.auth_manager.verify_api_key)):
+        async def info():
             """Get information about the proxy."""
             apis = {}
             if self.config:
@@ -118,7 +122,7 @@ class NyaProxyApp:
                         "aliases": config.get("aliases", []),
                     }
 
-            return {"status": "running", "version": "0.0.5", "apis": apis}
+            return {"status": "running", "version": __version__, "apis": apis}
 
     async def generic_proxy_request(self, request: Request):
         """Generic handler for all proxy requests."""
@@ -150,6 +154,8 @@ class NyaProxyApp:
 
             # Mount sub-applications for NyaProxy
             self._init_config_server()
+            # self._init_reload_on_config_change()
+
             self._init_dashboard()
 
             # Initialize proxy routes last to act as a catch-all
@@ -162,11 +168,25 @@ class NyaProxyApp:
                 self.logger.error(f"Error during startup: {str(e)}")
             raise
 
-    def _init_config(self, config_path=None):
+    def _init_config(self):
         """Initialize configuration manager."""
-
-        self.config = ConfigManager(config_path=config_path, logger=self.logger)
+        self.config = ConfigManager(
+            config_path=self.config_path,
+            schema_path=self.schema_path,
+            logger=self.logger,
+        )
         return self.config
+
+    def _init_reload_on_config_change(self):
+        """Initialize reload on config change."""
+        if not self.config:
+            raise RuntimeError("Config manager must be initialized before reload setup")
+
+        # Set up reload on config change
+        self.config.config.observe(reload_server)
+
+        if self.logger:
+            self.logger.info("Reload on config change initialized")
 
     def _init_logging(self):
         """Initialize logging."""
@@ -179,8 +199,8 @@ class NyaProxyApp:
 
     def _init_auth(self):
         """Initialize authentication manager."""
-        self.auth_manager.set_config_manager(self.config)
-        return self.auth_manager
+        self.auth.set_config_manager(self.config)
+        return self.auth
 
     def _init_core(self):
         """Initialize the core proxy handler."""
@@ -221,12 +241,13 @@ class NyaProxyApp:
         config_app = self.config.server.app
 
         # Add auth middleware to config app
-        config_app.add_middleware(AuthMiddleware, auth_manager=self.auth_manager)
+        config_app.add_middleware(AuthMiddleware, auth=self.auth)
 
         # Mount the config server app
         host = self.config.get_host()
         port = self.config.get_port()
-        self.app.mount("/config", config_app)
+
+        self.app.mount("/config", config_app, name="config_app")
 
         if self.logger:
             self.logger.info(
@@ -267,7 +288,7 @@ class NyaProxyApp:
             dashboard_app = self.dashboard.app
 
             # Add auth middleware to dashboard app
-            dashboard_app.add_middleware(AuthMiddleware, auth_manager=self.auth_manager)
+            dashboard_app.add_middleware(AuthMiddleware, auth=self.auth)
 
             # Mount the dashboard app
             self.app.mount("/dashboard", dashboard_app, name="dashboard_app")
@@ -288,59 +309,31 @@ class NyaProxyApp:
             self.logger.info("Setting up generic proxy routes")
 
         @self.app.get("/api/{path:path}", name="proxy_get")
-        async def proxy_get_request(
-            request: Request,
-            path: str,
-            api_key_valid: bool = Depends(self.auth_manager.verify_api_key),
-        ):
+        async def proxy_get_request(request: Request):
             return await self.generic_proxy_request(request)
 
         @self.app.post("/api/{path:path}", name="proxy_post")
-        async def proxy_post_request(
-            request: Request,
-            path: str,
-            api_key_valid: bool = Depends(self.auth_manager.verify_api_key),
-        ):
+        async def proxy_post_request(request: Request):
             return await self.generic_proxy_request(request)
 
         @self.app.put("/api/{path:path}", name="proxy_put")
-        async def proxy_put_request(
-            request: Request,
-            path: str,
-            api_key_valid: bool = Depends(self.auth_manager.verify_api_key),
-        ):
+        async def proxy_put_request(request: Request):
             return await self.generic_proxy_request(request)
 
         @self.app.delete("/api/{path:path}", name="proxy_delete")
-        async def proxy_delete_request(
-            request: Request,
-            path: str,
-            api_key_valid: bool = Depends(self.auth_manager.verify_api_key),
-        ):
+        async def proxy_delete_request(request: Request):
             return await self.generic_proxy_request(request)
 
         @self.app.patch("/api/{path:path}", name="proxy_patch")
-        async def proxy_patch_request(
-            request: Request,
-            path: str,
-            api_key_valid: bool = Depends(self.auth_manager.verify_api_key),
-        ):
+        async def proxy_patch_request(request: Request):
             return await self.generic_proxy_request(request)
 
         @self.app.head("/api/{path:path}", name="proxy_head")
-        async def proxy_head_request(
-            request: Request,
-            path: str,
-            api_key_valid: bool = Depends(self.auth_manager.verify_api_key),
-        ):
+        async def proxy_head_request(request: Request):
             return await self.generic_proxy_request(request)
 
         @self.app.options("/api/{path:path}", name="proxy_options")
-        async def proxy_options_request(
-            request: Request,
-            path: str,
-            api_key_valid: bool = Depends(self.auth_manager.verify_api_key),
-        ):
+        async def proxy_options_request(request: Request):
             return await self.generic_proxy_request(request)
 
     async def shutdown(self):
@@ -368,7 +361,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def reload_server():
+def reload_server(**kwargs):
     """
     Reload the uvicorn server programmatically.
     This can be called from other parts of the application to trigger a server reload.
@@ -382,7 +375,6 @@ def reload_server():
 
         # Send SIGUSR1 signal to the main process which uvicorn's reloader watches for
         os.kill(os.getpid(), signal.SIGUSR1)
-        exit(0)
 
         # Log the reload attempt
         print("[NyaProxy] Server reload signal sent")
@@ -394,10 +386,11 @@ def reload_server():
         return False
 
 
-def create_app(config_path=None):
+def create_app(config_path=None, schema_path=None):
     """Create the FastAPI application with the NyaProxy app"""
     global app
-    nya_proxy_app = NyaProxyApp(config_path)
+
+    nya_proxy_app = NyaProxyApp(config_path, schema_path)
     app = nya_proxy_app.app
     app.router.lifespan_context = nya_proxy_app.lifespan
     return app
@@ -416,6 +409,7 @@ def main():
     config_path_abs = args.config or os.environ.get("CONFIG_PATH")
     host = args.host or os.environ.get("NYA_PROXY_HOST")
     port = args.port or os.environ.get("NYA_PROXY_PORT")
+    schema_path = None
 
     import importlib.resources as pkg_resources
 
@@ -435,16 +429,14 @@ def main():
             print(
                 f"No config file provided, create default configuration at {config_path_abs}"
             )
-
     try:
-
         config = None
         config_path_rel = os.path.relpath(config_path_abs, os.getcwd())
 
-        print(f"Loading configuration from {config_path_abs}, cwd: {os.getcwd()}")
         # load validation schema from package resources
         with pkg_resources.path(nya_proxy, DEFAULT_SCHEMA_NAME) as default_schema:
-            config = ConfigAPI(config_path_abs, default_schema)
+            schema_path = str(default_schema)
+            config = NekoConfigClient(config_path_abs, default_schema)
 
         if not host:
             host = config.get_str("nya_proxy.host", DEFAULT_HOST)
@@ -457,16 +449,23 @@ def main():
         print(f"Error loading configuration: {str(e)}, invalid config file or schema.")
         sys.exit(1)
 
+    # Setup Environment Variables
+    os.environ["CONFIG_PATH"] = config_path_abs
+    os.environ["SCHEMA_PATH"] = schema_path
+    os.environ["NYA_PROXY_HOST"] = host
+    os.environ["NYA_PROXY_PORT"] = str(port)
+
     # Create the app here instead of importing a global
-    app_instance = create_app(config_path_abs)
+    # app_instance = create_app(config_path_abs)
 
     # Run the server
     uvicorn.run(
-        app_instance,
+        "nya_proxy.server.app:create_app",
         host=host,
         port=int(port),
-        # reload=True,
-        # reload_includes=[config_path_rel],  # Reload on config changes
+        log_config=None,  #
+        reload=True,
+        reload_includes=[config_path_rel],  # Reload on config changes
     )
 
 

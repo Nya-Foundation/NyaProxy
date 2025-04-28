@@ -66,5 +66,5 @@ apis:
       key_rate_limit: 5/m
       # Rate limit paths are optional, but you can configure which paths to apply the rate limits to (regex supported), default is all paths "*"
       rate_limit_paths:
-        - "/v1/chat/*"
-        - "/v1/images/*"
+        - "/chat/*"
+        - "/images/*"

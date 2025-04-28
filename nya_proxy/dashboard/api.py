@@ -10,10 +10,11 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import uvicorn
 from fastapi import FastAPI, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from .._version import __version__
 from ..services.metrics import MetricsCollector
 
 if TYPE_CHECKING:
@@ -72,7 +73,7 @@ class DashboardAPI:
         self.app = FastAPI(
             title="NyaProxy Dashboard",
             description="Dashboard for monitoring and controlling NyaProxy",
-            version="0.0.5",
+            version=__version__,
         )
 
         # Set up templates for HTML views
@@ -662,4 +663,4 @@ class DashboardAPI:
 
     def run(self, host: str = "0.0.0.0"):
         """Run the dashboard server in a separate process."""
-        uvicorn.run(self.app, host=host, port=self.port, log_level="info")
+        uvicorn.run(self.app, host=host, port=self.port, log_config=None)

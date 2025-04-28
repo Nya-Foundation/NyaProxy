@@ -4,7 +4,8 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/nya-proxy.svg)](https://pypi.org/project/nya-proxy/)
 [![License](https://img.shields.io/github/license/Nya-Foundation/nyaproxy.svg)](https://github.com/Nya-Foundation/nyaproxy/blob/main/LICENSE)
 [![Code Coverage](https://codecov.io/gh/Nya-Foundation/nyaproxy/branch/main/graph/badge.svg)](https://codecov.io/gh/Nya-Foundation/nyaproxy)
-[![CI/CD](https://github.com/Nya-Foundation/nyaproxy/actions/workflows/publish.yml/badge.svg)](https://github.com/Nya-Foundation/nyaproxy/actions/workflows/publish.yml)
+[![CodeQL & Dependencies Scan](https://github.com/nya-foundation/nyaproxy/actions/workflows/scan.yml/badge.svg)](https://github.com/nya-foundation/nyaproxy/actions/workflows/scan.yml)
+[![CI/CD Builds](https://github.com/Nya-Foundation/nyaproxy/actions/workflows/publish.yml/badge.svg)](https://github.com/Nya-Foundation/nyaproxy/actions/workflows/publish.yml)
 [![Docker](https://img.shields.io/docker/pulls/k3scat/nya-proxy)](https://hub.docker.com/r/k3scat/nya-proxy)
 
 <img src="https://raw.githubusercontent.com/Nya-Foundation/NyaProxy/main/images/banner.png" alt="NyaProxy Banner"/>
@@ -104,8 +105,8 @@ apis:
       key_rate_limit: 5/m
       # Rate limit paths are optional, but you can configure which paths to apply the rate limits to (regex supported), default is all paths "*"
       rate_limit_paths:
-        - "/v1/chat/*"
-        - "/v1/images/*"
+        - "/chat/*"
+        - "/images/*"
 ```
 
 #### 3. Run NyaProxy
@@ -170,8 +171,8 @@ gemini:
     endpoint_rate_limit: 75/d     # Total endpoint limit
     key_rate_limit: 5/m          # Per-key limit
     rate_limit_paths:
-      - "/v1/chat/*"            # Apply limits to specific paths
-      - "/v1/images/*"
+      - "/chat/*"            # Apply limits to specific paths
+      - "/images/*"
 ```
 
 ### Generic REST APIs
@@ -229,10 +230,10 @@ graph TD
 
 ```mermaid
 graph LR
-A[Q3 2025] --> B[🔄 Smart Request Routing]
+A[Q3 2025] --> B[🔄 Dynamic Json Body Substitution ]
 A --> C[📡 gRPC/WebSocket Support]
-B --> D[📈 Auto-scaling Rules]
-C --> E[📊 Protocol Analytics]
+B --> D[📈 API Key Usage/Balance Tracking]
+C --> E[📊 UI/UX Enhancement ]
 F[Q4 2025] --> G[🧩 Plugin System]
 F --> H[🔍 Custom Metrics API]
 ```

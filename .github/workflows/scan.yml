@@ -15,7 +15,7 @@ on:
       - 'Pipfile'
       - 'Pipfile.lock'
   pull_request:
-    branches: ['main', 'staging', 'dev']
+    branches: ['staging', 'dev']
     paths:
       - 'pyproject.toml'
       - 'setup.py'
@@ -25,9 +25,10 @@ on:
       - 'Pipfile.lock'
   workflow_dispatch:
 
-# Minimal permissions required for checkout and dependency review
+# Updated permissions to allow for code scanning alerts
 permissions:
   contents: read
+  security-events: write
 
 # Cancel outdated workflow runs on the same branch/PR
 concurrency:
@@ -62,4 +63,28 @@ jobs:
 
           # Uncomment based on your license policy
           allow-licenses: MIT, Apache-2.0, BSD-3-Clause, ISC, 0BSD, Python-2.0
-
+          
+  codeql-analysis:
+    name: CodeQL SAST Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: python
+          # Optional: specify queries for additional security checks
+          # queries: security-extended,security-and-quality
+          
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+        
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:python"
+          upload: true
