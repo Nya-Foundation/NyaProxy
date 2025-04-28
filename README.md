@@ -32,7 +32,7 @@
 
 #### Railway
 
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template?url=https://github.com/Nya-Foundation/nyaproxy)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/template/TqUoxN?referralCode=9cfC7m)
 
 
 ### Local Deployment
