@@ -23,7 +23,7 @@
 
 ## 📥 Quick Start
 
-### One-click deployment
+### One-Click deployment
 
 #### Render
 
@@ -35,18 +35,20 @@
 [![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template?url=https://github.com/Nya-Foundation/nyaproxy)
 
 
-### Prerequisites
+### Local Deployment
+
+#### Prerequisites
 - Python 3.8 or higher
 - Docker (optional, for containerized deployment)
 
-### Installation
+#### Installation
 
-#### 1. Install from PyPI
+##### 1. Install from PyPI
 ```bash
 pip install nya-proxy
 ```
 
-#### 2. Create a simple configuration file
+##### 2. Create a simple configuration file
 Create a `config.yaml` file with your API settings:
 ```yaml
 # Basic config.yaml example
@@ -121,12 +123,12 @@ apis:
         - "/images/*"
 ```
 
-#### 3. Run NyaProxy
+##### 3. Run NyaProxy
 ```bash
 nyaproxy --config config.yaml
 ```
 
-#### 4. Verify the installation
+##### 4. Verify the installation
 Visit `http://localhost:8080/dashboard` to access the management dashboard.
 
 ### Install from Source
@@ -143,7 +145,7 @@ pip install -e .
 nyaproxy --config config.yaml
 ```
 
-### Docker (Production)
+#### Docker (Production)
 ```bash
 docker run -d \
   -p 8080:8080 \
