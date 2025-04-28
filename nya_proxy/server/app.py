@@ -15,6 +15,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 
+from .. import __version__
 from ..common.constants import (
     DEFAULT_CONFIG_NAME,
     DEFAULT_HOST,
@@ -27,7 +28,6 @@ from ..dashboard.api import DashboardAPI
 from .auth import AuthManager, AuthMiddleware
 from .config import ConfigManager, NekoConfigClient
 from .logger import setup_logger
-from .. import __version__
 
 
 class RootPathMiddleware(BaseHTTPMiddleware):

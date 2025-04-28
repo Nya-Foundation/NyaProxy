@@ -14,8 +14,8 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from ..services.metrics import MetricsCollector
 from .._version import __version__
+from ..services.metrics import MetricsCollector
 
 if TYPE_CHECKING:
     from ..server.config import ConfigManager
