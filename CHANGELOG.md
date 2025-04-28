@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v0.0.7 (2025-04-28)
+
+### Bug Fixes
+
+- Docker startup issue, add one click deploy via render and Railway
+  ([`ec6ecae`](https://github.com/Nya-Foundation/NyaProxy/commit/ec6ecae75a4ebca061f40c10525a1dbc998df3af))
+
+### Chores
+
+- **README**: Refine README.md
+  ([`053733e`](https://github.com/Nya-Foundation/NyaProxy/commit/053733e238a828976c466a3cb765a322237de093))
+
+
 ## v0.0.6 (2025-04-28)
 
 ### Bug Fixes
