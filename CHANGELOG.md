@@ -1,6 +1,31 @@
 # CHANGELOG
 
 
+## v0.0.6 (2025-04-28)
+
+### Bug Fixes
+
+- **NekoConf**: Bump NekoConf version, refine integration, refine reload logic
+  ([`32bc8f2`](https://github.com/Nya-Foundation/NyaProxy/commit/32bc8f2b494115ed91e45a48e2e6fa23a958f3ae))
+
+### Chores
+
+- **CI**: Adjust publish.yml
+  ([`56e3f02`](https://github.com/Nya-Foundation/NyaProxy/commit/56e3f0272e4fbe752486faa0cfb13c56355d79ed))
+
+- **CI**: Fix package version #
+  ([`0860737`](https://github.com/Nya-Foundation/NyaProxy/commit/0860737c62d8dd4536836f313192b8d86e275e05))
+
+- **format**: Apply automatic formatting [skip ci]
+  ([`567c517`](https://github.com/Nya-Foundation/NyaProxy/commit/567c5172f4dd7568db6011a54c922bb8e3b8cbff))
+
+- **format**: Apply automatic formatting [skip ci]
+  ([`0109179`](https://github.com/Nya-Foundation/NyaProxy/commit/0109179df2052ca6eeb43879423ce36ef169e822))
+
+- **version**: Bump verion to 0.0.5
+  ([`0762eb7`](https://github.com/Nya-Foundation/NyaProxy/commit/0762eb7eb57f21543b2a6bbbb767d392c011e5d0))
+
+
 ## v0.0.5 (2025-04-27)
 
 ### Bug Fixes
