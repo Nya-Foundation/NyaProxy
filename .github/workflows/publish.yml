@@ -30,6 +30,8 @@ on:
   push:
     branches:
       - main # Trigger release only on pushes to main
+    paths:
+    - '**/*.py' # Trigger on changes to Python files
 
 # Prevent multiple concurrent releases
 concurrency:
