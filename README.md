@@ -21,13 +21,25 @@
 | 🕵️ Request Masking   | Dynamic header substitution across multiple identity providers              | `headers` + `variables`   |
 | 📊 Real-time Metrics | Interactive dashboard with request analytics and system health              | `dashboard.enabled`       |
 
-## 📥 Installation
+## 📥 Quick Start
+
+### One-click deployment
+
+#### Render
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https%3A%2F%2Fgithub.com%2FNya-Foundation%2Fnyaproxy)
+
+
+#### Railway
+
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template?url=https://github.com/Nya-Foundation/nyaproxy)
+
 
 ### Prerequisites
 - Python 3.8 or higher
 - Docker (optional, for containerized deployment)
 
-### Quick Start
+### Installation
 
 #### 1. Install from PyPI
 ```bash
@@ -216,12 +228,12 @@ Manage at `http://localhost:8080/config`:
 - Rate limit adjustments
 - Auto reload on save
 
-## 🛡️ Advanced Reference Architecture (Advanced Deployment)
+## 🛡️ Reference Architecture
 ```mermaid
 graph TD
     A[Client] --> B[Nginx]
-    B --> C[NyaProxy]
-    C --> D[Auth Service]
+    B --> C[NyaProxyAuth]
+    C --> D[NyaProxyApp]
     D --> E[API Providers]
     F[Monitoring] --> D
 ```
@@ -230,11 +242,11 @@ graph TD
 
 ```mermaid
 graph LR
-A[Q3 2025] --> B[🔄 Dynamic Json Body Substitution ]
-A --> C[📡 gRPC/WebSocket Support]
+A[Q1 2025] --> B[📡 Simulated Streaming ]
+A --> C[🔄 Dynamic Json Body Substitution]
 B --> D[📈 API Key Usage/Balance Tracking]
 C --> E[📊 UI/UX Enhancement ]
-F[Q4 2025] --> G[🧩 Plugin System]
+F[Q2 2025] --> G[🧩 Plugin System]
 F --> H[🔍 Custom Metrics API]
 ```
 

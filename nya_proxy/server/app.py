@@ -415,7 +415,8 @@ def main():
 
     import nya_proxy
 
-    if not config_path_abs:
+    if not config_path_abs or not os.path.exists(config_path_abs):
+
         # Create copies of the default config and schema in current directory
         import shutil
 
@@ -427,7 +428,7 @@ def main():
             with pkg_resources.path(nya_proxy, DEFAULT_CONFIG_NAME) as default_config:
                 shutil.copy(default_config, config_path_abs)
             print(
-                f"No config file provided, create default configuration at {config_path_abs}"
+                f"[Warning] No config file provided, create default configuration at {config_path_abs}"
             )
     try:
         config = None
@@ -454,9 +455,6 @@ def main():
     os.environ["SCHEMA_PATH"] = schema_path
     os.environ["NYA_PROXY_HOST"] = host
     os.environ["NYA_PROXY_PORT"] = str(port)
-
-    # Create the app here instead of importing a global
-    # app_instance = create_app(config_path_abs)
 
     # Run the server
     uvicorn.run(
