@@ -41,7 +41,7 @@ apis:
   openai:
     # Any OpenAI-Compatible API
     name: OpenAI API
-    endpoint: https://api.openai.com/v1
+    endpoint: https://generativelanguage.googleapis.com/v1beta/openai
     aliases:
     - /openai
     key_variable: keys

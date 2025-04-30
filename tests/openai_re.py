@@ -10,7 +10,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 # Your proxy or compatible endpoint URL
 PROXY_API_URL = os.getenv("OPENAI_API_URL", "http://127.0.0.1:8080/api/gemini")
 # Official OpenAI API URL (optional, for direct comparison)
-OFFICIAL_OPENAI_URL = "https://api.openai.com/v1"
+OFFICIAL_OPENAI_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
 
 
 # --- Request Payload ---
