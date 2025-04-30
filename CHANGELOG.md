@@ -1,6 +1,25 @@
 # CHANGELOG
 
 
+## v0.0.8 (2025-04-30)
+
+### Bug Fixes
+
+- **test**: Fix some minor issue on f-string escpate sequence for backward compatiblities
+  ([`c89f862`](https://github.com/Nya-Foundation/NyaProxy/commit/c89f862ea2b5eaccd06a4a08ffcad181a0e7afe4))
+
+### Chores
+
+- **CI**: Remove python 3.14 from unit tests workflow
+  ([`1b9468d`](https://github.com/Nya-Foundation/NyaProxy/commit/1b9468d4cad239b9801d672fb00e2621b10ae891))
+
+- **format**: Apply automatic formatting [skip ci]
+  ([`c034383`](https://github.com/Nya-Foundation/NyaProxy/commit/c03438366743837866805df0732c1f419e3d5046))
+
+- **README**: Update one-click deploy for Railway
+  ([`88bf6b4`](https://github.com/Nya-Foundation/NyaProxy/commit/88bf6b40a2fee015ec430292d2d3212a8e4235df))
+
+
 ## v0.0.7 (2025-04-28)
 
 ### Bug Fixes
