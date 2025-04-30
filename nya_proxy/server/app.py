@@ -358,6 +358,9 @@ def parse_args():
     parser.add_argument("--config", "-c", help="Path to configuration file")
     parser.add_argument("--port", "-p", type=int, help="Port to run the proxy on")
     parser.add_argument("--host", "-H", type=str, help="Host to run the proxy on")
+    parser.add_argument(
+        "--version", action="version", version=f"NyaProxy {__version__}"
+    )
     return parser.parse_args()
 
 
