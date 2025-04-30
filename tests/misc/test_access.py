@@ -3,8 +3,9 @@ Test suite for authentication and access control functionality in NyaProxy.
 Focuses on testing the AuthManager class in nya_proxy.server.auth.
 """
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
 from fastapi import HTTPException
 from fastapi.requests import Request
 
