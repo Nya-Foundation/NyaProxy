@@ -78,6 +78,12 @@ Pick your favorite platform and let's go!
   </tr>
 </table>
 
+> [!NOTE]
+> NyaProxy automatically creates a basic working configuration when it starts. You just need to access the `/config` endpoint to add your API keys!
+
+> [!TIP]
+> You can use Gemini AI Studio to get a free API key for testing. Gemini's API is OpenAI-compatible and works seamlessly with NyaProxy. [Get a Gemini API key here](https://aistudio.google.com/app/apikey).
+
 ### Local Deployment (For the DIY Enthusiasts!)
 
 #### Prerequisites
@@ -92,8 +98,6 @@ pip install nya-proxy
 ```
 
 ##### 2. Run NyaProxy
-
-This creates a basic configuration file in your current folder:
 
 ```bash
 nyaproxy
@@ -111,8 +115,17 @@ Visit `http://localhost:8080/config` to access the configuration UI.
 
 > [!IMPORTANT]
 > If you expose this proxy to the internet, make sure to set a strong API key in your configuration to prevent unauthorized access. The first key in your API keys array will be used as the master key for accessing sensitive interfaces like the dashboard and configuration UI, while additional keys can be used for regular API requests only.
+>
+> If no master API key is specified, no login page will be shown and anyone can access the dashboard and configuration UI. This is convenient for local testing but not recommended for production environments.
 
 Check out `http://localhost:8080/dashboard` for the snazzy management dashboard with all your API traffic visualizations.
+
+### Detailed Deployment Guides
+
+For step-by-step instructions tailored to beginners, check out our detailed deployment guides:
+
+- [Docker Deployment Guide](docs/openai-docker.md) - Run with Docker or Docker Compose
+- [PIP Installation Guide](docs/openai-pip.md) - Direct Python installation
 
 ### Install from Source
 
