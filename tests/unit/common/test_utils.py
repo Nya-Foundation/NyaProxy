@@ -1,22 +1,22 @@
 import json
 import time
-from typing import Dict, List, Any, Union
+from typing import Any, Dict, List, Union
 from unittest import mock
 
 import pytest
 
 from nya_proxy.common.utils import (
-    _mask_api_key,
-    format_elapsed_time,
-    decode_content,
-    json_safe_dumps,
-    apply_body_substitutions,
     _check_rule_conditions,
-    _set_field,
-    _remove_field,
-    _like_match,
     _contains_value,
+    _like_match,
+    _mask_api_key,
     _process_value_references,
+    _remove_field,
+    _set_field,
+    apply_body_substitutions,
+    decode_content,
+    format_elapsed_time,
+    json_safe_dumps,
 )
 
 

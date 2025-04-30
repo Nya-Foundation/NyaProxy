@@ -6,20 +6,20 @@ import asyncio
 import logging
 import random
 import time
-import orjson
 import traceback
 from typing import TYPE_CHECKING, List, Optional, Union
 
 import httpx
-from starlette.responses import JSONResponse, StreamingResponse, Response
+import orjson
+from starlette.responses import JSONResponse, Response, StreamingResponse
 
 from ..common.exceptions import APIKeyExhaustedError
 from ..common.models import NyaRequest
 from ..common.utils import (
     _mask_api_key,
+    apply_body_substitutions,
     format_elapsed_time,
     json_safe_dumps,
-    apply_body_substitutions,
 )
 
 if TYPE_CHECKING:

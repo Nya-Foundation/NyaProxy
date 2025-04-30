@@ -5,7 +5,7 @@ Data models for request handling in NyaProxy.
 import asyncio
 import time
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, Optional, Union, List
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 if TYPE_CHECKING:
     from fastapi import Request

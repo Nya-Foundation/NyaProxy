@@ -3,6 +3,7 @@ NyaProxy - A cute and simple low-level API proxy with dynamic token rotation.
 """
 
 from ._version import __version__
+from .common.logger import getLogger
 from .common.models import NyaRequest
 from .common.utils import format_elapsed_time
 from .core.handler import NyaProxyCore
@@ -13,7 +14,6 @@ from .dashboard.api import DashboardAPI
 
 # Import key components for easier access
 from .server.config import ConfigError, ConfigManager
-from .common.logger import getLogger
 from .services.key_manager import KeyManager
 from .services.load_balancer import LoadBalancer
 from .services.metrics import MetricsCollector

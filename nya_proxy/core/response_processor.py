@@ -3,17 +3,18 @@ Response processing utilities for NyaProxy.
 """
 
 import asyncio
-import orjson
-from ..integrations.openai import simulate_stream_from_completion
 import logging
 import time
-from typing import TYPE_CHECKING, Dict, Optional, Union, Any
 import traceback
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
+
 import httpx
+import orjson
 from fastapi import Response
 from starlette.responses import JSONResponse, StreamingResponse
 
 from ..common.utils import decode_content, json_safe_dumps
+from ..integrations.openai import simulate_stream_from_completion
 
 if TYPE_CHECKING:
     from ..common.models import NyaRequest

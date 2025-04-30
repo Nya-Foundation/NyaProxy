@@ -1,8 +1,9 @@
-import os
-import json
-import httpx
 import asyncio
-from openai import AsyncOpenAI, APIConnectionError, RateLimitError, APIStatusError
+import json
+import os
+
+import httpx
+from openai import APIConnectionError, APIStatusError, AsyncOpenAI, RateLimitError
 
 # --- Configuration ---
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")

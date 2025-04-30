@@ -22,12 +22,12 @@ from ..common.constants import (
     DEFAULT_PORT,
     DEFAULT_SCHEMA_NAME,
 )
+from ..common.logger import getLogger
 from ..common.models import NyaRequest
 from ..core.handler import NyaProxyCore
 from ..dashboard.api import DashboardAPI
 from .auth import AuthManager, AuthMiddleware
 from .config import ConfigManager, NekoConfigClient
-from ..common.logger import getLogger
 
 
 class RootPathMiddleware(BaseHTTPMiddleware):

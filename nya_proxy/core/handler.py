@@ -15,11 +15,11 @@ from ..common.constants import API_PATH_PREFIX
 from ..common.exceptions import (
     APIKeyExhaustedError,
     EndpointRateLimitExceededError,
+    QueueFullError,
     RequestExpiredError,
     VariablesConfigurationError,
-    QueueFullError,
 )
-from ..common.models import NyaRequest, AdvancedConfig
+from ..common.models import AdvancedConfig, NyaRequest
 from ..server.config import ConfigManager
 from ..services.key_manager import KeyManager
 from ..services.load_balancer import LoadBalancer

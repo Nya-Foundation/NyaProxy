@@ -4,12 +4,13 @@ Utility functions for NyaProxy.
 
 import gzip
 import json
-import zlib
-import orjson  # Faster JSON library
-from typing import Any, Dict, List, Optional, Union, Any, Optional
 import re
+import zlib
+from typing import Any, Dict, List, Optional, Union
+
 import brotli
 import jmespath
+import orjson  # Faster JSON library
 from jmespath.exceptions import JMESPathError
 
 __all__ = [
