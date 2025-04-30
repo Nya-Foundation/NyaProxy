@@ -4,7 +4,7 @@ Configuration manager for NyaProxy using NekoConf.
 
 import logging
 import os
-from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar, cast
+from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar, cast, Union
 
 from nekoconf import NekoConfigClient, NekoConfigServer
 
@@ -151,9 +151,23 @@ class ConfigManager:
         """Get the default expiry time for queued requests in seconds."""
         return self.config.get_int("nya_proxy.queue.expiry_seconds", 300)
 
-    def get_api_key(self) -> str:
-        """Get the API key for authenticating with the proxy."""
-        return self.config.get_str("nya_proxy.api_key", "")
+    def get_api_key(self) -> Union[None, str, List[str]]:
+        """
+        Get the API key(s) for authenticating with the proxy.
+
+        Returns:
+            None if no API key is configured, a string for a single key,
+            or a list of strings for multiple keys
+        """
+
+        api_key = self.config.get("nya_proxy.api_key", None)
+
+        if api_key is None:
+            return None
+        elif isinstance(api_key, list):
+            return api_key
+        else:
+            return str(api_key)
 
     def get_apis(self) -> Dict[str, Any]:
         """

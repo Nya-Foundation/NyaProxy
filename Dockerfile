@@ -40,6 +40,12 @@ RUN addgroup -S nya && \
 # Create a runtime stage to minimize the final image size
 FROM alpine:latest AS runtime
 
+# Add image metadata
+LABEL org.opencontainers.image.description="NyaProxy: A versatile API proxy with load balancing, rate limiting, and token rotation." \
+      org.opencontainers.image.source="https://github.com/Nya-Foundation/nyaproxy" \
+      org.opencontainers.image.licenses="MIT"
+
+
 # Set working directory
 WORKDIR /app
 
