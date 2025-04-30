@@ -25,7 +25,9 @@ def openai_chat_format(model, content, create_at=None):
         ],
     }
 
-    return f"data: {json.dumps(res if content else "[DONE]")}\n\n"
+    # Fix the syntax error by properly handling the string literal
+    done_marker = "[DONE]"
+    return "data: " + json.dumps(res if content else done_marker) + "\n\n"
 
 
 def openai_stream_chunk(
