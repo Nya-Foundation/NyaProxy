@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.1.0 (2025-04-30)
+
+### Features
+
+- **key**: Multi api_key support, refine README, more test cases
+  ([`77f3748`](https://github.com/Nya-Foundation/NyaProxy/commit/77f3748a0a0131d6ac31e8e258afbc4379b8ae4a))
+
+
 ## v0.0.8 (2025-04-30)
 
 ### Bug Fixes
