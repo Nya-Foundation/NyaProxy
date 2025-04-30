@@ -57,6 +57,7 @@ async def request_queue(mock_key_manager, mock_logger):
         expiry_seconds=10,  # Short expiry for testing
         start_task=False,  # Prevent background task in tests
     )
+
     yield queue
     # Cleanup: Stop the queue (cancels the mocked task if it existed)
     queue.running = False
@@ -65,8 +66,6 @@ async def request_queue(mock_key_manager, mock_logger):
 
 
 # --- Test Cases ---
-
-
 def test_init(request_queue, mock_key_manager, mock_logger):
     assert request_queue.key_manager == mock_key_manager
     assert request_queue.logger == mock_logger
@@ -91,9 +90,9 @@ async def test_enqueue_request_success(request_queue, nya_request_factory):
     assert isinstance(future, asyncio.Future)
     assert request_queue.get_queue_size("test_api") == 1
     assert request_queue.metrics["total_enqueued"] == 1
-    assert req.future == future
-    assert req.expiry > time.time()  # Scheduled in the future
-    assert req.added_at <= time.time()
+    assert req._future == future
+    assert req._expiry > time.time()  # Scheduled in the future
+    assert req._added_at <= time.time()
     request_queue.logger.info.assert_called()
 
 
@@ -154,16 +153,16 @@ def test_get_metrics(request_queue):
 @pytest.mark.asyncio
 async def test_process_request_item_no_processor(request_queue, nya_request_factory):
     req = nya_request_factory()
-    req.future = asyncio.Future()  # Assign a future
+    req._future = asyncio.Future()  # Assign a future
 
     # Ensure no processor is registered
     request_queue.processor = None
 
     await request_queue._process_request_item(req)
 
-    assert req.future.done()
+    assert req._future.done()
     with pytest.raises(RuntimeError, match="No request processor registered"):
-        await req.future  # Check the exception set on the future
+        await req._future  # Check the exception set on the future
     request_queue.logger.error.assert_called_with("No request processor registered")
     assert request_queue.metrics["total_failed"] == 1
 
@@ -306,8 +305,12 @@ async def test_process_api_queue_key_exhausted_during_processing(
     async def processor_wrapper(request):
         result = await original_processor(request)
         # Directly set future result
-        if request == req1 and hasattr(request, "future") and not request.future.done():
-            request.future.set_result(result)
+        if (
+            request == req1
+            and hasattr(request, "future")
+            and not request._future.done()
+        ):
+            request._future.set_result(result)
         return result
 
     # Replace the processor with our wrapper

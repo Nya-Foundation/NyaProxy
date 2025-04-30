@@ -22,12 +22,12 @@ from ..common.constants import (
     DEFAULT_PORT,
     DEFAULT_SCHEMA_NAME,
 )
+from ..common.logger import getLogger
 from ..common.models import NyaRequest
 from ..core.handler import NyaProxyCore
 from ..dashboard.api import DashboardAPI
 from .auth import AuthManager, AuthMiddleware
 from .config import ConfigManager, NekoConfigClient
-from .logger import setup_logger
 
 
 class RootPathMiddleware(BaseHTTPMiddleware):
@@ -138,7 +138,7 @@ class NyaProxyApp:
             _url=request.url,
             _raw=request,
             content=await request.body(),
-            added_at=time.time(),
+            _added_at=time.time(),
         )
 
         return await self.core.handle_request(req)
@@ -191,7 +191,7 @@ class NyaProxyApp:
     def _init_logging(self):
         """Initialize logging."""
         log_config = self.config.get_logging_config()
-        self.logger = setup_logger(log_config)
+        self.logger = getLogger(name=__name__, log_config=log_config)
         self.logger.info(
             f"Logging initialized with level {log_config.get('level', 'INFO')}"
         )
@@ -444,8 +444,6 @@ def main():
         if not port:
             port = config.get_int("nya_proxy.port", DEFAULT_PORT)
 
-        print(f"Configuration loaded from {config_path_abs}")
-
     except Exception as e:
         print(f"Error loading configuration: {str(e)}, invalid config file or schema.")
         sys.exit(1)
@@ -461,9 +459,10 @@ def main():
         "nya_proxy.server.app:create_app",
         host=host,
         port=int(port),
-        log_config=None,  #
         reload=True,
         reload_includes=[config_path_rel],  # Reload on config changes
+        timeout_keep_alive=15,
+        limit_concurrency=1000,
     )
 
 

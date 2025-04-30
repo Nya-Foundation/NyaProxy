@@ -16,6 +16,7 @@ nya_proxy:
     max_size: 200
     expiry_seconds: 300
 
+# Default settings for the all apis if not specified
 default_settings:
   key_variable: keys
   load_balancing_strategy: round_robin
@@ -33,8 +34,31 @@ default_settings:
     retry_status_codes: [ 429, 500, 502, 503, 504 ]
   timeouts:
     request_timeout_seconds: 300
-    
-
+  # Simulated streaming settings
+  simulated_streaming:
+    enabled: false
+    delay_seconds: 0.2 # Delay between chunks in seconds
+    init_delay_seconds: 0.5 # Initial delay before starting streaming in seconds
+    chunk_size_bytes: 256 # Size of each chunk in bytes
+    apply_to: ["application/json", "application/xml", "text/plain", "image/png", "image/jpeg"] # Response content types to apply simulated streaming to
+  # Request body substitution settings
+  request_body_substitution:
+    enabled: false
+    # Substitution rules for request body with JMEPath
+    rules:
+      - name: "Remove frequency_penalty"
+        operation: remove
+        path: "frequency_penalty"
+        conditions:
+          - field: "frequency_penalty"
+            operator: "exists"
+      - name: "Remove presence_penalty"
+        operation: remove
+        path: "presence_penalty"
+        conditions:
+          - field: "presence_penalty"
+            operator: "exists"
+  
 apis:
   gemini:
     # Any OpenAI-Compatible API

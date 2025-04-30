@@ -28,11 +28,15 @@ dependencies = [
     "fastapi>=0.95.0",
     "uvicorn>=0.22.0",
     "httpx>=0.24.0",
+    "httpx-socks>=0.10.0",
     "nekoconf==0.1.8",
     "jinja2>=3.1.2",
     "setuptools>=42.0.0",
     "watchfiles>=0.18.0",
     "brotli>=1.0.9",
+    "jmespath>=1.0.1",
+    "colorlog>=6.9.0",
+    "orjson>=3.10,<4"
 ]
 
 [project.optional-dependencies]
