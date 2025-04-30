@@ -2,30 +2,26 @@
 Header processing utilities for NyaProxy.
 """
 
-import logging
 import re
 from typing import Any, Dict, Optional, Set
 
 from ..common.constants import EXCLUDED_REQUEST_HEADERS
+from ..common.logger import getLogger
 
 
-class HeaderProcessor:
+class HeaderUtils:
     """
-    Processes API request headers with variable substitution.
+    Utility class for processing API request headers with variassble substitution.
+    All methods are static and have no instance state.
     """
 
-    def __init__(self, logger: Optional[logging.Logger] = None):
-        """
-        Initialize the header processor.
+    # Compiled regex pattern for variable detection
+    _VARIABLE_PATTERN = re.compile(r"\$\{\{([^}]+)\}\}")
+    _EXCLUDED_HEADERS = EXCLUDED_REQUEST_HEADERS
+    _LOGGER = getLogger(__name__)
 
-        Args:
-            logger: Logger instance
-        """
-        self.logger = logger or logging.getLogger(__name__)
-        self._variable_pattern = re.compile(r"\$\{\{([^}]+)\}\}")
-        self.excluded_headers = EXCLUDED_REQUEST_HEADERS
-
-    def extract_required_variables(self, header_templates: Dict[str, Any]) -> Set[str]:
+    @staticmethod
+    def extract_required_variables(header_templates: Dict[str, Any]) -> Set[str]:
         """
         Extract variable names required by header templates.
 
@@ -42,13 +38,13 @@ class HeaderProcessor:
                 continue
 
             # Find all ${{variable}} patterns in header templates
-            for match in self._variable_pattern.finditer(header_value):
+            for match in HeaderUtils._VARIABLE_PATTERN.finditer(header_value):
                 required_vars.add(match.group(1).strip())
 
         return required_vars
 
-    def _process_headers(
-        self,
+    @staticmethod
+    def process_headers(
         header_templates: Dict[str, Any],
         variable_values: Dict[str, Any],
         original_headers: Optional[Dict[str, str]] = None,
@@ -64,14 +60,14 @@ class HeaderProcessor:
         Returns:
             Processed headers with variables substituted
         """
+
         # Start with a copy of filtered original headers
         final_headers = {}
         if original_headers:
-
             final_headers = {
                 k.lower(): v
                 for k, v in original_headers.items()
-                if k.lower() not in self.excluded_headers
+                if k.lower() not in HeaderUtils._EXCLUDED_HEADERS
             }
 
         # Process each header template
@@ -83,7 +79,9 @@ class HeaderProcessor:
             template_str = str(template) if not isinstance(template, str) else template
 
             # Replace variables in the template
-            header_value = self._substitute_variables(template_str, variable_values)
+            header_value = HeaderUtils._substitute_variables(
+                template_str, variable_values
+            )
 
             # Use the lowercase header name for case-insensitivity
             final_headers[header_name.lower()] = header_value
@@ -94,8 +92,10 @@ class HeaderProcessor:
 
         return final_headers
 
+    @staticmethod
     def _substitute_variables(
-        self, template: str, variable_values: Dict[str, Any]
+        template: str,
+        variable_values: Dict[str, Any],
     ) -> str:
         """
         Substitute variables in a template string.
@@ -107,12 +107,13 @@ class HeaderProcessor:
         Returns:
             Template with variables substituted
         """
+
         # Quick check if there are any variables to substitute
-        if not self._variable_pattern.search(template):
+        if not HeaderUtils._VARIABLE_PATTERN.search(template):
             return template
 
         # Find all matches and process from end to start to avoid position shifts
-        matches = list(self._variable_pattern.finditer(template))
+        matches = list(HeaderUtils._VARIABLE_PATTERN.finditer(template))
         result = template
 
         for match in reversed(matches):
@@ -120,17 +121,18 @@ class HeaderProcessor:
             start, end = match.span()
 
             if var_name in variable_values:
-                value = self._get_variable_value(variable_values[var_name])
+                value = HeaderUtils._get_variable_value(variable_values[var_name])
                 # Replace just this match
                 result = result[:start] + value + result[end:]
             else:
-                self.logger.warning(
+                HeaderUtils._LOGGER.warning(
                     f"Variable '{var_name}' not found in variable values"
                 )
 
         return result
 
-    def _get_variable_value(self, value: Any) -> str:
+    @staticmethod
+    def _get_variable_value(value: Any) -> str:
         """
         Convert a variable value to string representation.
 
@@ -147,8 +149,9 @@ class HeaderProcessor:
             # Convert any other type to string
             return str(value)
 
+    @staticmethod
     def merge_headers(
-        self, base_headers: Dict[str, str], override_headers: Dict[str, str]
+        base_headers: Dict[str, str], override_headers: Dict[str, str]
     ) -> Dict[str, str]:
         """
         Merge two sets of headers, with override_headers taking precedence.
@@ -168,7 +171,7 @@ class HeaderProcessor:
             result[key.lower()] = value
 
         # Remove excluded headers
-        for header in self.excluded_headers:
+        for header in EXCLUDED_REQUEST_HEADERS:
             result.pop(header, None)
 
         return result

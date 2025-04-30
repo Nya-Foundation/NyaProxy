@@ -1,78 +1,80 @@
-import pytest
-
-from nya_proxy.core.header_processor import HeaderProcessor
-
-
-@pytest.fixture
-def header_processor():
-    return HeaderProcessor()
+import re
+from nya_proxy.core.header_utils import HeaderUtils
 
 
-class TestHeaderProcessor:
-    def test_extract_required_variables(self, header_processor: HeaderProcessor):
+class TestHeaderUtils:
+    def test_extract_required_variables(
+        self,
+    ):
         templates = {
             "Authorization": "Bearer ${{api_key}}",
             "User-Agent": "${{user_agent}}",
             "X-Static": "static-value",
             "X-Multi": "${{a}}-${{b}}",
         }
-        assert header_processor.extract_required_variables(templates) == {
+
+        pattern = HeaderUtils._VARIABLE_PATTERN
+        assert pattern == re.compile(r"\$\{\{([^}]+)\}\}")
+
+        assert HeaderUtils.extract_required_variables(templates) == {
             "api_key",
             "user_agent",
             "a",
             "b",
         }
 
-    def test_substitute_variables(self, header_processor: HeaderProcessor):
+    def test_substitute_variables(
+        self,
+    ):
         template = "Bearer ${{api_key}}"
         values = {"api_key": "KEY123"}
-        assert (
-            header_processor._substitute_variables(template, values) == "Bearer KEY123"
-        )
+        assert HeaderUtils._substitute_variables(template, values) == "Bearer KEY123"
         # Missing variable
         assert (
-            header_processor._substitute_variables("Bearer ${{missing}}", {})
+            HeaderUtils._substitute_variables("Bearer ${{missing}}", {})
             == "Bearer ${{missing}}"
         )
         # No variables
-        assert header_processor._substitute_variables("static", {}) == "static"
+        assert HeaderUtils._substitute_variables("static", {}) == "static"
 
-    def test_substitute_multiple_variables_in_one_string(self, header_processor):
+    def test_substitute_multiple_variables_in_one_string(self):
         template = "Bearer ${{key}} with user ${{user}} and role ${{role}}"
         values = {"key": "abc123", "user": "john", "role": "admin"}
-        result = header_processor._substitute_variables(template, values)
+        result = HeaderUtils._substitute_variables(template, values)
         assert result == "Bearer abc123 with user john and role admin"
 
         # Missing some variables
         partial_values = {"key": "abc123", "role": "admin"}
-        result2 = header_processor._substitute_variables(template, partial_values)
+        result2 = HeaderUtils._substitute_variables(template, partial_values)
         assert result2 == "Bearer abc123 with user ${{user}} and role admin"
 
         # Variables with special characters
         template3 = "${{prefix}}:${{value}}//${{suffix}}"
         special_values = {"prefix": "http", "value": "example.com", "suffix": "api/v1"}
-        result3 = header_processor._substitute_variables(template3, special_values)
+        result3 = HeaderUtils._substitute_variables(template3, special_values)
         assert result3 == "http:example.com//api/v1"
 
-    def test_get_variable_value(self, header_processor: HeaderProcessor):
-        assert header_processor._get_variable_value(["a", "b"]) == "a"
-        assert header_processor._get_variable_value([]) == ""
-        assert header_processor._get_variable_value(123) == "123"
-        assert header_processor._get_variable_value(None) == "None"
+    def test_get_variable_value(
+        self,
+    ):
+        assert HeaderUtils._get_variable_value(["a", "b"]) == "a"
+        assert HeaderUtils._get_variable_value([]) == ""
+        assert HeaderUtils._get_variable_value(123) == "123"
+        assert HeaderUtils._get_variable_value(None) == "None"
 
     def test_process_headers_merges_and_substitutes(
-        self, header_processor: HeaderProcessor
+        self,
     ):
         templates = {"Authorization": "Bearer ${{api_key}}", "X-Static": "static"}
         values = {"api_key": "KEY"}
         orig = {"Accept": "application/json"}
-        result = header_processor._process_headers(templates, values, orig)
+        result = HeaderUtils.process_headers(templates, values, orig)
         assert result["authorization"] == "Bearer KEY"
         assert result["x-static"] == "static"
         assert result["accept"] == "application/json"
         assert "host" not in result
 
-    def test_process_headers_with_multiple_variables(self, header_processor):
+    def test_process_headers_with_multiple_variables(self):
         templates = {
             "Authorization": "Bearer ${{api_key}}",
             "User-Agent": "${{app_name}}/${{version}} (${{os}})",
@@ -87,24 +89,26 @@ class TestHeaderProcessor:
             "middle": "beta",
             "suffix": "gamma",
         }
-        result = header_processor._process_headers(templates, values)
+        result = HeaderUtils.process_headers(templates, values)
         assert result["authorization"] == "Bearer secret123"
         assert result["user-agent"] == "NyaProxy/1.0 (Linux)"
         assert result["x-custom"] == "alpha-beta-gamma"
 
-    def test_merge_headers(self, header_processor: HeaderProcessor):
+    def test_merge_headers(
+        self,
+    ):
         base = {"A": "1", "B": "2"}
         override = {"B": "3", "C": "4"}
-        merged = header_processor.merge_headers(base, override)
+        merged = HeaderUtils.merge_headers(base, override)
         assert merged["a"] == "1"
         assert merged["b"] == "3"
         assert merged["c"] == "4"
 
-    def test_merge_headers_with_complex_cases(self, header_processor):
+    def test_merge_headers_with_complex_cases(self):
         # Test merging when headers have mixed case
         base = {"Content-Type": "application/json", "X-API-KEY": "123"}
         override = {"content-type": "text/plain", "x-custom": "value"}
-        result = header_processor.merge_headers(base, override)
+        result = HeaderUtils.merge_headers(base, override)
         assert result["content-type"] == "text/plain"  # Override wins
         assert result["x-api-key"] == "123"  # Kept from base
         assert result["x-custom"] == "value"  # Added from override
@@ -112,22 +116,26 @@ class TestHeaderProcessor:
         # Test with excluded headers in both
         base2 = {"X-Forwarded-For": "1.2.3.4", "Authorization": "Bearer base"}
         override2 = {"x-forwarded-for": "5.6.7.8", "authorization": "Bearer override"}
-        result2 = header_processor.merge_headers(base2, override2)
+        result2 = HeaderUtils.merge_headers(base2, override2)
         assert "x-forwarded-for" not in result2  # Excluded
         assert result2["authorization"] == "Bearer override"  # Override wins
 
         # Test with empty headers
-        assert header_processor.merge_headers({}, {}) == {}
-        assert header_processor.merge_headers({"A": "1"}, {}) == {"a": "1"}
-        assert header_processor.merge_headers({}, {"B": "2"}) == {"b": "2"}
+        assert HeaderUtils.merge_headers({}, {}) == {}
+        assert HeaderUtils.merge_headers({"A": "1"}, {}) == {"a": "1"}
+        assert HeaderUtils.merge_headers({}, {"B": "2"}) == {"b": "2"}
 
-    def test_accept_encoding_patch(self, header_processor: HeaderProcessor):
+    def test_accept_encoding_patch(
+        self,
+    ):
         templates = {"Accept-Encoding": "gzip"}
         values = {}
-        result = header_processor._process_headers(templates, values)
+        result = HeaderUtils.process_headers(templates, values)
         assert result["accept-encoding"] == "identity"
 
-    def test_excluded_headers_are_removed(self, header_processor: HeaderProcessor):
+    def test_excluded_headers_are_removed(
+        self,
+    ):
         templates = {
             "Authorization": "Bearer ${{api_key}}",
         }
@@ -137,61 +145,60 @@ class TestHeaderProcessor:
             "X-Real-Ip": "5.6.7.8",
             "Authorization": "Bearer ${{api_key}}",
         }
-        result = header_processor._process_headers(templates, values, orig)
+        result = HeaderUtils.process_headers(templates, values, orig)
         assert "x-forwarded-for" not in result
         assert "x-real-ip" not in result
         assert result["authorization"] == "Bearer KEY"
 
-    def test_none_template_is_skipped(self, header_processor):
+    def test_none_template_is_skipped(self):
         templates = {"Authorization": None, "User-Agent": "UA"}
         values = {}
-        result = header_processor._process_headers(templates, values)
+        result = HeaderUtils.process_headers(templates, values)
         assert "authorization" not in result
         assert result["user-agent"] == "UA"
 
-    def test_process_headers_with_special_values(self, header_processor):
+    def test_process_headers_with_special_values(self):
         # Test with empty list
         templates = {"X-Empty-List": "${{empty_list}}"}
         values = {"empty_list": []}
-        result = header_processor._process_headers(templates, values)
+        result = HeaderUtils.process_headers(templates, values)
         assert result["x-empty-list"] == ""
 
         # Test with None value in list
         templates2 = {"X-None-List": "${{none_list}}"}
         values2 = {"none_list": [None]}
-        result2 = header_processor._process_headers(templates2, values2)
+        result2 = HeaderUtils.process_headers(templates2, values2)
         assert result2["x-none-list"] == "None"
 
         # Test with number values
         templates3 = {"X-Number": "${{number}}", "X-Float": "${{float}}"}
         values3 = {"number": 123, "float": 45.67}
-        result3 = header_processor._process_headers(templates3, values3)
+        result3 = HeaderUtils.process_headers(templates3, values3)
         assert result3["x-number"] == "123"
         assert result3["x-float"] == "45.67"
 
         # Test with boolean values
         templates4 = {"X-Bool-True": "${{true}}", "X-Bool-False": "${{false}}"}
         values4 = {"true": True, "false": False}
-        result4 = header_processor._process_headers(templates4, values4)
+        result4 = HeaderUtils.process_headers(templates4, values4)
         assert result4["x-bool-true"] == "True"
         assert result4["x-bool-false"] == "False"
 
-    def test_missing_variable_logs_warning(self, header_processor, mocker):
+    def test_missing_variable_logs_warning(self, mocker):
         mock_logger = mocker.Mock()
-        header_processor.logger = mock_logger
+        HeaderUtils._LOGGER = mock_logger
         template = "Bearer ${{missing}}"
         values = {}
-        result = header_processor._substitute_variables(template, values)
+        result = HeaderUtils._substitute_variables(template, values)
         assert result == "Bearer ${{missing}}"
         assert mock_logger.warning.called
 
-    def test_process_headers_handles_excluded_headers_correctly(
-        self, header_processor: HeaderProcessor, mocker
-    ):
+    def test_process_headers_handles_excluded_headers_correctly(self, mocker):
         """Test that excluded headers are properly handled by _process_headers"""
         # Mock the excluded_headers list to ensure predictable behavior
         excluded = {"host", "x-forwarded-for", "x-real-ip"}
-        mocker.patch.object(header_processor, "excluded_headers", excluded)
+
+        mocker.patch.object(HeaderUtils, "_EXCLUDED_HEADERS", excluded)
 
         # Original headers contain some excluded headers
         original_headers = {
@@ -207,7 +214,7 @@ class TestHeaderProcessor:
             "Accept": "text/plain",  # Should override original
         }
 
-        result = header_processor._process_headers(templates, {}, original_headers)
+        result = HeaderUtils.process_headers(templates, {}, original_headers)
 
         # Verify excluded headers are removed
         assert "host" not in result
@@ -221,28 +228,24 @@ class TestHeaderProcessor:
         assert result["x-real-ip"] == "5.6.7.8"  # From template, not excluded
 
     def test_complex_variable_substitution_edge_cases(
-        self, header_processor: HeaderProcessor
+        self,
     ):
         """Test various edge cases in variable substitution"""
         # Adjacent variables
         template1 = "${{var1}}${{var2}}"
         values1 = {"var1": "hello", "var2": "world"}
-        assert (
-            header_processor._substitute_variables(template1, values1) == "helloworld"
-        )
+        assert HeaderUtils._substitute_variables(template1, values1) == "helloworld"
 
         # Nested variable-like syntax (not actually valid)
         template2 = "${{outer_$inner}}"
         values2 = {"outer_$inner": "not-nested", "inner": "value"}
-        assert (
-            header_processor._substitute_variables(template2, values2) == "not-nested"
-        )
+        assert HeaderUtils._substitute_variables(template2, values2) == "not-nested"
 
         # Variable at start, middle, and end
         template3 = "${{start}} middle ${{end}}"
         values3 = {"start": "begin", "end": "finish"}
         assert (
-            header_processor._substitute_variables(template3, values3)
+            HeaderUtils._substitute_variables(template3, values3)
             == "begin middle finish"
         )
 
@@ -250,35 +253,35 @@ class TestHeaderProcessor:
         template4 = "${{repeat}} and ${{repeat}} and ${{repeat}}"
         values4 = {"repeat": "test"}
         assert (
-            header_processor._substitute_variables(template4, values4)
+            HeaderUtils._substitute_variables(template4, values4)
             == "test and test and test"
         )
 
         # Empty values
         template5 = "[${{empty}}]"
         values5 = {"empty": ""}
-        assert header_processor._substitute_variables(template5, values5) == "[]"
+        assert HeaderUtils._substitute_variables(template5, values5) == "[]"
 
-    def test_get_variable_value_special_cases(self, header_processor):
+    def test_get_variable_value_special_cases(self):
         """Test special cases for getting variable values"""
         # Empty list
-        assert header_processor._get_variable_value([]) == ""
+        assert HeaderUtils._get_variable_value([]) == ""
 
         # List with None
-        assert header_processor._get_variable_value([None]) == "None"
+        assert HeaderUtils._get_variable_value([None]) == "None"
 
         # List with multiple values (should take first)
-        assert header_processor._get_variable_value([1, 2, 3]) == "1"
+        assert HeaderUtils._get_variable_value([1, 2, 3]) == "1"
 
         # Complex object
         complex_obj = {"key": "value"}
-        assert header_processor._get_variable_value(complex_obj) == str(complex_obj)
+        assert HeaderUtils._get_variable_value(complex_obj) == str(complex_obj)
 
         # Boolean values
-        assert header_processor._get_variable_value(True) == "True"
-        assert header_processor._get_variable_value(False) == "False"
+        assert HeaderUtils._get_variable_value(True) == "True"
+        assert HeaderUtils._get_variable_value(False) == "False"
 
-    def test_case_insensitivity(self, header_processor):
+    def test_case_insensitivity(self):
         """Test case insensitivity in header processing"""
         # Original headers with mixed case
         original = {
@@ -294,7 +297,7 @@ class TestHeaderProcessor:
             "X-Custom": "custom-value",
         }
 
-        result = header_processor._process_headers(templates, {}, original)
+        result = HeaderUtils.process_headers(templates, {}, original)
 
         # All header names should be lowercase in result
         assert "content-type" in result

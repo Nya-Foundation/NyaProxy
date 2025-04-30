@@ -152,10 +152,10 @@ class RequestQueue:
             )
 
             # Update request with queue metadata
-            r.added_at = time.time()
-            r.attempts = 0
-            r.expiry = scheduled_time
-            r.future = response_future
+            r._added_at = time.time()
+            r._attempts = 0
+            r._expiry = scheduled_time
+            r._future = response_future
 
             # Add to priority queue (min heap based on scheduled time)
             heapq.heappush(self.queues[r.api_name], (scheduled_time, request_id, r))
@@ -311,7 +311,7 @@ class RequestQueue:
                 self.sizes[request.api_name] -= 1
 
                 # Check if the request is expired
-                waited_time = current_time - request.added_at
+                waited_time = current_time - request._added_at
                 if waited_time > self.default_expiry:
                     # Handle expired request
                     await self._handle_expired_request(request, waited_time)
@@ -319,7 +319,6 @@ class RequestQueue:
 
                 # assign an API key to the request
                 request.api_key = available_key
-
                 # Process the request outside the lock using a task to avoid blocking
                 # This creates a new task but doesn't wait for it to complete
                 asyncio.create_task(self._process_request_item(request))
@@ -357,13 +356,12 @@ class RequestQueue:
             response = await self.processor(request)
 
             # Ensure the future is properly set with the result
-            if hasattr(request, "future"):
-                if not request.future.done():
-                    request.future.set_result(response)
-                else:
-                    self.logger.warning(
-                        f"Future for request to {api_name} was already done when setting result"
-                    )
+            if hasattr(request, "_future") and not request._future.done():
+                request._future.set_result(response)
+            else:
+                self.logger.warning(
+                    f"Future for request to {api_name} was already done when setting result"
+                )
 
             # Successfully processed
             self.metrics["total_processed"] += 1
@@ -383,8 +381,8 @@ class RequestQueue:
             request: The request to fail
             error: The error to set
         """
-        if hasattr(request, "future") and not request.future.done():
-            request.future.set_exception(error)
+        if hasattr(request, "_future") and not request._future.done():
+            request._future.set_exception(error)
 
         self.metrics["total_failed"] += 1
 
@@ -408,8 +406,8 @@ class RequestQueue:
             failed_count = 0
             while self.queues[api_name]:
                 _, _, request = heapq.heappop(self.queues[api_name])
-                if hasattr(request, "future") and not request.future.done():
-                    request.future.set_exception(
+                if hasattr(request, "_future") and not request._future.done():
+                    request._future.set_exception(
                         RuntimeError(f"Request was cleared from {api_name} queue")
                     )
                     failed_count += 1
@@ -441,6 +439,7 @@ class RequestQueue:
         self.logger.info(
             f"Cleared all queues, total of {total_cleared} requests removed"
         )
+
         return total_cleared
 
     async def stop(self) -> None:
@@ -457,5 +456,5 @@ class RequestQueue:
         async with self.lock:
             for api_name in self.queues:
                 for _, _, request in self.queues[api_name]:
-                    if hasattr(request, "future") and not request.future.done():
-                        request.future.cancel()
+                    if hasattr(request, "_future") and not request._future.done():
+                        request._future.cancel()
