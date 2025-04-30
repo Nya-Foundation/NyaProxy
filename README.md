@@ -10,32 +10,55 @@
 
 <img src="https://raw.githubusercontent.com/Nya-Foundation/NyaProxy/main/images/banner.png" alt="NyaProxy Banner"/>
 
-*Your Swiss Army Knife for API Proxy Management*
+## 🌈 Introduction
+
+*Your purr-fect Swiss Army Knife for API Proxy Management~*
+
+NyaProxy is a versatile API proxy that goes beyond just OpenAI APIs! Whether you're working with AI models (OpenAI, Gemini, Anthropic), image generation services, or any other REST API that needs robust key management - NyaProxy has your back.
+
+The possibilities are limited only by your imagination! Use NyaProxy to:
+- Balance loads across multiple API keys
+- Create resilient API systems with automatic failover
+- Build cost-effective solutions by optimizing key usage
+- Secure your API keys behind a proxy layer
+- Monitor and analyze your API usage in real-time
 
 ## 🌟 Core Capabilities
 | Feature               | Description                                                                 | Config Reference          |
 |-----------------------|-----------------------------------------------------------------------------|---------------------------|
 | 🔄 Token Rotation     | Automatic key cycling across multiple providers                             | `variables.keys`          |
-| ⚖️ Load Balancing    | 5 strategies: Round Robin, Random, Least Connections, Fastest Response, Weighted | `load_balancing_strategy` |
+| ⚖️ Load Balancing    | 5 strategies: Round Robin, Random, Least Request, Fastest Response, Weighted | `load_balancing_strategy` |
 | 🚦 Rate Limiting     | Granular controls per endpoint/key with smart queuing                       | `rate_limit`              |
 | 🕵️ Request Masking   | Dynamic header substitution across multiple identity providers              | `headers` + `variables`   |
-| 📊 Real-time Metrics | Interactive dashboard with request analytics and system health              | `dashboard.enabled`       |
+| 📊 Real-time Metrics | Interactive dashboard with request analytics and system health              | `dashboard`               |
+| 🔧 Body Substitution | Dynamic JSON payload transformation using JSONPath                          | `request_body_substitution` |
+| 🔄 Simulated Streaming | Stream chunked responses for better UX                                    | `simulated_streaming`     |
+
 
 ## 📥 Quick Start
 
-### One-Click deployment
+### One-Click Deployment (No Fuss, No Muss!)
 
-#### Render
+Pick your favorite platform and let's go!
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https%3A%2F%2Fgithub.com%2FNya-Foundation%2Fnyaproxy)
+<table>
+  <tr>
+    <td align="center">
+      <a href="https://render.com/deploy?repo=https%3A%2F%2Fgithub.com%2FNya-Foundation%2Fnyaproxy">
+        <img src="https://render.com/images/deploy-to-render-button.svg" alt="Deploy to Render">
+        <br>Deploy to Render
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://railway.com/template/TqUoxN?referralCode=9cfC7m">
+        <img src="https://railway.com/button.svg" alt="Deploy on Railway">
+        <br>Deploy to Railway
+      </a>
+    </td>
+  </tr>
+</table>
 
-
-#### Railway
-
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/template/TqUoxN?referralCode=9cfC7m)
-
-
-### Local Deployment
+### Local Deployment (For the DIY Enthusiasts!)
 
 #### Prerequisites
 - Python 3.8 or higher
@@ -43,15 +66,61 @@
 
 #### Installation
 
-##### 1. Install from PyPI
+##### 1. Install from PyPI (the easiest way!)
 ```bash
 pip install nya-proxy
 ```
 
-##### 2. Create a simple configuration file
-Create a `config.yaml` file with your API settings:
+##### 2. Run NyaProxy
+
+This creates a basic configuration file in your current folder:
+
+```bash
+nyaproxy
+```
+
+...or provide your own config file:
+
+```bash
+nyaproxy --config config.yaml
+```
+
+##### 3. Verify Your Setup
+
+Visit `http://localhost:8080/config` to access the configuration UI.  
+**Note:** Please secure your master API key for safety!
+
+Check out `http://localhost:8080/dashboard` for the snazzy management dashboard with all your API traffic visualizations.
+
+### Install from Source
+
+```bash
+# Clone the repository
+git clone https://github.com/Nya-Foundation/nyaproxy.git
+cd nyaproxy
+
+# Install dependencies
+pip install -e .
+
+# Run NyaProxy
+nyaproxy
+```
+
+#### Docker
+```bash
+docker run -d \
+  -p 8080:8080 \
+  # -v ${PWD}/config.yaml:/app/config.yaml \
+  # -v nya-proxy-logs:/app/logs \
+  k3scat/nya-proxy:latest
+```
+
+## Configuration
+
+Configuration reference can be found under [Configs folder](configs/) folder
+
 ```yaml
-# Basic config.yaml example
+# Basic config.yaml example for Gemini API
 nya_proxy:
   host: 0.0.0.0
   port: 8080
@@ -70,6 +139,7 @@ nya_proxy:
     max_size: 200
     expiry_seconds: 300
 
+# Default settings for the all apis if not specified
 default_settings:
   key_variable: keys
   load_balancing_strategy: round_robin
@@ -87,19 +157,18 @@ default_settings:
     retry_status_codes: [ 429, 500, 502, 503, 504 ]
   timeouts:
     request_timeout_seconds: 300
-    
-
+  # Simulated streaming settings
+  simulated_streaming:
+    enabled: false
+    delay_seconds: 0.2 # Delay between chunks in seconds
+    init_delay_seconds: 0.5 # Initial delay before starting streaming in seconds
+    chunk_size_bytes: 256 # Size of each chunk in bytes
+    apply_to: ["application/json", "application/xml", "text/plain", "image/png", "image/jpeg"] # Response content types to apply simulated streaming to
+  
+# API configurations, each API can have its own settings, but will inherit from default_settings if not specified
 apis:
-  gemini:
-    # Any OpenAI-Compatible API
+  gemini: 
     name: Google Gemini API
-    # Gemini: https://generativelanguage.googleapis.com/v1beta/openai
-    # OpenAI: https://api.openai.com/v1
-    # Anthropic: https://api.anthropic.com/v1
-    # DeepSeek: https://api.deepseek.com/v1
-    # Mistral: https://api.mistral.ai/v1
-    # OpenRouter: https://api.openrouter.ai/v1
-    # Ollama: http://localhost:11434/v1
     endpoint: https://generativelanguage.googleapis.com/v1beta/openai
     aliases:
     - /gemini
@@ -121,37 +190,26 @@ apis:
       rate_limit_paths:
         - "/chat/*"
         - "/images/*"
-```
 
-##### 3. Run NyaProxy
-```bash
-nyaproxy --config config.yaml
-```
+    # [Advanced] Request body substitution settings, do not enable unless you know what you are doing
+    request_body_substitution: 
+      enabled: true 
+      # Substitution rules for request body with JMEPath
+      rules: # JMEPath rules for request body substitution
+        - name: "Remove frequency_penalty" # if frequency_penalty is present, remove it from the request body since Gemini does not support it
+          operation: remove
+          path: "frequency_penalty"
+          conditions:
+            - field: "frequency_penalty"
+              operator: "exists"
+        - name: "Remove presence_penalty" # if presence_penalty is present, remove it from the request body since Gemini does not support it
+          operation: remove
+          path: "presence_penalty"
+          conditions:
+            - field: "presence_penalty"
+              operator: "exists"
 
-##### 4. Verify the installation
-Visit `http://localhost:8080/dashboard` to access the management dashboard.
-
-### Install from Source
-
-```bash
-# Clone the repository
-git clone https://github.com/Nya-Foundation/nyaproxy.git
-cd nyaproxy
-
-# Install dependencies
-pip install -e .
-
-# Run NyaProxy
-nyaproxy --config config.yaml
-```
-
-#### Docker (Production)
-```bash
-docker run -d \
-  -p 8080:8080 \
-  -v ${PWD}/config.yaml:/app/config.yaml \
-  -v nya-proxy-logs:/app/logs \
-  k3scat/nya-proxy:latest
+  # feel free to add more APIs here, just follow the same structure as above
 ```
 
 ## 📡 Service Endpoints
@@ -230,6 +288,28 @@ Manage at `http://localhost:8080/config`:
 - Rate limit adjustments
 - Auto reload on save
 
+## Advanced Features
+
+### Request Body Substitution
+Dynamically transform JSON payloads using JMESPath expressions to add, replace, or remove fields:
+
+```yaml
+request_body_substitution:
+  enabled: true
+  rules:
+    - name: "Default to GPT-4"
+      operation: set
+      path: "model"
+      value: "gpt-4"
+      conditions:
+        - field: "model"
+          operator: "exists"
+
+```
+
+For detailed configuration options and examples, see the [Request Body Substitution Guide](docs/request_body_substitution.md).
+
+
 ## 🛡️ Reference Architecture
 ```mermaid
 graph TD
@@ -244,8 +324,8 @@ graph TD
 
 ```mermaid
 graph LR
-A[Q1 2025] --> B[📡 Simulated Streaming ]
-A --> C[🔄 Dynamic Json Body Substitution]
+A[Q1 2025] --> B[📡 Documentation Enhancement ]
+A --> C[🔄 Border Test Coverage ]
 B --> D[📈 API Key Usage/Balance Tracking]
 C --> E[📊 UI/UX Enhancement ]
 F[Q2 2025] --> G[🧩 Plugin System]

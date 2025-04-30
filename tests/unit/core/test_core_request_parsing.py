@@ -8,6 +8,11 @@ from nya_proxy.core.handler import NyaProxyCore
 class MockConfig:
     def __init__(self):
         self._apis = {
+            "default": {
+                "endpoint": "http://localhost:8080",
+                "aliases": [],
+                "timeout": 30,
+            },
             "openai": {"endpoint": "https://api.openai.com", "aliases": ["/oai", "/o"]},
             "gemini": {
                 "endpoint": "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -24,6 +29,12 @@ class MockConfig:
 
     def get_api_aliases(self, api):
         return self._apis.get(api, {}).get("aliases", [])
+
+    def get_api_default_timeout(self):
+        return self._apis.get("default", {}).get("timeout", 30)
+
+    def get_default_timeout(self):
+        return self.get_api_default_timeout()
 
     # Mock other required methods
     def get_proxy_enabled(self):

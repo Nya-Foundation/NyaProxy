@@ -5,11 +5,34 @@ Data models for request handling in NyaProxy.
 import asyncio
 import time
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 if TYPE_CHECKING:
     from fastapi import Request
     from starlette.datastructures import URL
+
+
+@dataclass
+class AdvancedConfig:
+    """
+    Advanced configuration for NyaProxy Request Handling.
+
+    This class holds the settings that control how streaming responses
+    are handled, including chunk size and whether to use a streaming
+    response.
+    """
+
+    # Simulated Streaming
+    simulated_stream_enabled: bool = False
+    delay_seconds: float = 0.2
+    init_delay_seconds: float = 0.5
+    chunk_size_bytes: int = 256
+    # List of response content types to apply simulated streaming to
+    apply_to: List[str] = field(default_factory=lambda: ["application/json"])
+
+    # Request Body Substitution
+    req_body_subst_enabled: bool = False
+    subst_rules: List[Dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -41,9 +64,14 @@ class NyaRequest:
     api_key: Optional[str] = None
 
     # Processing metadata
-    attempts: int = 0
-    added_at: float = field(default_factory=time.time)
-    expiry: float = 0.0
-    future: Optional[asyncio.Future] = None
+    _attempts: int = 0
+    _added_at: float = field(default_factory=time.time)
+    _expiry: float = 0.0
+    _future: Optional[asyncio.Future] = None
 
-    apply_rate_limit: bool = True
+    # Whether to apply rate limiting for this request
+    _apply_rate_limit: bool = True
+
+    # Whether the original request ask for a streaming response (openai)
+    _is_streaming: bool = False
+    _config: AdvancedConfig = field(default_factory=AdvancedConfig)

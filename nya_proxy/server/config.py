@@ -4,17 +4,59 @@ Configuration manager for NyaProxy using NekoConf.
 
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar, cast
 
 from nekoconf import NekoConfigClient, NekoConfigServer
-
-from ..common.constants import DEFAULT_SCHEMA_NAME
 
 
 class ConfigError(Exception):
     """Exception raised for configuration errors."""
 
     pass
+
+
+T = TypeVar("T")
+
+
+class ApiSettingDescriptor(Generic[T]):
+    """Descriptor for API settings that reduces duplication in ConfigManager."""
+
+    def __init__(
+        self, setting_path: str, value_type: str = "str", doc: Optional[str] = None
+    ):
+        """
+        Args:
+            setting_path: Path to the setting within the API config
+            value_type: Type of value ("str", "int", "bool", "list", "dict")
+            doc: Docstring for the getter method
+        """
+        self.setting_path = setting_path
+        self.value_type = value_type
+        self.doc = doc
+        self.name = ""
+
+    def __set_name__(self, owner, name):
+        self.name = name
+
+    def __get__(self, instance, owner=None) -> Callable[[str], T]:
+        if instance is None:
+            return self
+
+        def getter(api_name: str) -> T:
+            return cast(
+                T,
+                instance.get_api_setting(
+                    api_name=api_name,
+                    setting_path=self.setting_path,
+                    value_type=self.value_type,
+                ),
+            )
+
+        getter.__doc__ = self.doc
+        getter.__name__ = self.name
+        getter.__qualname__ = f"{owner.__name__}.{self.name}"
+
+        return getter
 
 
 class ConfigManager:
@@ -48,15 +90,7 @@ class ConfigManager:
             raise ConfigError(f"Configuration file not found: {config_path}")
 
         try:
-            self.config = self._load_config_client()
-            # Validate against the schema
-            results = self.config.validate()
-
-            if results:
-                raise ConfigError(f"Configuration validation failed: {results}")
-            else:
-                self.logger.info("Configuration loaded and validated successfully")
-
+            self.config = self._init_config_client()
             self.server = NekoConfigServer(
                 config=self.config.config, logger=self.logger
             )
@@ -65,13 +99,20 @@ class ConfigManager:
             self.logger.error(f"Failed to load configuration: {error_msg}")
             raise ConfigError(error_msg)
 
-    def _load_config_client(self) -> NekoConfigClient:
+    def _init_config_client(self) -> NekoConfigClient:
         """Initialize the NekoConfigClient."""
         client = NekoConfigClient(
             config_path=self.config_path,
             schema_path=self.schema_path,
             logger=self.logger,
         )
+
+        # Validate against the schema
+        results = client.validate()
+        if results:
+            raise ConfigError(f"Configuration validation failed: {results}")
+
+        self.logger.info("Configuration loaded and validated successfully")
         return client
 
     def get_port(self) -> int:
@@ -218,161 +259,239 @@ class ConfigManager:
         else:  # Default to string
             return self.config.get_str(f"apis.{api_name}.{setting_path}", default_value)
 
-    def get_api_default_timeout(self, api_name: str) -> int:
-        """
-        Get the default timeout for an API.
-
+    # API Setting Descriptors
+    get_api_simulated_streaming_enabled = ApiSettingDescriptor[bool](
+        "simulated_streaming.enabled",
+        "bool",
+        """Get simulated streaming enabled status for an API.
         Args:
             api_name: Name of the API
-
         Returns:
-            Default timeout in seconds or fallback to global default
-        """
-        return self.get_api_setting(api_name, "timeouts.request_timeout_seconds", "int")
+            Boolean indicating if simulated streaming is enabled
+        """,
+    )
 
-    def get_api_key_variable(self, api_name: str) -> str:
-        """
-        Get the key variable name for an API.
-
+    get_api_simulated_streaming_delay = ApiSettingDescriptor[int](
+        "simulated_streaming.delay_seconds",
+        "int",
+        """Get simulated streaming delay in seconds.
         Args:
             api_name: Name of the API
-
         Returns:
-            Key variable name or default if not specified
-        """
-        return self.get_api_setting(api_name, "key_variable")
+            Delay in seconds
+        """,
+    )
 
-    def get_api_custom_headers(self, api_name: str) -> Dict[str, Any]:
-        """
-        Get the custom headers for an API.
-
+    get_api_simulated_streaming_init_delay = ApiSettingDescriptor[int](
+        "simulated_streaming.init_delay_seconds",
+        "int",
+        """Get initial delay for simulated streaming.
         Args:
             api_name: Name of the API
-
         Returns:
-            Dictionary of headers or empty dict if not specified
-        """
-        return self.get_api_setting(api_name, "headers", "dict") or {}
+            Initial delay in seconds
+        """,
+    )
 
-    def get_api_endpoint(self, api_name: str) -> str:
-        """
-        Get the endpoint URL for an API.
-
+    get_api_simulated_streaming_chunk_size = ApiSettingDescriptor[int](
+        "simulated_streaming.chunk_size_bytes",
+        "int",
+        """Get chunk size for simulated streaming.
         Args:
             api_name: Name of the API
-
         Returns:
-            Endpoint URL or default if not specified
-        """
-        return self.get_api_setting(api_name, "endpoint").rstrip("/")
+            Chunk size in bytes
+        """,
+    )
 
-    def get_api_load_balancing_strategy(self, api_name: str) -> str:
-        """
-        Get the load balancing strategy for an API.
-
+    get_api_simulated_streaming_apply_to = ApiSettingDescriptor[List[str]](
+        "simulated_streaming.apply_to",
+        "list",
+        """Get endpoints for simulated streaming.
         Args:
             api_name: Name of the API
-
         Returns:
-            Load balancing strategy or default if not specified
-        """
-        return self.get_api_setting(api_name, "load_balancing_strategy")
+            List of endpoint paths
+        """,
+    )
 
-    def get_api_endpoint_rate_limit(self, api_name: str) -> str:
-        """
-        Get the endpoint rate limit for an API.
-
+    get_api_request_body_substitution_enabled = ApiSettingDescriptor[bool](
+        "request_body_substitution.enabled",
+        "bool",
+        """Get request body substitution enabled status.
         Args:
             api_name: Name of the API
-
         Returns:
-            Endpoint rate limit or default if not specified
-        """
-        return self.get_api_setting(api_name, "rate_limit.endpoint_rate_limit")
+            Boolean indicating if substitution is enabled
+        """,
+    )
 
-    def get_api_key_rate_limit(self, api_name: str) -> str:
-        """
-        Get the key rate limit for an API.
-
+    get_api_request_body_substitution_rules = ApiSettingDescriptor[
+        List[Dict[str, Any]]
+    ](
+        "request_body_substitution.rules",
+        "list",
+        """Get request body substitution rules.
         Args:
             api_name: Name of the API
-
         Returns:
-            Key rate limit or default if not specified
-        """
-        return self.get_api_setting(api_name, "rate_limit.key_rate_limit")
+            List of substitution rules
+        """,
+    )
 
-    def get_api_retry_enabled(self, api_name: str) -> bool:
-        """
-        Get the retry enabled setting for an API.
-
+    get_api_default_timeout = ApiSettingDescriptor[int](
+        "timeouts.request_timeout_seconds",
+        "int",
+        """Get default timeout for API requests.
         Args:
             api_name: Name of the API
-
         Returns:
-            Retry enabled setting or default if not specified
-        """
-        return self.get_api_setting(api_name, "retry.enabled", "bool")
+            Timeout in seconds
+        """,
+    )
 
-    def get_api_retry_mode(self, api_name: str) -> str:
-        """
-        Get the retry mode for an API.
-
+    get_api_key_variable = ApiSettingDescriptor[str](
+        "key_variable",
+        "str",
+        """Get key variable name.
         Args:
             api_name: Name of the API
-
         Returns:
-            Retry mode or default if not specified
-        """
-        return self.get_api_setting(api_name, "retry.mode")
+            Key variable name
+        """,
+    )
 
-    def get_api_retry_attempts(self, api_name: str) -> int:
-        """
-        Get the number of retry attempts for an API.
-
+    get_api_custom_headers = ApiSettingDescriptor[Dict[str, Any]](
+        "headers",
+        "dict",
+        """Get custom headers.
         Args:
             api_name: Name of the API
-
         Returns:
-            Number of retry attempts or default if not specified
-        """
-        return self.get_api_setting(api_name, "retry.attempts", "int")
+            Dictionary of headers
+        """,
+    )
 
-    def get_api_retry_after_seconds(self, api_name: str) -> int:
-        """
-        Get the retry delay in seconds for an API.
-
+    get_api_endpoint = ApiSettingDescriptor[str](
+        "endpoint",
+        "str",
+        """Get API endpoint URL.
         Args:
             api_name: Name of the API
-
         Returns:
-            Retry delay in seconds or default if not specified
-        """
-        return self.get_api_setting(api_name, "retry.retry_after_seconds", "int")
+            Endpoint URL
+        """,
+    )
 
-    def get_api_retry_status_codes(self, api_name: str) -> List[int]:
-        """
-        Get the retry status codes for an API.
-
+    get_api_load_balancing_strategy = ApiSettingDescriptor[str](
+        "load_balancing_strategy",
+        "str",
+        """Get load balancing strategy.
         Args:
             api_name: Name of the API
-
         Returns:
-            Retry status codes or default if not specified
-        """
-        return self.get_api_setting(api_name, "retry.retry_status_codes", "list")
+            Load balancing strategy
+        """,
+    )
 
-    def get_api_retry_request_methods(self, api_name: str) -> List[str]:
-        """
-        Get the retry request methods for an API.
-
+    get_api_endpoint_rate_limit = ApiSettingDescriptor[str](
+        "rate_limit.endpoint_rate_limit",
+        "str",
+        """Get endpoint rate limit.
         Args:
             api_name: Name of the API
-
         Returns:
-            List of request methods that should be retried or default if not specified
-        """
-        return self.get_api_setting(api_name, "retry.retry_request_methods", "list")
+            Endpoint rate limit
+        """,
+    )
+
+    get_api_key_rate_limit = ApiSettingDescriptor[str](
+        "rate_limit.key_rate_limit",
+        "str",
+        """Get key rate limit.
+        Args:
+            api_name: Name of the API
+        Returns:
+            Key rate limit
+        """,
+    )
+
+    get_api_retry_enabled = ApiSettingDescriptor[bool](
+        "retry.enabled",
+        "bool",
+        """Get retry enabled status.
+        Args:
+            api_name: Name of the API
+        Returns:
+            Boolean indicating if retry is enabled
+        """,
+    )
+
+    get_api_retry_mode = ApiSettingDescriptor[str](
+        "retry.mode",
+        "str",
+        """Get retry mode.
+        Args:
+            api_name: Name of the API
+        Returns:
+            Retry mode
+        """,
+    )
+
+    get_api_retry_attempts = ApiSettingDescriptor[int](
+        "retry.attempts",
+        "int",
+        """Get retry attempts count.
+        Args:
+            api_name: Name of the API
+        Returns:
+            Number of retry attempts
+        """,
+    )
+
+    get_api_retry_after_seconds = ApiSettingDescriptor[int](
+        "retry.retry_after_seconds",
+        "int",
+        """Get retry delay.
+        Args:
+            api_name: Name of the API
+        Returns:
+            Retry delay in seconds
+        """,
+    )
+
+    get_api_retry_status_codes = ApiSettingDescriptor[List[int]](
+        "retry.retry_status_codes",
+        "list",
+        """Get retry status codes.
+        Args:
+            api_name: Name of the API
+        Returns:
+            List of status codes to retry on
+        """,
+    )
+
+    get_api_retry_request_methods = ApiSettingDescriptor[List[str]](
+        "retry.retry_request_methods",
+        "list",
+        """Get retry request methods.
+        Args:
+            api_name: Name of the API
+        Returns:
+            List of request methods to retry
+        """,
+    )
+
+    get_api_rate_limit_paths = ApiSettingDescriptor[List[str]](
+        "rate_limit.rate_limit_paths",
+        "list",
+        """Get rate limit path patterns.
+        Args:
+            api_name: Name of the API
+        Returns:
+            List of path patterns for rate limiting
+        """,
+    )
 
     def get_api_variables(self, api_name: str) -> Dict[str, List[Any]]:
         """
@@ -426,34 +545,34 @@ class ConfigManager:
             # If it's not a list or string, try to convert to string
             return [str(values)]
 
-    def get_api_rate_limit_paths(self, api_name: str) -> List[str]:
+    def get_api_advanced_configs(self, api_name: str) -> Dict[str, Any]:
         """
-        Get list of path patterns to which rate limiting should be applied.
+        Get advanced configuration settings for an API.
 
         Args:
             api_name: Name of the API
 
         Returns:
-            List of path patterns, defaults to ['*'] (all paths)
+            Dictionary of advanced settings or empty dict if not specified
         """
-        # Default to ['*'] if not specified
-        default_paths = ["*"]
-
-        # Try to get paths from API-specific config
-        api_rate_limit = self.get_api_setting(
-            api_name, "rate_limit.rate_limit_paths", "list"
-        )
-
-        # If it's a string, convert to list
-        if isinstance(api_rate_limit, str):
-            return [api_rate_limit]
-
-        return api_rate_limit or default_paths
+        return {
+            "simulated_stream_enabled": self.get_api_simulated_streaming_enabled(
+                api_name
+            ),
+            "delay_seconds": self.get_api_simulated_streaming_delay(api_name),
+            "init_delay_seconds": self.get_api_simulated_streaming_init_delay(api_name),
+            "chunk_size_bytes": self.get_api_simulated_streaming_chunk_size(api_name),
+            "apply_to": self.get_api_simulated_streaming_apply_to(api_name),
+            "req_body_subst_enabled": self.get_api_request_body_substitution_enabled(
+                api_name
+            ),
+            "subst_rules": self.get_api_request_body_substitution_rules(api_name),
+        }
 
     def reload(self) -> None:
         """Reload the configuration from disk."""
         try:
-            self.config = self._load_config_client()
+            self.config = self._init_config_client()
             self.server = NekoConfigServer(
                 config=self.config.config, llogger=self.logger
             )

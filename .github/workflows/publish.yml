@@ -84,17 +84,30 @@ jobs:
       with:
         verbose: true
         print-hash: true
+
+    # Check if Dockerfile exists
+    - name: Check for Dockerfile
+      id: check_dockerfile
+      run: |
+        if [ -f "Dockerfile" ]; then
+          echo "dockerfile_exists=true" >> $GITHUB_OUTPUT
+        else
+          echo "dockerfile_exists=false" >> $GITHUB_OUTPUT
+        fi
         
     # Set up QEMU for multi-platform builds
     - name: Set up QEMU
+      if: steps.check_dockerfile.outputs.dockerfile_exists == 'true'
       uses: docker/setup-qemu-action@v3
       
     # Set up Docker Buildx
     - name: Set up Docker Buildx
+      if: steps.check_dockerfile.outputs.dockerfile_exists == 'true'
       uses: docker/setup-buildx-action@v3
     
     # Define image name variables for reusability
     - name: Set image name variables
+      if: steps.check_dockerfile.outputs.dockerfile_exists == 'true'
       id: image-names
       run: |
         # Define the GitHub Container Registry image name (using organization)
@@ -111,13 +124,15 @@ jobs:
       
     # Log in to Docker Hub
     - name: Login to Docker Hub
+      if: steps.check_dockerfile.outputs.dockerfile_exists == 'true'
       uses: docker/login-action@v3
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
         
-    # Extract version for tagging
+    # Extract version for tagging (only if Dockerfile exists)
     - name: Get project version
+      if: steps.check_dockerfile.outputs.dockerfile_exists == 'true'
       id: get-version
       run: |
         # If semantic release created a new version, use it; otherwise extract from pyproject.toml
@@ -131,6 +146,7 @@ jobs:
 
     # Log in to GitHub Container Registry
     - name: Login to GitHub Container Registry
+      if: steps.check_dockerfile.outputs.dockerfile_exists == 'true'
       uses: docker/login-action@v3
       with:
         registry: ghcr.io
@@ -139,6 +155,7 @@ jobs:
       
     # Build and push Docker image
     - name: Build and push Docker image
+      if: steps.check_dockerfile.outputs.dockerfile_exists == 'true'
       uses: docker/build-push-action@v5
       with:
         context: .
@@ -161,6 +178,7 @@ jobs:
           org.opencontainers.image.revision=${{ github.sha }}
 
     - name: Scan Docker image
+      if: steps.check_dockerfile.outputs.dockerfile_exists == 'true'
       uses: aquasecurity/trivy-action@master
       with:
         image-ref: ${{ env.DOCKERHUB_IMAGE_NAME }}:${{ steps.get-version.outputs.version }}

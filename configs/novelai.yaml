@@ -35,7 +35,6 @@ default_settings:
     retry_status_codes: [ 429, 500, 502, 503, 504 ]
   timeouts:
     request_timeout_seconds: 300
-    
 
 apis:
   novelai:
