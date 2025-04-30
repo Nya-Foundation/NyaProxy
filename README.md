@@ -10,18 +10,38 @@
 
 <img src="https://raw.githubusercontent.com/Nya-Foundation/NyaProxy/main/images/banner.png" alt="NyaProxy Banner"/>
 
+## Table of Contents
+- [Introduction](#-introduction)
+- [Core Capabilities](#-core-capabilities)
+- [Quick Start](#-quick-start)
+- [Service Endpoints](#-service-endpoints)
+- [API Configuration](#-api-configuration)
+  - [OpenAI-Compatible APIs](#openai-compatible-apis-gemini-anthropic-etc)
+  - [Generic REST APIs](#generic-rest-apis)
+- [Security Features](#-security-features)
+  - [Multiple API Keys Support](#multiple-api-keys-support)
+- [Advanced Features](#advanced-features)
+  - [Dynamic Header Substitution](#dynamic-header-substitution)
+  - [Request Body Substitution](#request-body-substitution)
+- [Management Interfaces](#-management-interfaces)
+- [Reference Architecture](#-reference-architecture)
+- [Future Roadmap](#-future-roadmap)
+- [Community](#-community)
+- [Project Growth](#-project-growth)
+
 ## 🌈 Introduction
 
 *Your purr-fect Swiss Army Knife for API Proxy Management~*
 
-NyaProxy is a versatile API proxy that goes beyond just OpenAI APIs! Whether you're working with AI models (OpenAI, Gemini, Anthropic), image generation services, or any other REST API that needs robust key management - NyaProxy has your back.
+NyaProxy acts like a smart, central manager for accessing various online services (APIs) – think AI tools (like OpenAI, Gemini, Anthropic), image generators, or almost any web service that uses access keys. It helps you use these services more reliably, efficiently, and securely.
 
-The possibilities are limited only by your imagination! Use NyaProxy to:
-- Balance loads across multiple API keys
-- Create resilient API systems with automatic failover
-- Build cost-effective solutions by optimizing key usage
-- Secure your API keys behind a proxy layer
-- Monitor and analyze your API usage in real-time
+Here's how NyaProxy can help:
+
+-   **Share the Load:** Automatically spreads requests across multiple access keys so no single key gets overwhelmed (Load Balancing).
+-   **Stay Online:** If one key fails, NyaProxy automatically tries another, keeping your application running smoothly (Failover/Resilience).
+-   **Save Costs:** Optimizes how your keys are used, potentially lowering your bills.
+-   **Boost Security:** Hides your actual access keys behind the proxy, adding a layer of protection.
+-   **Track Usage:** Provides a clear dashboard to see how your keys and services are being used in real-time.
 
 ## 🌟 Core Capabilities
 | Feature               | Description                                                                 | Config Reference          |
@@ -88,7 +108,9 @@ nyaproxy --config config.yaml
 ##### 3. Verify Your Setup
 
 Visit `http://localhost:8080/config` to access the configuration UI.  
-**Note:** Please secure your master API key for safety!
+
+> [!IMPORTANT]
+> If you expose this proxy to the internet, make sure to set a strong API key in your configuration to prevent unauthorized access. The first key in your API keys array will be used as the master key for accessing sensitive interfaces like the dashboard and configuration UI, while additional keys can be used for regular API requests only.
 
 Check out `http://localhost:8080/dashboard` for the snazzy management dashboard with all your API traffic visualizations.
 
@@ -111,7 +133,7 @@ nyaproxy
 docker run -d \
   -p 8080:8080 \
   # -v ${PWD}/config.yaml:/app/config.yaml \
-  # -v nya-proxy-logs:/app/logs \
+  # -v ${PWD}/app.log:/app/app.log \
   k3scat/nya-proxy:latest
 ```
 
@@ -220,7 +242,8 @@ apis:
 | Dashboard  | `http://localhost:8080/dashboard` | Real-time metrics and monitoring   |
 | Config UI  | `http://localhost:8080/config`    | Visual configuration interface     |
 
-**Note**: Replace `8080` with your configured port if different
+> [!NOTE]
+> Replace `8080` and `localhost` with your configured port and host setting if different
 
 ## 🔧 API Configuration
 
@@ -267,6 +290,73 @@ novelai:
     key_rate_limit: 2/s
 ```
 
+## 🔒 Security Features
+
+### Multiple API Keys Support
+
+NyaProxy supports using multiple API keys for authentication:
+
+```yaml
+nya_proxy:
+  api_key: 
+    - your_master_key_for_admin_access
+    - another_api_key_for_proxy_only
+    - yet_another_api_key_for_proxy_only
+```
+
+> [!TIP]
+> The first key in the list acts as the master key with full access to the dashboard and configuration UI. Additional keys can only be used for API proxy requests. This enables you to share limited access with different teams or services.
+
+> [!CAUTION]
+> When sharing your NyaProxy instance, never share your master key. Instead, create additional keys for different users or applications.
+
+## Advanced Features
+
+### Dynamic Header Substitution
+
+NyaProxy's powerful templating system allows you to create dynamic headers with variable substitution:
+
+```yaml
+apis:
+  my_api:
+    headers:
+      Authorization: 'Bearer ${{keys}}'
+      X-Custom-Header: '${{custom_variables}}'
+    variables:
+      keys:
+        - key1
+        - key2
+      custom_variables:
+        - value1
+        - value2
+```
+
+> [!NOTE]
+> Variables in headers are automatically substituted with values from your variables list, following your configured load balancing strategy.
+
+Use cases include:
+- Rotating between different authentication tokens
+- Cycling through user agents to avoid detection
+- Alternating between different account identifiers
+
+### Request Body Substitution
+Dynamically transform JSON payloads using JMESPath expressions to add, replace, or remove fields:
+
+```yaml
+request_body_substitution:
+  enabled: true
+  rules:
+    - name: "Default to GPT-4"
+      operation: set
+      path: "model"
+      value: "gpt-4"
+      conditions:
+        - field: "model"
+          operator: "exists"
+```
+
+For detailed configuration options and examples, see the [Request Body Substitution Guide](docs/request_body_substitution.md).
+
 ## 🖥️ Management Interfaces
 
 ### Real-time Metrics Dashboard
@@ -287,28 +377,6 @@ Manage at `http://localhost:8080/config`:
 - Variable management
 - Rate limit adjustments
 - Auto reload on save
-
-## Advanced Features
-
-### Request Body Substitution
-Dynamically transform JSON payloads using JMESPath expressions to add, replace, or remove fields:
-
-```yaml
-request_body_substitution:
-  enabled: true
-  rules:
-    - name: "Default to GPT-4"
-      operation: set
-      path: "model"
-      value: "gpt-4"
-      conditions:
-        - field: "model"
-          operator: "exists"
-
-```
-
-For detailed configuration options and examples, see the [Request Body Substitution Guide](docs/request_body_substitution.md).
-
 
 ## 🛡️ Reference Architecture
 ```mermaid
@@ -336,7 +404,8 @@ F --> H[🔍 Custom Metrics API]
 
 [![Discord](https://img.shields.io/discord/1365929019714834493)](https://discord.gg/jXAxVPSs7K)
 
-*Need enterprise support? Contact [k3scat@gmail.com](mailto:k3scat@gmail.com)*
+> [!NOTE]
+> Need support? Contact [k3scat@gmail.com](mailto:k3scat@gmail.com)
 
 ## 📈 Project Growth
 
