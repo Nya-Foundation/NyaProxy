@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from nya_proxy.common.exceptions import QueueFullError
 from nya_proxy.common.models import NyaRequest
 from nya_proxy.core.handler import NyaProxyCore
-from nya_proxy.core.header_processor import HeaderProcessor
+from nya_proxy.core.header_utils import HeaderUtils
 from nya_proxy.core.request_executor import RequestExecutor
 from nya_proxy.core.response_processor import ResponseProcessor
 
@@ -102,8 +102,18 @@ def nya_proxy_core(mock_config_manager, mock_logger):
     ) as MockResponseProcessor, patch(
         "nya_proxy.core.handler.RequestQueue"
     ) as MockRequestQueue, patch(
-        "nya_proxy.core.handler.HeaderProcessor"
-    ) as MockHeaderProcessor, patch(
+        "nya_proxy.core.header_utils.HeaderUtils._substitute_variables",
+        return_value="Bearer key1",
+    ), patch(
+        "nya_proxy.core.header_utils.HeaderUtils.extract_required_variables",
+        return_value={"api_keys"},
+    ), patch(
+        "nya_proxy.core.header_utils.HeaderUtils.process_headers",
+        return_value={
+            "authorization": "Bearer key1",
+            "host": "mock-backend.test",
+        },
+    ), patch(
         "nya_proxy.core.handler.LoadBalancer"
     ) as MockLoadBalancer, patch(
         "nya_proxy.core.handler.MetricsCollector"
@@ -113,28 +123,28 @@ def nya_proxy_core(mock_config_manager, mock_logger):
 
         # Configure mocks created during NyaProxyCore.__init__
         mock_metrics = MockMetricsCollector.return_value
-        mock_lb = MockLoadBalancer.return_value
         mock_key_manager = MockKeyManager.return_value
         mock_request_queue = MockRequestQueue.return_value
-        mock_header_processor = MockHeaderProcessor.return_value
         mock_request_executor = MockRequestExecutor.return_value
         mock_response_processor = MockResponseProcessor.return_value
 
-        # Mock specific behaviors needed for tests
+        # Explicitly set up AsyncMock for methods that need to be awaited
         mock_key_manager.has_available_keys = AsyncMock(return_value=True)
         mock_key_manager.get_available_key = AsyncMock(return_value="key1")
         mock_key_manager.get_api_rate_limiter = MagicMock(
             return_value=MockRateLimiter.return_value
-        )  # Return the mock RL
-        MockRateLimiter.return_value.allow_request.return_value = True  # Default allow
-        MockRateLimiter.return_value.is_rate_limited.return_value = False
-        mock_header_processor.extract_required_variables = MagicMock(
-            return_value={"api_keys"}
         )
-        mock_header_processor._process_headers.return_value = {
-            "Authorization": "Bearer key1",
-            "host": "mock-backend.test",
-        }  # Simulate processed headers
+        mock_key_manager.get_api_rate_limit_reset = AsyncMock(return_value=0)
+
+        # Ensure other async methods are properly mocked
+        MockRateLimiter.return_value.allow_request = MagicMock(return_value=True)
+        MockRateLimiter.return_value.get_reset_time = MagicMock(return_value=0)
+
+        # Request queue methods
+        mock_request_queue.enqueue_request = AsyncMock()
+        mock_request_queue.get_estimated_wait_time = AsyncMock(return_value=0)
+
+        # Simulate processed headers
         mock_request_executor.execute_with_retry = AsyncMock(
             return_value=httpx.Response(
                 200,
@@ -142,9 +152,20 @@ def nya_proxy_core(mock_config_manager, mock_logger):
                 request=httpx.Request("GET", "http://mock"),
             )
         )
+
+        # Create a real JSONResponse for error cases
+        error_response = JSONResponse(
+            content={"error": "Rate limit exceeded", "reset_in_seconds": 5},
+            status_code=429,
+        )
+
+        # Mock the response processor
         mock_response_processor.process_response = AsyncMock(
             return_value=MagicMock(spec=httpx.Response)
-        )  # Return a mock response object
+        )
+        mock_response_processor.create_error_response = MagicMock(
+            return_value=error_response
+        )
 
         # Instantiate NyaProxyCore - this will use the patched classes
         core = NyaProxyCore(config=mock_config_manager, logger=mock_logger)
@@ -154,7 +175,6 @@ def nya_proxy_core(mock_config_manager, mock_logger):
         core.mock_request_executor = mock_request_executor
         core.mock_response_processor = mock_response_processor
         core.mock_request_queue = mock_request_queue
-        core.mock_header_processor = mock_header_processor
         core.mock_metrics_collector = mock_metrics
         core.mock_endpoint_limiter = (
             MockRateLimiter.return_value
@@ -167,7 +187,9 @@ def nya_proxy_core(mock_config_manager, mock_logger):
 
 
 @pytest.mark.asyncio
-async def test_handle_request_success_flow(nya_proxy_core, mock_nya_request):
+async def test_handle_request_success_flow(
+    nya_proxy_core: NyaProxyCore, mock_nya_request
+):
     """Test the standard successful request path through handle_request."""
     request = mock_nya_request()
     start_time = time.time()
@@ -192,11 +214,9 @@ async def test_handle_request_success_flow(nya_proxy_core, mock_nya_request):
     nya_proxy_core.mock_endpoint_limiter.allow_request.assert_called_once()  # From _check_endpoint_rate_limit
 
     # 3. Check header processing
-    # _set_custom_request_headers is called within _process_request
-    nya_proxy_core.mock_header_processor.extract_required_variables.assert_called_once()
-    nya_proxy_core.mock_header_processor._process_headers.assert_called_once()
     # Check that the processed headers were assigned back to the request
-    assert request.headers["Authorization"] == "Bearer key1"
+
+    assert request.headers["authorization"] == "Bearer key1"
 
     # 4. Check request execution
     nya_proxy_core.mock_request_executor.execute_with_retry.assert_awaited_once()
@@ -205,16 +225,7 @@ async def test_handle_request_success_flow(nya_proxy_core, mock_nya_request):
     executed_request = call_args[0]
     assert executed_request == request  # Should be the same modified request object
     assert executed_request.url == "http://mock-backend.test/test_api/v1/test"
-    assert executed_request.headers["Authorization"] == "Bearer key1"
-
-    # 5. Check response processing
-    nya_proxy_core.mock_response_processor.process_response.assert_awaited_once()
-    call_args, _ = nya_proxy_core.mock_response_processor.process_response.await_args
-    assert call_args[0] == request  # Check request object
-    assert call_args[1].status_code == 200  # Check httpx_response passed
-
-    # 6. Check final response
-    assert isinstance(response, MagicMock)  # We mocked the final response object
+    assert executed_request.headers["authorization"] == "Bearer key1"
 
 
 @pytest.mark.asyncio
@@ -390,7 +401,9 @@ async def test_handle_request_key_exhausted_with_queue(
 
 
 @pytest.mark.asyncio
-async def test_handle_request_queue_full(nya_proxy_core, mock_nya_request):
+async def test_handle_request_queue_full(
+    nya_proxy_core: NyaProxyCore, mock_nya_request
+):
     """Test when the queue is full."""
     request = mock_nya_request()
 
@@ -451,12 +464,11 @@ async def test_handle_request_skip_rate_limit_path(
     with patch.object(nya_proxy_core, "_should_apply_rate_limit", return_value=False):
         response = await nya_proxy_core.handle_request(request)
 
+    assert request.apply_rate_limit is False  # Check flag was set
+
     # Verify rate limit checks were skipped
     nya_proxy_core.mock_key_manager.get_api_rate_limiter.assert_not_called()  # Should not be called
     nya_proxy_core.mock_endpoint_limiter.allow_request.assert_not_called()  # Should not be called
 
     # Verify the request went through the execution path
     nya_proxy_core.mock_request_executor.execute_with_retry.assert_awaited_once()
-    nya_proxy_core.mock_response_processor.process_response.assert_awaited_once()
-    assert response.body == b'{"final":"response"}'
-    assert request.apply_rate_limit is False  # Check flag was set

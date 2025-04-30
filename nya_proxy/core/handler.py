@@ -3,7 +3,6 @@ Proxy handler for intercepting and forwarding HTTP requests with token rotation.
 """
 
 import asyncio
-import json
 import logging
 import time
 import traceback
@@ -18,15 +17,15 @@ from ..common.exceptions import (
     EndpointRateLimitExceededError,
     RequestExpiredError,
     VariablesConfigurationError,
+    QueueFullError,
 )
-from ..common.models import NyaRequest
-from ..common.utils import json_safe_dumps
+from ..common.models import NyaRequest, AdvancedConfig
 from ..server.config import ConfigManager
 from ..services.key_manager import KeyManager
 from ..services.load_balancer import LoadBalancer
 from ..services.metrics import MetricsCollector
 from ..services.request_queue import RequestQueue
-from .header_processor import HeaderProcessor
+from .header_utils import HeaderUtils
 from .request_executor import RequestExecutor
 from .response_processor import ResponseProcessor
 
@@ -67,20 +66,21 @@ class NyaProxyCore:
 
         self.request_queue = self._init_request_queue(self.key_manager)
 
-        # Initialize helper components
-        self.header_processor = HeaderProcessor(logger=self.logger)
-
         # Create request executor
         self.request_executor = RequestExecutor(
             self.config,
-            self.logger,
             self.metrics_collector,
             self.key_manager,
+            self.logger,
         )
 
         self.response_processor = ResponseProcessor(
-            self.logger, self.metrics_collector, self.load_balancers
+            self.metrics_collector,
+            self.load_balancers,
+            self.logger,
         )
+
+        self.request_executor.regiser_response_processor(self.response_processor)
 
         # Register request processor with queue if present
         if self.request_queue:
@@ -222,7 +222,7 @@ class NyaProxyCore:
 
         # Skip rate limit verification if path is not rate-limited
         if not self._should_apply_rate_limit(api_name, path):
-            request.apply_rate_limit = False
+            request._apply_rate_limit = False
             return await self._process_request(request)
 
         if not await self.key_manager.has_available_keys(api_name):
@@ -242,6 +242,8 @@ class NyaProxyCore:
             return await self._handle_rate_limit_exceeded(request)
         except APIKeyExhaustedError:
             return await self._handle_rate_limit_exceeded(request)
+        except QueueFullError as e:
+            return self._handle_request_exception(request, 429, e)
         except Exception as e:
             return self._handle_request_exception(request, 500, e)
 
@@ -278,15 +280,12 @@ class NyaProxyCore:
         Returns:
             Response to the client
         """
-        start_time = time.time()
         self.logger.debug(f"Processing request to {r.api_name}: {r.url}")
 
         # Get API configuration
         retry_enabled = self.config.get_api_retry_enabled(r.api_name)
         retry_attempts = self.config.get_api_retry_attempts(r.api_name)
         retry_delay = self.config.get_api_retry_after_seconds(r.api_name)
-
-        endpoint = self.config.get_api_endpoint(r.api_name)
 
         if not retry_enabled:
             retry_attempts = 1
@@ -296,16 +295,36 @@ class NyaProxyCore:
         await self._set_custom_request_headers(r)
 
         # Execute the request with retries if configured
-        httpx_response = await self.request_executor.execute_with_retry(
+        return await self.request_executor.execute_with_retry(
             r, retry_attempts, retry_delay
         )
 
-        # Process and return the response
-        return await self.response_processor.process_response(
-            r,
-            httpx_response,
-            start_time,
-            endpoint,
+    def create_error_response(
+        self, error: Exception, status_code: int = 500, api_name: str = "unknown"
+    ) -> JSONResponse:
+        """
+        Create an error response for the client.
+
+        Args:
+            error: Exception that occurred
+            status_code: HTTP status code to return
+            api_name: Name of the API
+
+        Returns:
+            Error response
+        """
+
+        error_message = str(error)
+        if status_code == 429:
+            message = f"Rate limit exceeded: {error_message}"
+        elif status_code == 504:
+            message = f"Gateway timeout: {error_message}"
+        else:
+            message = f"Internal proxy error: {error_message}"
+
+        return JSONResponse(
+            status_code=status_code,
+            content={"error": message},
         )
 
     def _handle_request_exception(
@@ -329,17 +348,19 @@ class NyaProxyCore:
         api_name = r.api_name
         api_key = r.api_key if r.api_key else "unknown"
 
-        elapsed = time.time() - r.added_at
+        elapsed = time.time() - r._added_at
         self.logger.error(f"Error handling request to {api_name}: {str(exception)}")
         self.logger.debug(traceback.format_exc())
 
+        print(traceback.format_exc())
+
         # Record error in metrics if available
-        if self.metrics_collector and r.apply_rate_limit:
+        if self.metrics_collector and r._apply_rate_limit:
             self.metrics_collector.record_response(
                 api_name, api_key, status_code, elapsed
             )
 
-        return self.response_processor.create_error_response(
+        return self.create_error_response(
             exception, status_code=status_code, api_name=api_name
         )
 
@@ -395,6 +416,9 @@ class NyaProxyCore:
                 except RequestExpiredError as e:
                     return self._handle_request_exception(request, 504, e)
 
+                except QueueFullError as e:
+                    return self._handle_request_exception(request, 429, e)
+
                 except Exception as e:
                     return self._handle_request_exception(request, 500, e)
 
@@ -435,6 +459,11 @@ class NyaProxyCore:
         r.api_name = api_name
         r.url = target_url
 
+        # Map advanced configurations for the request
+        kwargs = self.config.get_api_advanced_configs(api_name)
+        adv_config = AdvancedConfig(**kwargs)
+        r._config = adv_config
+
         return api_name, trail_path, target_url
 
     async def _set_custom_request_headers(
@@ -460,7 +489,7 @@ class NyaProxyCore:
         r.api_key = (
             r.api_key
             if r.api_key
-            else await self.key_manager.get_available_key(api_name, r.apply_rate_limit)
+            else await self.key_manager.get_available_key(api_name, r._apply_rate_limit)
         )
 
         # Get key variable for the API
@@ -470,7 +499,7 @@ class NyaProxyCore:
         header_config: Dict[str, Any] = self.config.get_api_custom_headers(api_name)
 
         # Identify all template variables in headers that needs to be substituted
-        required_vars = self.header_processor.extract_required_variables(header_config)
+        required_vars = HeaderUtils.extract_required_variables(header_config)
 
         var_values: Dict[str, Any] = {key_variable: r.api_key}
 
@@ -489,7 +518,7 @@ class NyaProxyCore:
             var_values[var] = variable_value
 
         # Process headers with variable substitution
-        headers = self.header_processor._process_headers(
+        headers = HeaderUtils.process_headers(
             header_templates=header_config,
             variable_values=var_values,
             original_headers=dict(r.headers),

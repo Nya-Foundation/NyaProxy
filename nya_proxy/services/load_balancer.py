@@ -18,7 +18,7 @@ class LoadBalancer:
     Supports multiple load balancing strategies:
     - round_robin: Cycle through values in sequence
     - random: Choose a random value
-    - least_requests: Select the value with the fewest active connections
+    - least_requests: Select the value with the fewest reqeust counts
     - fastest_response: Select the value with the lowest average response time
     - weighted: Distribute based on assigned weights
     """
@@ -115,7 +115,7 @@ class LoadBalancer:
         return random.choice(self.values)
 
     def _least_requests_select(self) -> str:
-        """Select the value with the least connections."""
+        """Select the value with the least requests."""
         # Find values with minimum requests count
         min_requests = min(self.requests_count.values())
         candidates = [
