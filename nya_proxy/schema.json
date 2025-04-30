@@ -261,9 +261,19 @@
                     "maximum": 65535
                 },
                 "api_key": {
-                    "type": [
-                        "string",
-                        "null"
+                    "anyOf": [
+                        {
+                            "type": "null"
+                        },
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
                     ],
                     "description": "API key for authenticating requests (optional)"
                 },
