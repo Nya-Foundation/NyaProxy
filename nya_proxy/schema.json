@@ -125,12 +125,17 @@
                         "endpoint_rate_limit": {
                             "type": "string",
                             "pattern": "^\\d+\\/(s|m|h|d)$",
-                            "description": "Global rate limit"
+                            "description": "Endpoint rate limit"
+                        },
+                        "ip_rate_limit": {
+                            "type": "string",
+                            "pattern": "^\\d+\\/(s|m|h|d)$",
+                            "description": "Per IP rate limit"
                         },
                         "key_rate_limit": {
                             "type": "string",
                             "pattern": "^\\d+\\/(s|m|h|d)$",
-                            "description": "Per-key rate limit"
+                            "description": "Per key rate limit"
                         },
                         "rate_limit_paths": {
                             "type": "array",
