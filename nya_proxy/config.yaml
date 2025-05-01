@@ -21,8 +21,9 @@ default_settings:
   key_variable: keys
   load_balancing_strategy: round_robin
   rate_limit:
-    endpoint_rate_limit: 10/s
-    key_rate_limit: 10/m
+    endpoint_rate_limit: 10/s # Default endpoint rate limit, can be overridden by each API
+    ip_rate_limit: 10/m # Default IP rate limit, can be overridden by each API
+    key_rate_limit: 10/m # Default key rate limit, can be overridden by each API
     rate_limit_paths: 
       - "*"
   retry:
