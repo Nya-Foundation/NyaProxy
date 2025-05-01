@@ -38,7 +38,9 @@ class ApiSettingDescriptor(Generic[T]):
     def __set_name__(self, owner, name):
         self.name = name
 
-    def __get__(self, instance, owner=None) -> Callable[[str], T]:
+    def __get__(
+        self, instance: Union["ConfigManager", object], owner=None
+    ) -> Callable[[str], T]:
         if instance is None:
             return self
 
@@ -416,6 +418,17 @@ class ConfigManager:
             api_name: Name of the API
         Returns:
             Endpoint rate limit
+        """,
+    )
+
+    get_api_ip_rate_limit = ApiSettingDescriptor[str](
+        "rate_limit.ip_rate_limit",
+        "str",
+        """Get IP rate limit.
+        Args:
+            api_name: Name of the API
+        Returns:
+            IP rate limit
         """,
     )
 

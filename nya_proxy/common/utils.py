@@ -128,32 +128,50 @@ def decode_content(content: bytes, encoding: Optional[str]) -> bytes:
     Returns:
         Decoded content bytes
     """
-    if not encoding:
+    if not encoding or not content:
+        return content
+
+    # Check for obviously uncompressed content
+    if (
+        content
+        and content.startswith((b"{", b"[", b'"'))
+        and encoding.lower() in ("gzip", "deflate", "br")
+    ):
+        # Content appears to be plaintext JSON but has compression encoding header
+        # Return it unchanged rather than trying to decompress
         return content
 
     try:
         for enc in reversed(encoding.split(",")):
             enc = enc.strip().lower()
+            original_content = content
 
-            if enc == "gzip":
-                content = gzip.decompress(content)
-            elif enc == "deflate":
-                try:
-                    content = zlib.decompress(content)
-                except zlib.error:
-                    content = zlib.decompress(content, -zlib.MAX_WBITS)
-            elif enc == "br":
-                content = brotli.decompress(content)
-            elif enc == "identity":
-                continue
-            else:
-                # Unknown encoding; stop decoding
-                break
+            try:
+                if enc == "gzip":
+                    content = gzip.decompress(content)
+                elif enc == "deflate":
+                    try:
+                        content = zlib.decompress(content)
+                    except zlib.error:
+                        content = zlib.decompress(content, -zlib.MAX_WBITS)
+                elif enc == "br":
+                    content = brotli.decompress(content)
+                elif enc == "identity":
+                    continue
+                else:
+                    # Unknown encoding; stop decoding
+                    break
+            except Exception as e:
+                # If decompression fails, keep original content and continue
+                content = original_content
+                print(
+                    f"Failed to decode content with encoding '{enc}': {e}, keeping original content."
+                )
 
         return content
 
     except Exception as e:
-        print(f"Failed to decode content with encoding '{encoding}': {e}")
+        print(f"Failed to process content with encoding '{encoding}': {e}")
         return content
 
 
