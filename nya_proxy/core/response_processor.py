@@ -176,10 +176,12 @@ class ResponseProcessor:
         ):
             return await self._handle_simulated_streaming(r, httpx_response)
 
-        # Decode content if encoded
+        # Get content-encode from upstream api, decode content if encoded
         content_encoding = headers.get("content-encoding", "")
         raw_content = decode_content(raw_content, content_encoding)
-        headers["content-encoding"] = ""
+
+        # Remove content-encoding header if present
+        headers.pop("content-encoding", None)
 
         # HTML specific handling, rarely used (some user might want this)
         if "text/html" in content_type:
