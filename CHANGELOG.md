@@ -1,6 +1,28 @@
 # CHANGELOG
 
 
+## v0.1.1 (2025-05-01)
+
+### Bug Fixes
+
+- Tune content-encoding logic... attempting to support complex env such as... behindng cloudfare
+  proxy -> nginx -> docker
+  ([`d2f96be`](https://github.com/Nya-Foundation/NyaProxy/commit/d2f96bedc280398d07d53e2c89fde87f841d400a))
+
+### Chores
+
+- **format**: Apply automatic formatting [skip ci]
+  ([`2d4695c`](https://github.com/Nya-Foundation/NyaProxy/commit/2d4695c4fbe155ed5c5ad40de37b1f1950a56f5a))
+
+- **format**: Apply automatic formatting [skip ci]
+  ([`7609dcb`](https://github.com/Nya-Foundation/NyaProxy/commit/7609dcb5c502d87251827c95a3a22c44b89160d4))
+
+### Documentation
+
+- Add doc for docker and pip deployment
+  ([`74f8881`](https://github.com/Nya-Foundation/NyaProxy/commit/74f8881550e13935a842b6870e82295196f07006))
+
+
 ## v0.1.0 (2025-04-30)
 
 ### Features
