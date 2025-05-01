@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nya-proxy"
-version = "0.1.1"
+version = "0.1.2"
 description = "A lightweight, flexible API proxy with dynamic token rotation, load balancing, and rate limiting capabilities."
 readme = "README.md"
 authors = [

@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.1.2 (2025-05-01)
+
+### Bug Fixes
+
+- Fix decompressing logic
+  ([`07efb41`](https://github.com/Nya-Foundation/NyaProxy/commit/07efb4125a9ac5fb931b843f7c5b564dd00576c8))
+
+
 ## v0.1.1 (2025-05-01)
 
 ### Bug Fixes
