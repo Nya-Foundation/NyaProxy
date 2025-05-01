@@ -128,29 +128,32 @@ def decode_content(content: bytes, encoding: Optional[str]) -> bytes:
     Returns:
         Decoded content bytes
     """
+    if not encoding:
+        return content
+
     try:
+        for enc in reversed(encoding.split(",")):
+            enc = enc.strip().lower()
 
-        if not encoding:
-            return content
+            if enc == "gzip":
+                content = gzip.decompress(content)
+            elif enc == "deflate":
+                try:
+                    content = zlib.decompress(content)
+                except zlib.error:
+                    content = zlib.decompress(content, -zlib.MAX_WBITS)
+            elif enc == "br":
+                content = brotli.decompress(content)
+            elif enc == "identity":
+                continue
+            else:
+                # Unknown encoding; stop decoding
+                break
 
-        # Normalize encoding name to lowercase
-        encoding = encoding.lower()
-
-        if encoding == "gzip":
-            return gzip.decompress(content)
-        elif encoding == "deflate":
-            return zlib.decompress(content)
-        elif encoding == "br":
-            return brotli.decompress(content)
-        elif encoding == "identity" or not encoding:
-            # No decoding needed
-            return content
-        else:
-            # Unknown encoding, return as-is
-            return content
+        return content
 
     except Exception as e:
-        # Return raw content if decoding fails
+        print(f"Failed to decode content with encoding '{encoding}': {e}")
         return content
 
 
