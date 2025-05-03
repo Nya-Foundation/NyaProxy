@@ -191,19 +191,21 @@ def test_app_with_auth():
 
 
 def test_info_endpoint_with_auth_missing_key(test_app_with_auth):
-    """Test /info requires auth when key is configured."""
-    response = test_app_with_auth.get("/info")
+    """Test /dashboard requires auth when key is configured."""
+    response = test_app_with_auth.get("/test")
+
     # Should be forbidden as no key provided
-    assert response.status_code == 403  # Or 401 depending on exact middleware logic
+    assert response.status_code == 403
+
     assert "Unauthorized" in response.json().get(
         "detail", ""
     ) or "Invalid API key" in response.json().get("error", "")
 
 
 def test_info_endpoint_with_auth_wrong_key(test_app_with_auth):
-    """Test /info fails with wrong auth key."""
+    """Test /test fails with wrong auth key."""
     response = test_app_with_auth.get(
-        "/info", headers={"Authorization": "Bearer wrong-key"}
+        "/test", headers={"Authorization": "Bearer wrong-key"}
     )
     assert response.status_code == 403
     assert "Insufficient Permissions" in response.json().get(

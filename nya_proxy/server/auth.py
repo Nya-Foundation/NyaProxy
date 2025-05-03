@@ -182,8 +182,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         # Skip auth for specific paths if needed
-        excluded_paths = ["/docs", "/redoc", "/openapi.json"]
-        if any(request.url.path.startswith(path) for path in excluded_paths):
+        excluded_paths = ["/", "/info", "/docs", "/redoc", "/openapi.json"]
+        if any(request.url.path == path for path in excluded_paths):
             return await call_next(request)
 
         configured_key = self.auth.get_api_key()

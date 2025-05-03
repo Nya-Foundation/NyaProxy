@@ -440,7 +440,12 @@ def main():
         # load validation schema from package resources
         with pkg_resources.path(nya_proxy, DEFAULT_SCHEMA_NAME) as default_schema:
             schema_path = str(default_schema)
-            config = NekoConfigClient(config_path_abs, default_schema)
+            config = NekoConfigClient(
+                config_path_abs,
+                default_schema,
+                env_override_enabled=True,
+                env_prefix="NYAPROXY",
+            )
 
         if not host:
             host = config.get_str("nya_proxy.host", DEFAULT_HOST)
