@@ -94,7 +94,7 @@ class ConfigManager:
         try:
             self.config = self._init_config_client()
             self.server = NekoConfigServer(
-                config=self.config.config, logger=self.logger
+                config=self.config.config, logger=self.logger, register_signals=False
             )
         except Exception as e:
             error_msg = f"Failed to load configuration from {config_path}: {str(e)}"
@@ -107,6 +107,8 @@ class ConfigManager:
             config_path=self.config_path,
             schema_path=self.schema_path,
             logger=self.logger,
+            env_override_enabled=True,
+            env_prefix="NYAPROXY",
         )
 
         # Validate against the schema
