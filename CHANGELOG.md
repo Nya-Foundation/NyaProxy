@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.1.3 (2025-05-03)
+
+### Bug Fixes
+
+- Decompressing logic, bump nekoconf version 0.1.11
+  ([`bf89242`](https://github.com/Nya-Foundation/NyaProxy/commit/bf892425864195e05bfa759ad7c4a7cb52de397b))
+
+
 ## v0.1.2 (2025-05-01)
 
 ### Bug Fixes
