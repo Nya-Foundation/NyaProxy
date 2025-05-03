@@ -177,9 +177,7 @@ class RequestExecutor:
                 r.content, r._config.subst_rules
             )
 
-            self.logger.debug(
-                f"Request body substitutions have been applied: {modified_content}"
-            )
+            self.logger.debug(f"Request body substitutions have been applied.")
             r.content = orjson.dumps(modified_content)
 
     async def execute_request(
@@ -353,9 +351,13 @@ class RequestExecutor:
             # Rotating api key if needed
             if retry_mode == "key_rotation" and r._attempts > 1:
                 try:
-                    r.api_key = await self.key_manager.get_available_key(
+                    key = await self.key_manager.get_available_key(
                         r.api_name, r._apply_rate_limit
                     )
+                    self.logger.info(
+                        f"Rotating API key for {r.api_name} from {key} to {r.api_key}"
+                    )
+                    r.api_key = key
                 except APIKeyExhaustedError as e:
                     self.logger.error(
                         f"API key exhausted for {r.api_name}, will use the same key for this attempt: {str(e)}"

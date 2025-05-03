@@ -131,11 +131,28 @@ def decode_content(content: bytes, encoding: Optional[str]) -> bytes:
     if not encoding or not content:
         return content
 
-    # Check for obviously uncompressed content
-    if (
-        content
-        and content.startswith((b"{", b"[", b'"'))
-        and encoding.lower() in ("gzip", "deflate", "br")
+    # Magic bytes for different compression formats
+    GZIP_MAGIC = b"\x1f\x8b"  # gzip
+    ZLIB_MAGIC_1 = b"\x78\x01"  # zlib no compression
+    ZLIB_MAGIC_2 = b"\x78\x9c"  # zlib default compression
+    ZLIB_MAGIC_3 = b"\x78\xda"  # zlib best compression
+    BROTLI_MAGIC = b"\xce\xb2\xcf\x81"  # Not strict but common brotli signature
+
+    # Check for plaintext JSON content
+    is_plaintext_json = content and content.startswith((b"{", b"[", b'"'))
+
+    # Check for compression signatures
+    has_gzip_signature = len(content) >= 2 and content[:2] == GZIP_MAGIC
+    has_zlib_signature = len(content) >= 2 and content[:2] in (
+        ZLIB_MAGIC_1,
+        ZLIB_MAGIC_2,
+        ZLIB_MAGIC_3,
+    )
+    has_br_signature = len(content) >= 4 and content[:4] == BROTLI_MAGIC
+
+    # If content appears to be plaintext JSON and doesn't have compression signatures
+    if is_plaintext_json and not (
+        has_gzip_signature or has_zlib_signature or has_br_signature
     ):
         # Content appears to be plaintext JSON but has compression encoding header
         # Return it unchanged rather than trying to decompress
@@ -148,14 +165,20 @@ def decode_content(content: bytes, encoding: Optional[str]) -> bytes:
 
             try:
                 if enc == "gzip":
-                    content = gzip.decompress(content)
+                    # Only attempt gzip decompression if it has gzip signature or we're not sure
+                    if has_gzip_signature or not is_plaintext_json:
+                        content = gzip.decompress(content)
                 elif enc == "deflate":
-                    try:
-                        content = zlib.decompress(content)
-                    except zlib.error:
-                        content = zlib.decompress(content, -zlib.MAX_WBITS)
+                    # Only attempt deflate if it has zlib signature or we're not sure
+                    if has_zlib_signature or not is_plaintext_json:
+                        try:
+                            content = zlib.decompress(content)
+                        except zlib.error:
+                            content = zlib.decompress(content, -zlib.MAX_WBITS)
                 elif enc == "br":
-                    content = brotli.decompress(content)
+                    # Only attempt brotli if it doesn't look like plaintext JSON
+                    if not is_plaintext_json:
+                        content = brotli.decompress(content)
                 elif enc == "identity":
                     continue
                 else:

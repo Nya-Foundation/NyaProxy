@@ -29,7 +29,7 @@ dependencies = [
     "uvicorn>=0.22.0",
     "httpx>=0.24.0",
     "httpx-socks>=0.10.0",
-    "nekoconf==0.1.8",
+    "nekoconf==0.1.11",
     "jinja2>=3.1.2",
     "setuptools>=42.0.0",
     "watchfiles>=0.18.0",
