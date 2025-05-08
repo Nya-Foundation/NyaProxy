@@ -11,6 +11,7 @@ from fastapi import Depends, HTTPException, Request
 from fastapi.security import APIKeyHeader
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import HTMLResponse, JSONResponse
+
 from nya.config import ConfigManager  # pragma: no cover
 
 

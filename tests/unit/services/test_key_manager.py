@@ -3,6 +3,7 @@ import logging
 from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
+
 from nya.common.exceptions import (
     APIKeyExhaustedError,
     VariablesConfigurationError,

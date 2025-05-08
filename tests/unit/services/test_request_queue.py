@@ -5,6 +5,7 @@ import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from nya.services.key import KeyManager
 from nya.services.queue import (
     APIKeyExhaustedError,

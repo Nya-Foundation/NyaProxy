@@ -2,9 +2,10 @@
 Configuration manager for NyaProxy using NekoConf.
 """
 
-import os
 import logging
+import os
 from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar, Union, cast
+
 from nekoconf import NekoConfigServer, NekoConfigWrapper
 
 

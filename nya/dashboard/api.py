@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import uvicorn
 from fastapi import FastAPI, Query, Request
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 

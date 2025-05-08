@@ -14,7 +14,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 
-
 from .. import __version__
 from ..common.constants import (
     DEFAULT_CONFIG_NAME,
@@ -401,8 +400,9 @@ def main():
     remote_api_key = args.remote_api_key or os.environ.get("CONFIG_REMOTE_API_KEY")
     schema_path = None
 
-    import nya
     import importlib.resources as pkg_resources
+
+    import nya
 
     if not config_path_abs or not os.path.exists(config_path_abs):
         # Create copies of the default config and schema in current directory
