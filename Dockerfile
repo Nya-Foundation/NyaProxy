@@ -77,5 +77,5 @@ USER nya
 EXPOSE 8080
 
 # Command to run the application with the correct module path
-ENTRYPOINT ["python", "-m", "nya_proxy.server.app"]
+ENTRYPOINT ["python", "-m", "nya.server.app"]
 CMD ["--config", "config.yaml"]

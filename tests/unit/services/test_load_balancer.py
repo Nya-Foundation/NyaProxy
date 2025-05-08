@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 
 # Assuming the refactored structure, adjust import if needed
-from nya_proxy.services.load_balancer import LoadBalancer
+from nya.services.lb import LoadBalancer
 
 
 @pytest.fixture
@@ -219,7 +219,7 @@ def test_record_response_time(values, mock_logger):
 
 def test_record_response_time_limit(values, mock_logger, monkeypatch):
     # Mock MAX_QUEUE_SIZE for this test if it's imported from constants
-    monkeypatch.setattr("nya_proxy.services.load_balancer.MAX_QUEUE_SIZE", 3)
+    monkeypatch.setattr("nya.services.lb.MAX_QUEUE_SIZE", 3)
     lb = LoadBalancer(values, strategy="fastest_response", logger=mock_logger)
 
     lb.record_response_time("key1", 0.1)

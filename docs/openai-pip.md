@@ -124,10 +124,10 @@ apis:
 > [!TIP]
 > You can use Gemini AI Studio to get a free API key that works with OpenAI-compatible interfaces. [Get a Gemini API key here](https://aistudio.google.com/app/apikey). Just make sure to use the Gemini endpoint instead of OpenAI's if you're using a Gemini key.
 
-4. Under the `nya_proxy` section, add a secure API key to protect your instance:
+4. Under the `server` section, add a secure API key to protect your instance:
 
 ```yaml
-nya_proxy:
+server:
   # ...existing settings...
   api_key:
     - your-secure-master-key  # Choose a strong password
@@ -196,7 +196,7 @@ print(response.json())
 
 1. **"Command not found" Error**
    - Make sure Python is in your PATH
-   - Try using `python -m nya_proxy.server.app` instead
+   - Try using `python -m nya.server.app` instead
 
 2. **Can't Access Dashboard/Config UI**
    - Make sure NyaProxy is running (check terminal output)
