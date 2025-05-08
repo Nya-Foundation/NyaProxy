@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
-from fastapi.requests import Request
 from nya.server.auth import AuthManager, AuthMiddleware
 
 

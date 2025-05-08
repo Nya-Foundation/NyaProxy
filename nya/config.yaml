@@ -1,0 +1,117 @@
+server:
+  host: 0.0.0.0
+  port: 8080
+  api_key: 
+  logging:
+    enabled: true
+    level: info
+    log_file: app.log
+  proxy:
+    enabled: false
+    address: socks5://username:password@proxy.example.com:1080
+  dashboard:
+    enabled: true
+  queue:
+    enabled: true
+    max_size: 200
+    expiry_seconds: 300
+
+# Default settings for the all apis if not specified
+default_settings:
+  key_variable: keys
+  load_balancing_strategy: round_robin
+  rate_limit:
+    endpoint_rate_limit: 10/s # Default endpoint rate limit, can be overridden by each API
+    ip_rate_limit: 10/m # Default IP rate limit, can be overridden by each API
+    key_rate_limit: 10/m # Default key rate limit, can be overridden by each API
+    rate_limit_paths: 
+      - "*"
+  retry:
+    enabled: true
+    mode: key_rotation
+    attempts: 3
+    retry_after_seconds: 1
+    retry_request_methods: [ POST, GET, PUT, DELETE, PATCH, OPTIONS ]
+    retry_status_codes: [ 429, 500, 502, 503, 504 ]
+  timeouts:
+    request_timeout_seconds: 300
+  # Simulated streaming settings
+  simulated_streaming:
+    enabled: false
+    delay_seconds: 0.2 # Delay between chunks in seconds
+    init_delay_seconds: 0.5 # Initial delay before starting streaming in seconds
+    chunk_size_bytes: 256 # Size of each chunk in bytes
+    apply_to: ["application/json", "application/xml", "text/plain", "image/png", "image/jpeg"] # Response content types to apply simulated streaming to
+  # Request body substitution settings
+  request_body_substitution:
+    enabled: false
+    # Substitution rules for request body with JMEPath
+    rules:
+      - name: "Remove frequency_penalty"
+        operation: remove
+        path: "frequency_penalty"
+        conditions:
+          - field: "frequency_penalty"
+            operator: "exists"
+      - name: "Remove presence_penalty"
+        operation: remove
+        path: "presence_penalty"
+        conditions:
+          - field: "presence_penalty"
+            operator: "exists"
+  
+apis:
+  gemini:
+    # Any OpenAI-Compatible API
+    name: Google Gemini API
+    # Gemini: https://generativelanguage.googleapis.com/v1beta/openai
+    # OpenAI: https://api.openai.com/v1
+    # Anthropic: https://api.anthropic.com/v1
+    # DeepSeek: https://api.deepseek.com/v1
+    # Mistral: https://api.mistral.ai/v1
+    # OpenRouter: https://api.openrouter.ai/v1
+    # Ollama: http://localhost:11434/v1
+    endpoint: https://generativelanguage.googleapis.com/v1beta/openai
+    aliases:
+    - /gemini
+    key_variable: keys
+    headers:
+      Authorization: 'Bearer ${{keys}}'
+    variables:
+      keys:
+      - your_gemini_key_1
+      - your_gemini_key_2
+      - your_gemini_key_3
+    load_balancing_strategy: least_requests
+    rate_limit:
+      # For Gemini, the rate limits (gemini-2.5-pro-exp-03-25) for each key are 5 RPM and 25 RPD
+      # Ideally, the endpoint rate limit should be n x Per-Key-RPD, where n is the number of keys
+      endpoint_rate_limit: 75/d
+      key_rate_limit: 5/m
+      # Rate limit paths are optional, but you can configure which paths to apply the rate limits to (regex supported), default is all paths "*"
+      rate_limit_paths:
+        - "/chat/*"
+        - "/images/*"
+
+  test:
+    name: Test API
+    endpoint: http://127.0.0.1:8000
+    key_variable: keys
+    headers:
+      Authorization: 'Bearer ${{keys}}'
+      User-Agent: ${{agents}}
+    variables:
+      keys:
+      - your_test_key_1
+      - your_test_key_2
+      - your_test_key_3
+      agents:
+      - test_agent_1
+      - test_agent_2
+      - test_agent_3
+    load_balancing_strategy: least_requests
+    rate_limit:
+      endpoint_rate_limit: 20/m
+      key_rate_limit: 10/m
+      rate_limit_paths:
+        - "/v1/*"
