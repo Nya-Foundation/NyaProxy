@@ -1,6 +1,24 @@
 # CHANGELOG
 
 
+## v0.2.0 (2025-05-08)
+
+### Bug Fixes
+
+- Upload missing folder... fix test cases
+  ([`888356f`](https://github.com/Nya-Foundation/NyaProxy/commit/888356f237e88ad569ea4e26cf3240c5cbef1606))
+
+### Chores
+
+- **format**: Apply automatic formatting [skip ci]
+  ([`dc40648`](https://github.com/Nya-Foundation/NyaProxy/commit/dc40648f66a90c66d1af8df675ade20aaf851edc))
+
+### Features
+
+- Major refactor, support remote config server for central management, drop python 3.9-3.10 support
+  ([`546b5c6`](https://github.com/Nya-Foundation/NyaProxy/commit/546b5c60cf19137c7b2c7b32f43c5ba180f85293))
+
+
 ## v0.1.3 (2025-05-03)
 
 ### Bug Fixes
