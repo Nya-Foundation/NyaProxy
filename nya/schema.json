@@ -1,0 +1,448 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "NyaProxy Configuration Schema",
+    "description": "Schema for validating NyaProxy configuration files",
+    "type": "object",
+    "required": [
+        "server",
+        "default_settings",
+        "apis"
+    ],
+    "$defs": {
+        "req_body_subst": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "description": "Set to true to enable request body substitution"
+                },
+                "rules": {
+                    "type": "array",
+                    "description": "List of substitution rules to apply",
+                    "items": {
+                        "type": "object",
+                        "required": [
+                            "name",
+                            "operation",
+                            "path"
+                        ],
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": "Human-readable name for the rule"
+                            },
+                            "operation": {
+                                "type": "string",
+                                "enum": [
+                                    "set",
+                                    "remove"
+                                ],
+                                "description": "Type of operation to perform (set or remove)"
+                            },
+                            "path": {
+                                "type": "string",
+                                "description": "JMESPath expression targeting the field"
+                            },
+                            "value": {
+                                "description": "Value to set (not needed for remove operation)"
+                            },
+                            "conditions": {
+                                "type": "array",
+                                "description": "Optional conditions that must be met for rule to apply",
+                                "items": {
+                                    "type": "object",
+                                    "required": [
+                                        "field",
+                                        "operator"
+                                    ],
+                                    "properties": {
+                                        "field": {
+                                            "type": "string",
+                                            "description": "JMESPath to field to evaluate"
+                                        },
+                                        "operator": {
+                                            "type": "string",
+                                            "enum": [
+                                                "eq",
+                                                "ne",
+                                                "gt",
+                                                "lt",
+                                                "ge",
+                                                "le",
+                                                "in",
+                                                "nin",
+                                                "like",
+                                                "nlike",
+                                                "contains",
+                                                "ncontains",
+                                                "between",
+                                                "nbetween",
+                                                "startswith",
+                                                "endswith",
+                                                "exists",
+                                                "nexists",
+                                                "isnull",
+                                                "notnull"
+                                            ],
+                                            "description": "Comparison operator to use"
+                                        },
+                                        "value": {
+                                            "description": "Value to compare against (if needed by the operator)"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "required": [
+                "enabled"
+            ],
+            "additionalProperties": false
+        },
+        "default_settings": {
+            "type": "object",
+            "properties": {
+                "key_variable": {
+                    "type": "string",
+                    "description": "Variable name for API keys"
+                },
+                "load_balancing_strategy": {
+                    "type": "string",
+                    "enum": [
+                        "round_robin",
+                        "random",
+                        "least_requests",
+                        "fastest_response",
+                        "weighted"
+                    ],
+                    "description": "Load balancing strategy"
+                },
+                "rate_limit": {
+                    "type": "object",
+                    "properties": {
+                        "endpoint_rate_limit": {
+                            "type": "string",
+                            "pattern": "^\\d+\\/(s|m|h|d)$",
+                            "description": "Endpoint rate limit"
+                        },
+                        "ip_rate_limit": {
+                            "type": "string",
+                            "pattern": "^\\d+\\/(s|m|h|d)$",
+                            "description": "Per IP rate limit"
+                        },
+                        "key_rate_limit": {
+                            "type": "string",
+                            "pattern": "^\\d+\\/(s|m|h|d)$",
+                            "description": "Per key rate limit"
+                        },
+                        "rate_limit_paths": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "description": "Path patterns to apply rate limits to, regex supported"
+                            }
+                        }
+                    }
+                },
+                "retry": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "description": "Enable automatic retries"
+                        },
+                        "mode": {
+                            "type": "string",
+                            "enum": [
+                                "default",
+                                "backoff",
+                                "key_rotation"
+                            ],
+                            "description": "Retry mode"
+                        },
+                        "attempts": {
+                            "type": "integer",
+                            "description": "Max retry attempts",
+                            "minimum": 0
+                        },
+                        "retry_after_seconds": {
+                            "type": "integer",
+                            "description": "Delay between retries",
+                            "minimum": 0
+                        },
+                        "retry_status_codes": {
+                            "type": "array",
+                            "items": {
+                                "type": "integer",
+                                "description": "HTTP status codes to retry"
+                            }
+                        },
+                        "retry_request_methods": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "enum": [
+                                    "POST",
+                                    "GET",
+                                    "PUT",
+                                    "DELETE",
+                                    "PATCH",
+                                    "OPTIONS"
+                                ]
+                            }
+                        }
+                    },
+                    "additionalProperties": false
+                },
+                "timeouts": {
+                    "type": "object",
+                    "properties": {
+                        "request_timeout_seconds": {
+                            "type": "integer",
+                            "description": "Request timeout",
+                            "minimum": 1
+                        }
+                    },
+                    "additionalProperties": false
+                },
+                "simulated_streaming": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "description": "Enable simulated streaming responses"
+                        },
+                        "delay_seconds": {
+                            "type": "number",
+                            "description": "Delay between chunks in seconds",
+                            "minimum": 0
+                        },
+                        "init_delay_seconds": {
+                            "type": "number",
+                            "description": "Initial delay before first chunk in seconds",
+                            "minimum": 0
+                        },
+                        "chunk_size_bytes": {
+                            "type": "integer",
+                            "description": "Size of each chunk in bytes",
+                            "minimum": 1
+                        },
+                        "apply_to": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "description": "Content types to apply simulated streaming to, e.g. 'application/json', 'text/plain'"
+                            },
+                            "uniqueItems": true
+                        }
+                    },
+                    "additionalProperties": false
+                },
+                "request_body_substitution": {
+                    "$ref": "#/$defs/req_body_subst"
+                }
+            },
+            "additionalProperties": false
+        }
+    },
+    "properties": {
+        "server": {
+            "type": "object",
+            "required": [
+                "host",
+                "port"
+            ],
+            "properties": {
+                "host": {
+                    "type": "string",
+                    "description": "Host for NyaProxy to bind to"
+                },
+                "port": {
+                    "type": "integer",
+                    "description": "Port for NyaProxy to listen on",
+                    "minimum": 1,
+                    "maximum": 65535
+                },
+                "api_key": {
+                    "anyOf": [
+                        {
+                            "type": "null"
+                        },
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    ],
+                    "description": "API key for authenticating requests (optional)"
+                },
+                "logging": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "description": "Enable logging"
+                        },
+                        "level": {
+                            "type": "string",
+                            "enum": [
+                                "debug",
+                                "info",
+                                "warning",
+                                "error",
+                                "DEBUG",
+                                "INFO",
+                                "WARNING",
+                                "ERROR"
+                            ],
+                            "description": "Log level"
+                        },
+                        "log_file": {
+                            "type": "string",
+                            "description": "Log file name"
+                        }
+                    }
+                },
+                "proxy": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "description": "Enable outbound proxy"
+                        },
+                        "address": {
+                            "type": "string",
+                            "description": "Proxy address URI"
+                        }
+                    }
+                },
+                "dashboard": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "description": "Enable/disable the metrics dashboard"
+                        }
+                    }
+                },
+                "queue": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "description": "Enable request queuing when rate limits are hit"
+                        },
+                        "max_size": {
+                            "type": "integer",
+                            "description": "Maximum queue size per API",
+                            "minimum": 1
+                        },
+                        "expiry_seconds": {
+                            "type": "integer",
+                            "description": "How long to keep requests in queue before expiry",
+                            "minimum": 1
+                        }
+                    }
+                }
+            }
+        },
+        "default_settings": {
+            "$ref": "#/$defs/default_settings"
+        },
+        "apis": {
+            "type": "object",
+            "patternProperties": {
+                "^[a-zA-Z0-9_-]+$": {
+                    "type": "object",
+                    "required": [
+                        "name",
+                        "endpoint",
+                        "headers",
+                        "key_variable",
+                        "variables"
+                    ],
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Human-readable API name"
+                        },
+                        "endpoint": {
+                            "type": "string",
+                            "description": "Target API endpoint URL",
+                            "format": "uri",
+                            "pattern": "^(http|https|ws|wss)://.+"
+                        },
+                        "aliases": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "description": "URL path aliases for this API"
+                            }
+                        },
+                        "key_variable": {
+                            "$ref": "#/$defs/default_settings/properties/key_variable"
+                        },
+                        "headers": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string",
+                                "description": "Header value that may contain variable substitutions"
+                            },
+                            "minProperties": 1
+                        },
+                        "variables": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "oneOf": [
+                                    {
+                                        "type": "array",
+                                        "items": {
+                                            "oneOf": [
+                                                {
+                                                    "type": "string"
+                                                },
+                                                {
+                                                    "type": "number"
+                                                },
+                                                {
+                                                    "type": "integer"
+                                                }
+                                            ]
+                                        }
+                                    }
+                                ]
+                            },
+                            "minProperties": 1
+                        },
+                        "load_balancing_strategy": {
+                            "$ref": "#/$defs/default_settings/properties/load_balancing_strategy"
+                        },
+                        "rate_limit": {
+                            "$ref": "#/$defs/default_settings/properties/rate_limit"
+                        },
+                        "retry": {
+                            "$ref": "#/$defs/default_settings/properties/retry"
+                        },
+                        "timeouts": {
+                            "$ref": "#/$defs/default_settings/properties/timeouts"
+                        },
+                        "simulated_streaming": {
+                            "$ref": "#/$defs/default_settings/properties/simulated_streaming"
+                        },
+                        "request_body_substitution": {
+                            "$ref": "#/$defs/req_body_subst"
+                        }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            "additionalProperties": false
+        }
+    }
+}

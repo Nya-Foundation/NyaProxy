@@ -1,6 +1,6 @@
 import re
 
-from nya_proxy.core.header_utils import HeaderUtils
+from nya.utils.header import HeaderUtils
 
 
 class TestHeaderUtils:

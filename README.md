@@ -1,33 +1,23 @@
 # 🐾 NyaProxy - Universal API Proxy
 
-[![PyPI version](https://img.shields.io/pypi/v/nya-proxy.svg)](https://pypi.org/project/nya-proxy/)
-[![Python versions](https://img.shields.io/pypi/pyversions/nya-proxy.svg)](https://pypi.org/project/nya-proxy/)
-[![License](https://img.shields.io/github/license/Nya-Foundation/nyaproxy.svg)](https://github.com/Nya-Foundation/nyaproxy/blob/main/LICENSE)
-[![Code Coverage](https://codecov.io/gh/Nya-Foundation/nyaproxy/branch/main/graph/badge.svg)](https://codecov.io/gh/Nya-Foundation/nyaproxy)
-[![CodeQL & Dependencies Scan](https://github.com/nya-foundation/nyaproxy/actions/workflows/scan.yml/badge.svg)](https://github.com/nya-foundation/nyaproxy/actions/workflows/scan.yml)
-[![CI/CD Builds](https://github.com/Nya-Foundation/nyaproxy/actions/workflows/publish.yml/badge.svg)](https://github.com/Nya-Foundation/nyaproxy/actions/workflows/publish.yml)
-[![Docker](https://img.shields.io/docker/pulls/k3scat/nya-proxy)](https://hub.docker.com/r/k3scat/nya-proxy)
-
-<img src="https://raw.githubusercontent.com/Nya-Foundation/NyaProxy/main/images/banner.png" alt="NyaProxy Banner"/>
-
-## Table of Contents
-- [Introduction](#-introduction)
-- [Core Capabilities](#-core-capabilities)
-- [Quick Start](#-quick-start)
-- [Service Endpoints](#-service-endpoints)
-- [API Configuration](#-api-configuration)
-  - [OpenAI-Compatible APIs](#openai-compatible-apis-gemini-anthropic-etc)
-  - [Generic REST APIs](#generic-rest-apis)
-- [Security Features](#-security-features)
-  - [Multiple API Keys Support](#multiple-api-keys-support)
-- [Advanced Features](#advanced-features)
-  - [Dynamic Header Substitution](#dynamic-header-substitution)
-  - [Request Body Substitution](#request-body-substitution)
-- [Management Interfaces](#-management-interfaces)
-- [Reference Architecture](#-reference-architecture)
-- [Future Roadmap](#-future-roadmap)
-- [Community](#-community)
-- [Project Growth](#-project-growth)
+<div align="center">
+  <img src="https://raw.githubusercontent.com/Nya-Foundation/NyaProxy/main/assets/banner.png" alt="NyaProxy Banner" width="800" />
+  
+  <h3>Your purr-fect Swiss Army Knife for API Proxy Management~</h3>
+  
+  <div>
+    <a href="https://pypi.org/project/nya-proxy/"><img src="https://img.shields.io/pypi/v/nya-proxy.svg" alt="PyPI version"/></a>
+    <a href="https://pypi.org/project/nya-proxy/"><img src="https://img.shields.io/pypi/pyversions/nya-proxy.svg" alt="Python versions"/></a>
+    <a href="https://github.com/Nya-Foundation/nyaproxy/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Nya-Foundation/nyaproxy.svg" alt="License"/></a>
+  </div>
+  
+  <div>
+    <a href="https://codecov.io/gh/Nya-Foundation/nyaproxy"><img src="https://codecov.io/gh/Nya-Foundation/nyaproxy/branch/main/graph/badge.svg" alt="Code Coverage"/></a>
+    <a href="https://github.com/nya-foundation/nyaproxy/actions/workflows/scan.yml"><img src="https://github.com/nya-foundation/nyaproxy/actions/workflows/scan.yml/badge.svg" alt="CodeQL & Dependencies Scan"/></a>
+    <a href="https://github.com/Nya-Foundation/nyaproxy/actions/workflows/publish.yml"><img src="https://github.com/Nya-Foundation/nyaproxy/actions/workflows/publish.yml/badge.svg" alt="CI/CD Builds"/></a>
+    <a href="https://hub.docker.com/r/k3scat/nya-proxy"><img src="https://img.shields.io/docker/pulls/k3scat/nya-proxy" alt="Docker"/></a>
+  </div>
+</div>
 
 ## 🌈 Introduction
 
@@ -156,7 +146,7 @@ Configuration reference can be found under [Configs folder](configs/) folder
 
 ```yaml
 # Basic config.yaml example for Gemini API
-nya_proxy:
+server:
   host: 0.0.0.0
   port: 8080
   api_key: 
@@ -310,7 +300,7 @@ novelai:
 NyaProxy supports using multiple API keys for authentication:
 
 ```yaml
-nya_proxy:
+server:
   api_key: 
     - your_master_key_for_admin_access
     - another_api_key_for_proxy_only
@@ -373,7 +363,7 @@ For detailed configuration options and examples, see the [Request Body Substitut
 ## 🖥️ Management Interfaces
 
 ### Real-time Metrics Dashboard
-<img src="https://raw.githubusercontent.com/Nya-Foundation/NyaProxy/main/images/dashboard_ui.png" width="800" alt="Dashboard UI"/>
+<img src="https://raw.githubusercontent.com/Nya-Foundation/NyaProxy/main/assets/dashboard_ui.png" width="800" alt="Dashboard UI"/>
 
 Monitor at `http://localhost:8080/dashboard`:
 - Request volumes and response times
@@ -382,7 +372,7 @@ Monitor at `http://localhost:8080/dashboard`:
 - Error rates and status codes
 
 ### Visual Configuration Interface
-<img src="https://raw.githubusercontent.com/Nya-Foundation/NyaProxy/main/images/config_ui.png" width="800" alt="Configuration UI"/>
+<img src="https://raw.githubusercontent.com/Nya-Foundation/NyaProxy/main/assets/config_ui.png" width="800" alt="Configuration UI"/>
 
 Manage at `http://localhost:8080/config`:
 - Live configuration editing
@@ -418,7 +408,7 @@ F --> H[🔍 Custom Metrics API]
 [![Discord](https://img.shields.io/discord/1365929019714834493)](https://discord.gg/jXAxVPSs7K)
 
 > [!NOTE]
-> Need support? Contact [k3scat@gmail.com](mailto:k3scat@gmail.com)
+> Need support? Contact [k3scat@gmail.com](mailto:k3scat@gmail.com) or join our discord community at [Nya Foundation](https://discord.gg/jXAxVPSs7K)
 
 ## 📈 Project Growth
 

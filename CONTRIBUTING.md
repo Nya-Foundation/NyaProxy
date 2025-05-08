@@ -107,7 +107,7 @@ pytest
 
 For coverage information:
 ```bash
-pytest --cov=nya_proxy tests/ --cov-report=term
+pytest --cov=nya tests/ --cov-report=term
 ```
 
 Our CI pipeline automatically runs tests across Python versions 3.9 through 3.14.
