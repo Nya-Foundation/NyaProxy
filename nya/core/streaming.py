@@ -6,7 +6,7 @@ import asyncio
 import logging
 import time
 import traceback
-from typing import Dict, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Optional
 
 import httpx
 from starlette.responses import StreamingResponse

@@ -3,7 +3,7 @@ Service factory for creating and managing NyaProxy components.
 """
 
 import logging
-from typing import Dict, Optional, Any, Type
+from typing import Any, Dict, Optional, Type
 
 from ..common.exceptions import VariablesConfigurationError
 from ..config.manager import ConfigManager

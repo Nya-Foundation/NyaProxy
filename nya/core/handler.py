@@ -3,8 +3,7 @@ Proxy handler for intercepting and forwarding HTTP requests with token rotation.
 """
 
 import logging
-
-from typing import TYPE_CHECKING, Dict, Optional, Tuple, Any
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 from urllib.parse import urlparse
 
 from ..common.constants import API_PATH_PREFIX
