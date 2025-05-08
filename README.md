@@ -3,7 +3,7 @@
 <div align="center">
   <img src="https://raw.githubusercontent.com/Nya-Foundation/NyaProxy/main/assets/banner.png" alt="NyaProxy Banner" width="800" />
   
-  <h3>Your purr-fect Swiss Army Knife for API Proxy Management~</h3>
+  <h3>The smart way to balance, secure, and monitor all your API interactions</h3>
   
   <div>
     <a href="https://pypi.org/project/nya-proxy/"><img src="https://img.shields.io/pypi/v/nya-proxy.svg" alt="PyPI version"/></a>
@@ -20,8 +20,6 @@
 </div>
 
 ## 🌈 Introduction
-
-*Your purr-fect Swiss Army Knife for API Proxy Management~*
 
 NyaProxy acts like a smart, central manager for accessing various online services (APIs) – think AI tools (like OpenAI, Gemini, Anthropic), image generators, or almost any web service that uses access keys. It helps you use these services more reliably, efficiently, and securely.
 
