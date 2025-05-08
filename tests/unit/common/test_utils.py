@@ -5,7 +5,7 @@ from unittest import mock
 
 import pytest
 
-from nya_proxy.common.utils import (
+from nya.utils.helper import (
     _check_rule_conditions,
     _contains_value,
     _like_match,

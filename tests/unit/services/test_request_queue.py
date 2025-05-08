@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from nya_proxy.services.key_manager import KeyManager
-from nya_proxy.services.request_queue import (
+from nya.services.key import KeyManager
+from nya.services.queue import (
     APIKeyExhaustedError,
     NyaRequest,
     QueueFullError,

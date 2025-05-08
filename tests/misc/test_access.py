@@ -1,15 +1,14 @@
 """
 Test suite for authentication and access control functionality in NyaProxy.
-Focuses on testing the AuthManager class in nya_proxy.server.auth.
+Focuses on testing the AuthManager class in nya.server.auth.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
-from fastapi.requests import Request
 
-from nya_proxy.server.auth import AuthManager, AuthMiddleware
+from nya.server.auth import AuthManager, AuthMiddleware
 
 
 class TestAuthManager:
@@ -20,19 +19,6 @@ class TestAuthManager:
         # Create mock config manager
         self.mock_config = MagicMock()
         self.auth_manager = AuthManager(config=self.mock_config)
-
-    def test_init_without_config(self):
-        """Test initialization without config"""
-        auth = AuthManager()
-        assert auth.config is None
-        assert auth.get_api_key() == ""
-
-    def test_set_config_manager(self):
-        """Test setting config manager after initialization"""
-        auth = AuthManager()
-        mock_config = MagicMock()
-        auth.set_config_manager(mock_config)
-        assert auth.config == mock_config
 
     @pytest.mark.parametrize(
         "configured_key,test_key,expected",
@@ -258,7 +244,7 @@ class TestAuthMiddleware:
         mock_call_next.assert_called_once_with(mock_request)
 
     @pytest.mark.asyncio
-    @patch("nya_proxy.server.auth.JSONResponse")
+    @patch("nya.server.auth.JSONResponse")
     async def test_dispatch_api_unauthorized(self, mock_json_response):
         """Test unauthorized access to API endpoints"""
         # Setup

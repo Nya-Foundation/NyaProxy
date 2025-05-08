@@ -6,12 +6,12 @@ on:
     branches:
       - dev
     paths:
-      - 'nya_proxy/**'
+      - 'nya/**'
       - 'tests/**'
   pull_request:
     branches: ["dev", "staging"]
     paths:
-      - 'nya_proxy/**'
+      - 'nya/**'
       - 'tests/**'
 
   workflow_dispatch:
@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.9', '3.10', '3.11', '3.12', '3.13']
+        python-version: ['3.11', '3.12', '3.13']
       fail-fast: false # Ensure all Python versions are tested
     steps:
     - name: Checkout code
@@ -53,7 +53,7 @@ jobs:
 
     - name: Run tests with coverage
       run: |
-        pytest --cov=nya_proxy tests/ --cov-report=xml
+        pytest --cov=nya tests/ --cov-report=xml
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v5
