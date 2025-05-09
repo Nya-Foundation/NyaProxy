@@ -177,7 +177,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         # Skip auth for specific paths if needed
-        excluded_paths = ["/", "/info", "/docs", "/redoc", "/openapi.json"]
+        excluded_paths = [
+            "/",
+            "/info",
+            "/docs",
+            "/redoc",
+            "/openapi.json",
+            "/dashboard/static/logo.svg",
+            "/dashboard/favicon.ico",
+        ]
         if any(request.url.path == path for path in excluded_paths):
             return await call_next(request)
 

@@ -34,7 +34,7 @@ dependencies = [
     "jmespath>=1.0.1",
     "colorlog>=6.9.0",
     "orjson>=3.10,<4",
-    "nekoconf[remote,schema,server]==1.0.2",
+    "nekoconf[remote,schema,server]==1.0.3",
 ]
 
 [project.optional-dependencies]
