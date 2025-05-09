@@ -1,6 +1,30 @@
 # CHANGELOG
 
 
+## v0.2.1 (2025-05-09)
+
+### Bug Fixes
+
+- Patch config ui not save issue, update dashboard and login page logo
+  ([`bb01039`](https://github.com/Nya-Foundation/NyaProxy/commit/bb010396e63bb8d7c9e7814a32aad77d1a5b0f3a))
+
+### Chores
+
+- Add PyPI stats
+  ([`61681a9`](https://github.com/Nya-Foundation/NyaProxy/commit/61681a98ae5123391ba421c8f38adc72e8f55862))
+
+### Documentation
+
+- Add DeepWiki badge
+  ([`a85d88d`](https://github.com/Nya-Foundation/NyaProxy/commit/a85d88dd16300e070b880ebcff0a4824499a5baf))
+
+- Update python version requirements
+  ([`b3110e5`](https://github.com/Nya-Foundation/NyaProxy/commit/b3110e54bed39e7d8ffae9a0c1163335b810b356))
+
+- Update README.md
+  ([`4346954`](https://github.com/Nya-Foundation/NyaProxy/commit/43469542c91f46947b63a37da4b67fa2a9e6294a))
+
+
 ## v0.2.0 (2025-05-08)
 
 ### Bug Fixes
