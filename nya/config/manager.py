@@ -269,6 +269,26 @@ class ConfigManager:
         """Get the proxy address."""
         return self.config.get_str("server.proxy.address", "")
 
+    def get_cors_allow_origins(self) -> List[str]:
+        """Get the CORS allow origin for the proxy."""
+        return self.config.get_list("server.cors.allow_origins", "*")
+
+    def get_cors_allow_methods(self) -> List[str]:
+        """Get the CORS allow methods for the proxy."""
+        return self.config.get_list(
+            "server.cors.allow_methods", "GET, POST, PUT, DELETE, OPTIONS"
+        )
+
+    def get_cors_allow_headers(self) -> List[str]:
+        """Get the CORS allow headers for the proxy."""
+        return self.config.get_list(
+            "server.cors.allow_headers", "Content-Type, Authorization"
+        )
+
+    def get_cors_allow_credentials(self) -> bool:
+        """Check if CORS allow credentials is enabled for the proxy."""
+        return self.config.get_bool("server.cors.allow_credentials", False)
+
     def get_default_settings(self) -> Dict[str, Any]:
         """Get the default settings for endpoints."""
         return self.config.get_dict("default_settings", {})

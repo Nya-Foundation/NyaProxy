@@ -102,13 +102,18 @@ class NyaProxyApp:
             version=__version__,
         )
 
+        allow_origins = self.config.get_cors_allow_origins()
+        allow_methods = self.config.get_cors_allow_methods()
+        allow_headers = self.config.get_cors_allow_headers()
+        allow_credentials = self.config.get_cors_allow_credentials()
+
         # Add CORS middleware
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=["*"],
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
+            allow_origins=allow_origins,
+            allow_credentials=allow_credentials,
+            allow_methods=allow_methods,
+            allow_headers=allow_headers,
         )
 
         if not self.auth:
