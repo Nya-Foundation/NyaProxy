@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.2.2 (2025-05-12)
+
+### Bug Fixes
+
+- Add cors config support
+  ([`f496918`](https://github.com/Nya-Foundation/NyaProxy/commit/f496918d7248ede8ac22754488f3c9a49a95255d))
+
+
 ## v0.2.1 (2025-05-09)
 
 ### Bug Fixes
