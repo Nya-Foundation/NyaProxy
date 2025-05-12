@@ -265,6 +265,41 @@
                     "minimum": 1,
                     "maximum": 65535
                 },
+                "cors": {
+                    "type": "object",
+                    "properties": {
+                        "allow_origins": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        },
+                        "allow_credentials": {
+                            "type": "boolean",
+                            "description": "CORS allow credentials"
+                        },
+                        "allow_methods": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "enum": [
+                                    "GET",
+                                    "POST",
+                                    "PUT",
+                                    "DELETE",
+                                    "PATCH",
+                                    "OPTIONS"
+                                ]
+                            }
+                        },
+                        "allow_headers": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                },
                 "api_key": {
                     "anyOf": [
                         {
