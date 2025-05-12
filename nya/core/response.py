@@ -121,19 +121,21 @@ class ResponseProcessor:
         # Record metrics for successful responses
         self.record_response_metrics(r, httpx_response, start_time)
 
-        # lowercase all headers and remove unnecessary ones
-        headers = {k.lower(): v for k, v in httpx_response.headers.items()}
+        # Use Headers to preserve case but allow case-insensitive operations
+        headers = httpx.Headers(httpx_response.headers)
         headers_to_remove = ["server", "date", "transfer-encoding", "content-length"]
 
         for header in headers_to_remove:
-            if header in headers:
-                del headers[header]
+            if header.lower() in headers:
+                del headers[header.lower()]
 
         # Determine the response content type
         content_type = httpx_response.headers.get("content-type", "application/json")
 
         self.logger.debug(f"Response status code: {httpx_response.status_code}")
-        self.logger.debug(f"Response Headers\n: {json_safe_dumps(headers)}")
+        self.logger.debug(
+            f"Response Headers\n: {json_safe_dumps(dict(headers.items()))}"
+        )
 
         # Check if it's streaming based on headers
         is_streaming = self.streaming_handler.detect_streaming_content(
@@ -173,7 +175,8 @@ class ResponseProcessor:
         raw_content = decode_content(raw_content, content_encoding)
 
         # Remove content-encoding header if present
-        headers.pop("content-encoding", None)
+        if "content-encoding" in headers:
+            del headers["content-encoding"]
 
         # HTML specific handling, rarely used (some user might want this)
         if "text/html" in content_type:
@@ -187,7 +190,7 @@ class ResponseProcessor:
             content=raw_content,
             status_code=httpx_response.status_code,
             media_type=content_type,
-            headers=headers,
+            headers=dict(headers.items()),
         )
 
     # Add base tag to HTML content for relative links

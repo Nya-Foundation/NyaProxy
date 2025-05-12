@@ -3,7 +3,9 @@ Header processing utilities for NyaProxy.
 """
 
 import re
-from typing import Any, Dict, Optional, Set
+from typing import Any, Dict, Optional, Set, Union
+
+from httpx import Headers
 
 from ..common.constants import EXCLUDED_REQUEST_HEADERS
 from ..common.logger import getLogger
@@ -48,7 +50,7 @@ class HeaderUtils:
         header_templates: Dict[str, Any],
         variable_values: Dict[str, Any],
         original_headers: Optional[Dict[str, str]] = None,
-    ) -> Dict[str, str]:
+    ) -> Union[Dict[str, str], Headers]:
         """
         Process headers with variable substitution.
 
@@ -61,14 +63,14 @@ class HeaderUtils:
             Processed headers with variables substituted
         """
 
-        # Start with a copy of filtered original headers
-        final_headers = {}
+        # Use CaseInsensitiveDict to maintain case-insensitive lookups but preserve original case
+        final_headers = Headers()
+
+        # Start with original headers, filtering out excluded ones
         if original_headers:
-            final_headers = {
-                k.lower(): v
-                for k, v in original_headers.items()
-                if k.lower() not in HeaderUtils._EXCLUDED_HEADERS
-            }
+            for k, v in original_headers.items():
+                if k.lower() not in HeaderUtils._EXCLUDED_HEADERS:
+                    final_headers[k] = v  # This preserves the original case
 
         # Process each header template
         for header_name, template in header_templates.items():
@@ -83,14 +85,14 @@ class HeaderUtils:
                 template_str, variable_values
             )
 
-            # Use the lowercase header name for case-insensitivity
-            final_headers[header_name.lower()] = header_value
+            # Set header with original casing preserved
+            final_headers[header_name] = header_value
 
             # patch accept-encoding header to avoid issues with httpx
             if header_name.lower() == "accept-encoding":
-                final_headers[header_name.lower()] = "identity"
+                final_headers[header_name] = "identity"
 
-        return final_headers
+        return dict(final_headers.items())
 
     @staticmethod
     def _substitute_variables(
@@ -163,15 +165,16 @@ class HeaderUtils:
         Returns:
             Merged headers dictionary
         """
-        # Make a copy of base headers (normalized to lowercase)
-        result = {k.lower(): v for k, v in base_headers.items()}
+        # Use CaseInsensitiveDict to handle case-insensitive lookups but preserve casing
+        result = Headers(base_headers)
 
         # Merge in override headers
         for key, value in override_headers.items():
-            result[key.lower()] = value
+            result[key] = value  # Will override case-insensitively but preserve case
 
         # Remove excluded headers
         for header in EXCLUDED_REQUEST_HEADERS:
-            result.pop(header, None)
+            if header.lower() in result:  # Case-insensitive check
+                del result[header.lower()]
 
-        return result
+        return dict(result)  # Convert back to regular dict for compatibility

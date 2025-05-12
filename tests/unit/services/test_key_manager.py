@@ -4,10 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 
-from nya.common.exceptions import (
-    APIKeyExhaustedError,
-    VariablesConfigurationError,
-)
+from nya.common.exceptions import APIKeyExhaustedError, VariablesConfigurationError
 
 # Adjust imports based on potential refactoring
 from nya.services.key import KeyManager
