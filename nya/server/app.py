@@ -6,10 +6,9 @@ import argparse
 import contextlib
 import logging
 import os
-import time
 
 import uvicorn
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
@@ -340,7 +339,26 @@ class NyaProxyApp:
 
         @self.app.options("/api/{path:path}", name="proxy_options")
         async def proxy_options_request(request: Request):
-            return await self.generic_proxy_request(request)
+            #  hijack the options request to handle CORS preflight requests
+            origin = request.headers.get("origin", "*")
+            acr_headers = request.headers.get(
+                "access-control-request-headers", "Content-Type, Authorization"
+            )
+
+            self.logger.debug(
+                f"Handling CORS preflight request from {origin} with headers {request.headers}"
+            )
+
+            return Response(
+                content="",
+                status_code=204,
+                headers={
+                    "Access-Control-Allow-Origin": origin,
+                    "Access-Control-Allow-Headers": acr_headers,
+                    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS",
+                    "Access-Control-Max-Age": "86400",
+                },
+            )
 
     async def shutdown(self):
         """Clean up resources on shutdown."""

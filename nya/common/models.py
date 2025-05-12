@@ -81,10 +81,11 @@ class NyaRequest:
         """
         Create a NyaRequest instance from a FastAPI Request object.
         """
+
         return NyaRequest(
             method=request.method,
             _url=request.url,
-            headers=request.headers,
+            headers=dict(request.headers),
             content=await request.body(),
             _raw=request,
             _added_at=time.time(),
