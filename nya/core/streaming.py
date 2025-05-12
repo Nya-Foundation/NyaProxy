@@ -46,7 +46,7 @@ class StreamingHandler:
         self.logger.debug(
             f"Handling streaming response with status {httpx_response.status_code}"
         )
-        headers = dict(httpx_response.headers)
+        headers = httpx.Headers(httpx_response.headers)
         status_code = httpx_response.status_code
         content_type = httpx_response.headers.get("content-type", "").lower()
 
@@ -89,7 +89,7 @@ class StreamingHandler:
         Returns:
             StreamingResponse for FastAPI
         """
-        headers = dict(httpx_response.headers)
+        headers = httpx.Headers(httpx_response.headers)
         status_code = httpx_response.status_code
 
         # Store the full content for simulated streaming
@@ -192,6 +192,8 @@ class StreamingHandler:
         Returns:
             Processed headers for streaming
         """
+        if not isinstance(headers, httpx.Headers):
+            headers = httpx.Headers(headers)
         # Headers to remove for streaming responses
         headers_to_remove = [
             "content-encoding",
@@ -200,8 +202,8 @@ class StreamingHandler:
         ]
 
         for header in headers_to_remove:
-            if header in headers:
-                del headers[header]
+            if header.lower() in headers:
+                del headers[header.lower()]
 
         # Set SSE-specific headers according to standards
         headers["cache-control"] = "no-cache, no-transform"

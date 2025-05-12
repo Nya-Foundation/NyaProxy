@@ -176,6 +176,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
         self.logger = logger or logging.getLogger(__name__)
 
     async def dispatch(self, request: Request, call_next):
+
+        # skip OPTIONS requests
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         # Skip auth for specific paths if needed
         excluded_paths = [
             "/",
