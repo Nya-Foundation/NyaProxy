@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.2.3 (2025-05-12)
+
+### Bug Fixes
+
+- Fix header processing issue, implement OPTIONS request hijack
+  ([`9ad3902`](https://github.com/Nya-Foundation/NyaProxy/commit/9ad3902c9299067a07f4b7c687d8824f5cad580a))
+
+
 ## v0.2.2 (2025-05-12)
 
 ### Bug Fixes
