@@ -163,6 +163,11 @@ server:
     enabled: true
     max_size: 200
     expiry_seconds: 300
+  cors:
+    allow_origins: ["*"] # Set to "*" to allow all origins, however, when allow_credentials is true, this must be set to a specific origin
+    allow_credentials: true
+    allow_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    allow_headers: ["*"]
 
 # Default settings for the all apis if not specified
 default_settings:
