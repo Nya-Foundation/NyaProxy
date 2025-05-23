@@ -1,15 +1,17 @@
-import '@/styles/normalize.css'
-import '@/styles/tailwind.css'
+import '@/styles/normalize.css';
+import '@/styles/tailwind.css';
 
-import { createPinia } from 'pinia'
-import { createApp } from 'vue'
+import 'element-plus/theme-chalk/src/message-box.scss';
+import 'element-plus/theme-chalk/src/message.scss';
+import { createPinia } from 'pinia';
+import { createApp } from 'vue';
 
-import App from './App.vue'
-import router from './router'
+import App from './App.vue';
+import router from './router';
 
-const app = createApp(App)
+const app = createApp(App);
 
-app.use(createPinia())
-app.use(router)
+app.use(createPinia());
+app.use(router);
 
-app.mount('#app')
+app.mount('#app');

@@ -6,6 +6,8 @@ import { defineConfig } from 'vite';
 import vueDevTools from 'vite-plugin-vue-devtools';
 
 import AutoImport from 'unplugin-auto-import/vite';
+import IconsResolver from 'unplugin-icons/resolver';
+import Icons from 'unplugin-icons/vite';
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers';
 import Components from 'unplugin-vue-components/vite';
 
@@ -16,10 +18,15 @@ export default defineConfig({
     vueJsx(),
     vueDevTools(),
     AutoImport({
-      resolvers: [ElementPlusResolver()]
+      resolvers: [ElementPlusResolver(), IconsResolver({ prefix: 'Icon' })],
+      dts: 'src/auto-imports.d.ts'
     }),
     Components({
-      resolvers: [ElementPlusResolver()]
+      resolvers: [IconsResolver({ enabledCollections: ['ep'] }), ElementPlusResolver()],
+      dts: 'src/components.d.ts'
+    }),
+    Icons({
+      autoInstall: true
     })
   ],
   resolve: {
@@ -30,7 +37,7 @@ export default defineConfig({
   css: {
     preprocessorOptions: {
       scss: {
-        additionalData: '@import "@/styles/mixin.scss";'
+        additionalData: '@use "@/styles/mixin.scss" as *;'
       }
     }
   },

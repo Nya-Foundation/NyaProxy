@@ -1,13 +1,36 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="">
   <head>
-    <meta charset="UTF-8">
-    <link rel="icon" href="/favicon.ico">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vite App</title>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NyaProxy</title>
   </head>
+  <style>
+    @import url('./src/styles/loading.css');
+  </style>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <div class="loading">
+        <svg
+          class="spinner"
+          width="65px"
+          height="65px"
+          viewBox="0 0 66 66"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <circle
+            class="path"
+            fill="none"
+            stroke-width="6"
+            stroke-linecap="round"
+            cx="33"
+            cy="33"
+            r="30"
+          ></circle>
+        </svg>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
