@@ -1,0 +1,26 @@
+// 左侧导航栏(此地方颜色全部改成自定义)
+$side-bar-width: 210px;
+$side-hide-bar-width: 55px;
+$nav-bar-height: 50px;
+$tabs-page-height: 38px; // 面包屑高度 38px
+
+$menu-bg: var(--main-bg-color); // 侧边栏背景颜色
+$menu-hover: var(--sub-color-9); // 焦点背景色
+$menu-hover-text: var(--main-color); // 焦点文字颜色
+$menu-text: var(--text-color-primary); // 文字颜色
+$menu-active-text: var(--main-color); // 选中的文字颜色
+
+$menu-item-bg: var(--main-bg-color); // 二级背景颜色
+$menu-item-border-left: var(--main-bg-color); // 二级未选中的背景颜色
+$menu-item-text: var(--text-color-primary); // 二级文字颜色
+$menu-item-hover: var(--sub-color-9); // 二级焦点背景颜色
+$menu-item-hover-text: var(--main-color); // 二级焦点文字颜色
+$menu-item-active-text: var(--main-color); // 二级选中的背景颜色
+$menu-item-active-bg: var(--sub-color-8); // 二级选中背景颜色
+$menu-item-active-border-left: var(--main-color); // 二级左描边背景颜色
+
+$app-main-bg-color: var(--sub-main-bg-content); // app-mian背景颜色
+$nav-bar-color: var(--main-bg-color); // 顶部导航栏背景颜色
+$nav-bar-border-bottom-color: var(--text-color-placeholder);
+$tabs-page-color: var(--main-bg-color); // 面包屑背景颜色
+$breadcrumb-text: var(--text-color-primary); // 面包屑文字颜色

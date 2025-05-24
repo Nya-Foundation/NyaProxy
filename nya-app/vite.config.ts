@@ -6,8 +6,6 @@ import { defineConfig } from 'vite';
 import vueDevTools from 'vite-plugin-vue-devtools';
 
 import AutoImport from 'unplugin-auto-import/vite';
-import IconsResolver from 'unplugin-icons/resolver';
-import Icons from 'unplugin-icons/vite';
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers';
 import Components from 'unplugin-vue-components/vite';
 
@@ -18,15 +16,12 @@ export default defineConfig({
     vueJsx(),
     vueDevTools(),
     AutoImport({
-      resolvers: [ElementPlusResolver(), IconsResolver({ prefix: 'Icon' })],
+      resolvers: [ElementPlusResolver()],
       dts: 'src/auto-imports.d.ts'
     }),
     Components({
-      resolvers: [IconsResolver({ enabledCollections: ['ep'] }), ElementPlusResolver()],
+      resolvers: [ElementPlusResolver()],
       dts: 'src/components.d.ts'
-    }),
-    Icons({
-      autoInstall: true
     })
   ],
   resolve: {
@@ -37,11 +32,20 @@ export default defineConfig({
   css: {
     preprocessorOptions: {
       scss: {
-        additionalData: '@use "@/styles/mixin.scss" as *;'
+        api: 'modern-compiler',
+        charset: false,
+        additionalData: `
+        @use "@/styles/index.scss" as *;
+        @use "@/styles/variables/theme/index.scss" as *;
+        @use "@/styles/variables/index.scss" as *;
+        `
       }
     }
   },
   server: {
+    host: true,
+    port: 5140,
+    strictPort: false,
     proxy: {
       '/api': {
         target: 'http://localhost:8080',

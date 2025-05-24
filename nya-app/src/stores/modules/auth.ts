@@ -1,6 +1,6 @@
+import { getToken, removeToken, setToken } from '@/utils/auth';
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
-import { getToken, removeToken, setToken } from '../utils/auth';
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(getToken() ?? null);

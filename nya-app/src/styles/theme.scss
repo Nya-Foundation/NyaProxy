@@ -1,0 +1,34 @@
+:root {
+  // 统一颜色主题
+  --color-white: #fff;
+  --main-color: var(--el-color-primary); // 主色
+  --sub-color: var(--el-color-primary-light-5); // 浅蓝1
+  --sub-color-8: var(--el-color-primary-light-8); // 浅蓝2
+  --sub-color-9: var(--el-color-primary-light-9); // 浅蓝2
+
+  // 背景颜色
+  --main-bg-color: #fff; // 首选背景颜色
+  --sub-main-bg-content: #f5f6fa; // 次选背景颜色
+
+  // 主题文字颜色
+  --text-color-primary: var(--el-text-color-primary); // 首选文字颜色
+  --text-color-regular: var(--el-text-color-regular); // 次选文字颜色
+  --text-color-placeholder: var(--el-text-color-placeholder); // 分割线/备注
+  --text-color-disabled: var(--el-text-color-disabled);
+
+  // border-color
+  --border-color-light: var(--el-border-color-light);
+
+  // 文字大小
+  --font-size-extra-large: var(--el-font-size-extra-large); // 超大号字体
+  --font-size-large: var(--el-font-size-large); // 大号字体
+  --font-size-medium: var(--el-font-size-medium); // 中等字体
+  --font-size-base: var(--el-font-size-base); // 基本字体
+  --font-size-small: var(--el-font-size-small); // 小号字体
+  --font-size-extra-small: var(--el-font-size-extra-small); // 超小号字体
+}
+
+html.dark {
+  --main-bg-color: #212121; // 首选背景颜色
+  --sub-main-bg-content: #151515; // 次选背景颜色
+}
