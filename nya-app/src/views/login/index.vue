@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { AuthCookie } from '@/types/auth';
 import { ref, reactive, onMounted } from 'vue';
-import { useAuthStore } from '@/stores/auth';
+import { useAuthStore } from '@/stores/modules/auth';
 import type { FormInstance, FormRules } from 'element-plus';
 import { getAuth } from '@/api/index';
 import { setToken } from '@/utils/auth';
@@ -107,12 +107,7 @@ onMounted(async () => {
           <div class="login-card-footer">
             <span>
               Powered by
-              <a
-                href="https://github.com/Nya-Foundation/NyaProxy"
-                target="_blank"
-                rel="noopener noreferrer"
-                >NyaProxy</a
-              >
+              <el-link type="primary" href="https://github.com/Nya-Foundation/NyaProxy" target="_blank">NyaProxy</el-link>
             </span>
           </div>
         </div>
@@ -142,16 +137,5 @@ onMounted(async () => {
   justify-content: center;
   align-items: center;
   margin-bottom: 12px;
-  a {
-    color: #7c3aed;
-    text-decoration: none;
-    &:hover {
-      color: #6d28d9;
-      text-decoration: underline;
-    }
-    &:visited {
-      color: #8a52eb60;
-    }
-  }
 }
 </style>

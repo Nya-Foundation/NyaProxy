@@ -1,10 +1,10 @@
 import { getAuth } from '@/api';
-import { useAuthStore } from '@/stores/auth';
+import { useAuthStore } from '@/stores/modules/auth';
 import { close, start } from '@/utils/nprogress';
 import type { RouteRecordRaw } from 'vue-router';
 import { createRouter, createWebHistory } from 'vue-router';
 
-const routes: RouteRecordRaw[] = [
+export const routes: RouteRecordRaw[] = [
   {
     path: '/',
     name: 'Home',
@@ -12,7 +12,6 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/layout/index.vue'),
     meta: {
       auth: true,
-      title: 'Home'
     },
     children: [
       {
@@ -20,7 +19,8 @@ const routes: RouteRecordRaw[] = [
         name: 'Dashboard',
         component: () => import('@/views/dashboard/index.vue'),
         meta: {
-          title: 'Dashboard'
+          title: 'Dashboard',
+          icon: 'DataAnalysis'
         }
       },
       {
@@ -28,7 +28,8 @@ const routes: RouteRecordRaw[] = [
         name: 'Config',
         component: () => import('@/views/nekoconf/index.vue'),
         meta: {
-          title: 'Neko Config'
+          title: 'Neko Config',
+          icon: 'Tools'
         }
       }
     ]
