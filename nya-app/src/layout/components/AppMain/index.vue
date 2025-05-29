@@ -20,8 +20,8 @@
   // height: calc(100vh - #{$nav-bar-height+$tabs-page-height});
   // min-height: calc(100vh - #{$nav-bar-height+$tabs-page-height});
   flex: 1;
-  width: 100%;
-  padding: 20px;
+  width: auto;
+  padding: 16px;
   overflow: auto;
   background-color: #{$app-main-bg-color};
 }

@@ -1,6 +1,5 @@
 import type { App, Plugin } from 'vue';
 
-
 export const withInstall = <T>(component: T, alias?: string) => {
   const comp = component as Recordable;
   comp.install = (app: App) => {
@@ -12,4 +11,5 @@ export const withInstall = <T>(component: T, alias?: string) => {
   return component as T & Plugin;
 };
 
-export const converToArray = (number: number): Array<number> => [...`${number}`].map(el => parseInt(el));
+export const converToArray = (number: number): Array<number> =>
+  [...`${number}`].map(el => parseInt(el));

@@ -54,7 +54,10 @@ const resolvePath = (routePath: string) => {
   if (isUrl(props.basePath)) {
     return props.basePath;
   }
-  return `${props.basePath.replace(/\/$/, '')}/${routePath.replace(/^\//, '')}`;
+
+  const result = `${props.basePath.replace(/\/$/, '')}/${routePath.replace(/^\//, '')}`;
+  const finalResult = result.replace(/\/$/, '');
+  return finalResult;
 };
 
 // Helper function to translate i18n (placeholder implementation)
