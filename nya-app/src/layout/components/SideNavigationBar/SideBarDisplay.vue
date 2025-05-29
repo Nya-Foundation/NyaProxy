@@ -8,7 +8,7 @@ const { appConfig } = useAppSettings();
 const router = useRouter();
 
 const goHome = () => {
-  router.push({ path: '/' });
+  router.push({ path: '/dashboard' });
 };
 </script>
 
@@ -62,7 +62,6 @@ const goHome = () => {
 }
 
 .app-logo-hide {
-  // width: $side-bar-width;
   .name {
     transform: translateX(-20px);
     opacity: 0;

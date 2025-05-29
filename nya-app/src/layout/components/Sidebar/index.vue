@@ -12,7 +12,7 @@ const subMenuData = ref<AppRouteRecordRaw[]>([]);
 const { appConfig } = useAppSettings();
 
 const menuData = computed<AppRouteRecordRaw[]>(() => {
-    return subMenuData.value;
+  return subMenuData.value;
 });
 
 function getSubMenuData(currentPath: string) {
@@ -23,8 +23,11 @@ function getSubMenuData(currentPath: string) {
   if (route.matched.length > 0) {
     relevantParentRecord = route.matched[0] as AppRouteRecordRaw;
   }
-
-  if (relevantParentRecord && relevantParentRecord.children && relevantParentRecord.children.length > 0) {
+  if (
+    relevantParentRecord &&
+    relevantParentRecord.children &&
+    relevantParentRecord.children.length > 0
+  ) {
     newSubMenu = relevantParentRecord.children as AppRouteRecordRaw[];
   } else {
     const homeRoute = routes.find(r => r.path === '/');
@@ -36,16 +39,14 @@ function getSubMenuData(currentPath: string) {
 
 watch(
   () => route.path,
-  (newPath) => {
+  newPath => {
     getSubMenuData(newPath);
   },
   { immediate: true }
 );
 
-// Active menu computation
 const activeMenu = computed(() => {
   const { meta, path } = route;
-  // Use the current route path as active menu
   return meta?.activeMenu || path;
 });
 

@@ -5,14 +5,15 @@ const { color } = useTheme();
 </script>
 
 <template>
-  <div
-    class="theme cursor"
+  <el-button
+    class="theme-button"
     :class="{ 'theme-dark': color === 'dark' }"
     @click="
       () => {
         color = color === 'dark' ? 'light' : 'dark';
       }
     "
+    circle
   >
     <el-icon v-show="color === 'light'">
       <Sunny />
@@ -20,20 +21,18 @@ const { color } = useTheme();
     <el-icon v-show="color === 'dark'">
       <Moon />
     </el-icon>
-  </div>
+  </el-button>
 </template>
 
 <style lang="scss" scoped>
-.theme {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  transition: background-color 0.3s, border-color 0.3s;
+.theme-button {
+  width: 32px;
+  height: 32px;
+  border: none;
+  padding: 4px;
 
   &:hover {
-    cursor: pointer;
+    background-color: var(--el-fill-color-light);
   }
 }
 

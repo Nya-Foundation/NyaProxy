@@ -1,0 +1,251 @@
+/* Excel-like table filter styles */
+
+/* Custom filter trigger button */
+.el-table .el-table__column-filter-trigger {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 18px !important;
+  height: 18px !important;
+  margin-left: 6px !important;
+  border: 1px solid #d0d7de !important;
+  border-radius: 3px !important;
+  background: #ffffff !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+  position: relative !important;
+}
+
+.el-table .el-table__column-filter-trigger:hover {
+  background: #f6f8fa !important;
+  border-color: #409eff !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+}
+
+.el-table .el-table__column-filter-trigger.highlighting {
+  background: #409eff !important;
+  border-color: #409eff !important;
+  color: #ffffff !important;
+}
+
+/* Custom filter icon */
+.el-table .el-table__column-filter-trigger .el-icon {
+  display: none !important;
+}
+
+/* Replace default icon with Excel-like dropdown arrow */
+.el-table .el-table__column-filter-trigger::after {
+  content: "▼" !important;
+  font-size: 8px !important;
+  line-height: 1 !important;
+  color: inherit !important;
+}
+
+/* Custom filter popup styles */
+.el-table-filter {
+  border: 1px solid #e4e7ed !important;
+  border-radius: 8px !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15) !important;
+  background: #ffffff !important;
+  padding: 8px 0 !important;
+  margin-top: 4px !important;
+  min-width: 200px !important;
+}
+
+.el-table-filter .el-table-filter__list {
+  max-height: 240px !important;
+  overflow-y: auto !important;
+}
+
+/* Custom scrollbar */
+.el-table-filter .el-table-filter__list::-webkit-scrollbar {
+  width: 6px !important;
+}
+
+.el-table-filter .el-table-filter__list::-webkit-scrollbar-track {
+  background: #f5f7fa !important;
+  border-radius: 3px !important;
+}
+
+.el-table-filter .el-table-filter__list::-webkit-scrollbar-thumb {
+  background: #c0c4cc !important;
+  border-radius: 3px !important;
+}
+
+.el-table-filter .el-table-filter__list::-webkit-scrollbar-thumb:hover {
+  background: #909399 !important;
+}
+
+/* Filter list items */
+.el-table-filter .el-table-filter__list-item {
+  padding: 8px 16px !important;
+  margin: 2px 8px !important;
+  border-radius: 4px !important;
+  display: flex !important;
+  align-items: center !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+}
+
+.el-table-filter .el-table-filter__list-item:hover {
+  background: #ecf5ff !important;
+}
+
+/* Custom checkbox styles */
+.el-table-filter .el-checkbox {
+  margin-right: 8px !important;
+}
+
+.el-table-filter .el-checkbox .el-checkbox__input .el-checkbox__inner {
+  width: 16px !important;
+  height: 16px !important;
+  border-radius: 3px !important;
+  border: 2px solid #dcdfe6 !important;
+  transition: all 0.2s ease !important;
+}
+
+.el-table-filter .el-checkbox .el-checkbox__input .el-checkbox__inner::after {
+  width: 4px !important;
+  height: 8px !important;
+  left: 4px !important;
+  top: 1px !important;
+}
+
+.el-table-filter .el-checkbox .el-checkbox__input.is-checked .el-checkbox__inner {
+  background: #409eff !important;
+  border-color: #409eff !important;
+}
+
+.el-table-filter .el-checkbox .el-checkbox__input.is-checked .el-checkbox__inner::after {
+  border-color: #ffffff !important;
+}
+
+.el-table-filter .el-checkbox .el-checkbox__input:hover .el-checkbox__inner {
+  border-color: #409eff !important;
+}
+
+.el-table-filter .el-checkbox .el-checkbox__label {
+  font-size: 14px !important;
+  color: #606266 !important;
+  line-height: 1.4 !important;
+}
+
+/* Filter buttons */
+.el-table-filter .el-table-filter__bottom {
+  padding: 8px 16px 4px !important;
+  border-top: 1px solid #ebeef5 !important;
+  margin-top: 8px !important;
+  display: flex !important;
+  gap: 8px !important;
+}
+
+.el-table-filter .el-table-filter__bottom .el-button {
+  font-size: 12px !important;
+  padding: 4px 12px !important;
+  border-radius: 4px !important;
+}
+
+.el-table-filter .el-table-filter__bottom .el-button.is-plain {
+  background: transparent !important;
+  border-color: #dcdfe6 !important;
+  color: #606266 !important;
+}
+
+.el-table-filter .el-table-filter__bottom .el-button.is-plain:hover {
+  background: #ecf5ff !important;
+  border-color: #409eff !important;
+  color: #409eff !important;
+}
+
+.el-table-filter .el-table-filter__bottom .el-button--primary {
+  background: #409eff !important;
+  border-color: #409eff !important;
+  color: #ffffff !important;
+}
+
+.el-table-filter .el-table-filter__bottom .el-button--primary:hover {
+  background: #66b1ff !important;
+  border-color: #66b1ff !important;
+}
+
+/* Enhanced table header styling */
+.el-table .el-table__header-wrapper .el-table__header th {
+  background: #fafafa !important;
+  color: #303133 !important;
+  font-weight: 600 !important;
+  font-size: 13px !important;
+  letter-spacing: 0.5px !important;
+  border-bottom: 2px solid #ebeef5 !important;
+  position: relative !important;
+}
+
+.el-table .el-table__header-wrapper .el-table__header th .cell {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 0 12px !important;
+}
+
+/* Table styling */
+.el-table {
+  border-radius: 8px !important;
+  overflow: hidden !important;
+}
+
+.el-table .el-table__body-wrapper .el-table__body tr {
+  transition: background-color 0.2s ease !important;
+}
+
+.el-table .el-table__body-wrapper .el-table__body tr:hover {
+  background: #f5f7fa !important;
+}
+
+.el-table .el-table__body-wrapper .el-table__body tr td {
+  border-bottom: 1px solid #ebeef5 !important;
+}
+
+.el-table .el-table__body-wrapper .el-table__body tr td .cell {
+  padding: 0 12px !important;
+  font-size: 14px !important;
+  color: #606266 !important;
+}
+
+/* Dark mode support */
+.dark .el-table .el-table__column-filter-trigger {
+  background: #1d1e1f !important;
+  border-color: #4c4d4f !important;
+  color: #a8abb2 !important;
+}
+
+.dark .el-table .el-table__column-filter-trigger:hover {
+  background: #262727 !important;
+  border-color: #409eff !important;
+}
+
+.dark .el-table-filter {
+  background: #1d1e1f !important;
+  border-color: #4c4d4f !important;
+}
+
+.dark .el-table-filter .el-table-filter__list-item:hover {
+  background: #262727 !important;
+}
+
+.dark .el-table .el-table__header-wrapper .el-table__header th {
+  background: #1d1e1f !important;
+  color: #e5eaf3 !important;
+  border-bottom-color: #4c4d4f !important;
+}
+
+.dark .el-table .el-table__body-wrapper .el-table__body tr:hover {
+  background: #262727 !important;
+}
+
+.dark .el-table .el-table__body-wrapper .el-table__body tr td {
+  border-bottom-color: #4c4d4f !important;
+}
+
+.dark .el-table .el-table__body-wrapper .el-table__body tr td .cell {
+  color: #a8abb2 !important;
+}
