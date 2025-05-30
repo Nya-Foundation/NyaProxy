@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import type { AuthCookie } from '@/types/auth';
-import { ref, reactive, onMounted } from 'vue';
+import { getAuth } from '@/api/dashboardApi';
 import { useAuthStore } from '@/stores/modules/auth';
-import type { FormInstance, FormRules } from 'element-plus';
-import { getAuth } from '@/api/index';
+import type { AuthCookie } from '@/types/auth';
 import { setToken } from '@/utils/auth';
+import type { FormInstance, FormRules } from 'element-plus';
 import { ElMessage } from 'element-plus';
+import { onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 const authState = useAuthStore();
@@ -16,7 +16,7 @@ const pwd = ref<AuthCookie>({
   key: ''
 });
 
-const rules = reactive<FormRules<RuleForm>>({
+const rules = reactive<FormRules<AuthCookie>>({
   key: [
     {
       required: true,

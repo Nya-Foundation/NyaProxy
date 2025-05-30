@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useAnalyticsStore } from '@/stores/modules/analytics';
 import { storeToRefs } from 'pinia';
-import { computed, onMounted } from 'vue';
+import { computed } from 'vue';
 import Bar from './components/Bar.vue';
 import Line1 from './components/Line1.vue';
 import Line2 from './components/Line2.vue';
@@ -26,15 +26,6 @@ const selectedApi = computed({
 const selectedKey = computed({
   get: () => filters.value.selectedKey,
   set: (value: string) => updateFilters({ selectedKey: value })
-});
-
-onMounted(() => {
-  // Initial fetch with default values
-  analyticsStore.fetchAnalytics(
-    filters.value.selectedTime,
-    filters.value.selectedApi,
-    filters.value.selectedKey
-  );
 });
 </script>
 

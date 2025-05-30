@@ -1,4 +1,5 @@
-import { onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
+import { useEventListener } from './useEventListener';
 
 /**
  * Device detection composable
@@ -16,10 +17,15 @@ export function useDevice() {
     mobile: 768,
     tablet: 1024,
     desktop: 1200
-  };
+  } as const;
 
   // User agent based device detection
-  const detectUserAgent = (): { mobile: boolean; tablet: boolean; ios: boolean; android: boolean } => {
+  const detectUserAgent = (): {
+    mobile: boolean;
+    tablet: boolean;
+    ios: boolean;
+    android: boolean;
+  } => {
     if (typeof window === 'undefined') {
       return { mobile: false, tablet: false, ios: false, android: false };
     }
@@ -37,14 +43,7 @@ export function useDevice() {
     ];
 
     // Tablet device patterns
-    const tabletPatterns = [
-      /ipad/,
-      /android(?!.*mobile)/,
-      /tablet/,
-      /kindle/,
-      /playbook/,
-      /silk/
-    ];
+    const tabletPatterns = [/ipad/, /android(?!.*mobile)/, /tablet/, /kindle/, /playbook/, /silk/];
 
     const isMobileUA = mobilePatterns.some(pattern => pattern.test(userAgent));
     const isTabletUA = tabletPatterns.some(pattern => pattern.test(userAgent));
@@ -59,6 +58,9 @@ export function useDevice() {
     };
   };
 
+  // Cache user agent info
+  const userAgentInfo = detectUserAgent();
+
   // Screen size based detection
   const updateScreenSize = () => {
     if (typeof window === 'undefined') return;
@@ -66,90 +68,74 @@ export function useDevice() {
     screenWidth.value = window.innerWidth;
     screenHeight.value = window.innerHeight;
 
-    const userAgentInfo = detectUserAgent();
-
     // Combine user agent and screen size detection
     // Mobile: UA detection OR screen width < mobile breakpoint
     isMobile.value = userAgentInfo.mobile || screenWidth.value < breakpoints.mobile;
 
     // Tablet: UA detection OR screen width between mobile and desktop (but not mobile UA)
-    isTablet.value = userAgentInfo.tablet ||
-      (!userAgentInfo.mobile && screenWidth.value >= breakpoints.mobile && screenWidth.value < breakpoints.desktop);
+    isTablet.value =
+      userAgentInfo.tablet ||
+      (!userAgentInfo.mobile &&
+        screenWidth.value >= breakpoints.mobile &&
+        screenWidth.value < breakpoints.desktop);
   };
 
   // Touch capability detection
   const isTouchDevice = ref(false);
-  const detectTouchCapability = () => {
+  const detectTouchCapability = (): boolean => {
     if (typeof window === 'undefined') return false;
 
-    return 'ontouchstart' in window ||
-           navigator.maxTouchPoints > 0 ||
-           (navigator as any).msMaxTouchPoints > 0;
+    return (
+      'ontouchstart' in window ||
+      navigator.maxTouchPoints > 0 ||
+      (navigator as any).msMaxTouchPoints > 0
+    );
   };
 
-  // Device orientation
-  const orientation = ref<'portrait' | 'landscape'>('portrait');
-  const updateOrientation = () => {
-    if (typeof window === 'undefined') return;
+  // Device orientation - computed property for better reactivity
+  const orientation = computed<'portrait' | 'landscape'>(() => {
+    if (screenHeight.value === 0 || screenWidth.value === 0) return 'portrait';
+    return screenHeight.value > screenWidth.value ? 'portrait' : 'landscape';
+  });
 
-    orientation.value = window.innerHeight > window.innerWidth ? 'portrait' : 'landscape';
+  // Computed device type for better reactivity
+  const deviceType = computed<'mobile' | 'tablet' | 'desktop'>(() => {
+    if (isMobile.value) return 'mobile';
+    if (isTablet.value) return 'tablet';
+    return 'desktop';
+  });
+
+  // Unified resize handler
+  const handleResize = () => {
+    updateScreenSize();
   };
 
-  // Initialize and setup event listeners
+  // Initialize and setup event listeners using useEventListener
   const initialize = () => {
     updateScreenSize();
-    updateOrientation();
     isTouchDevice.value = detectTouchCapability();
   };
 
-  const handleResize = () => {
-    updateScreenSize();
-    updateOrientation();
-  };
+  // Setup event listeners using useEventListener hook
+  const { removeEvent: removeResizeListener } = useEventListener({
+    el: window,
+    name: 'resize',
+    listener: handleResize,
+    wait: 100,
+    isDebounce: true
+  });
 
-  // Lifecycle hooks
+  const { removeEvent: removeOrientationListener } = useEventListener({
+    el: window,
+    name: 'orientationchange',
+    listener: handleResize,
+    wait: 150,
+    isDebounce: true
+  });
+
+  // Initialize on mount
   onMounted(() => {
     initialize();
-    window.addEventListener('resize', handleResize);
-    window.addEventListener('orientationchange', handleResize);
-  });
-
-  onUnmounted(() => {
-    window.removeEventListener('resize', handleResize);
-    window.removeEventListener('orientationchange', handleResize);
-  });
-
-  // Computed device type
-  const deviceType = ref<'mobile' | 'tablet' | 'desktop'>('desktop');
-  const updateDeviceType = () => {
-    if (isMobile.value) {
-      deviceType.value = 'mobile';
-    } else if (isTablet.value) {
-      deviceType.value = 'tablet';
-    } else {
-      deviceType.value = 'desktop';
-    }
-  };
-
-  // Watch for changes and update device type
-  const unwatchMobile = ref(() => {});
-  const unwatchTablet = ref(() => {});
-
-  onMounted(() => {
-    // Manual watchers to avoid circular dependencies
-    const checkDeviceType = () => {
-      updateDeviceType();
-    };
-
-    // Initial check
-    checkDeviceType();
-
-    // Set up manual watchers
-    const mobileWatcher = () => checkDeviceType();
-    const tabletWatcher = () => checkDeviceType();
-
-    unwatchMobile.value = mobileWatcher;
-    unwatchTablet.value = tabletWatcher;
   });
 
   // Utility functions
@@ -175,8 +161,11 @@ export function useDevice() {
     return screenWidth.value <= breakpoints[size];
   };
 
-  // Get user agent info
-  const userAgentInfo = detectUserAgent();
+  // Manual cleanup function (optional, useEventListener handles auto cleanup)
+  const cleanup = () => {
+    removeResizeListener();
+    removeOrientationListener();
+  };
 
   return {
     // Reactive states
@@ -200,8 +189,9 @@ export function useDevice() {
     // Breakpoints for external use
     breakpoints,
 
-    // Manual refresh function
-    refresh: initialize
+    // Manual refresh and cleanup functions
+    refresh: initialize,
+    cleanup
   };
 }
 

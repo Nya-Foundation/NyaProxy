@@ -7,7 +7,7 @@ import { useMetricsStore } from '@/stores/modules/metrics';
 import { useQueueStore } from '@/stores/modules/queue';
 import { debounce } from 'lodash-es';
 import { storeToRefs } from 'pinia';
-import { computed, onMounted, onUnmounted } from 'vue';
+import { computed } from 'vue';
 
 const metricsStore = useMetricsStore();
 const analyticsStore = useAnalyticsStore();
@@ -15,7 +15,7 @@ const historyStore = useHistoryStore();
 const queueStore = useQueueStore();
 const { nowTime, uptime } = storeToRefs(metricsStore);
 const { currentFilters } = storeToRefs(analyticsStore);
-const { fetchMetrics, initializeTimers, cleanupTimers } = metricsStore;
+const { fetchMetrics } = metricsStore;
 const { fetchAnalytics } = analyticsStore;
 const { fetchHistory } = historyStore;
 const { fetchQueue } = queueStore;
@@ -24,14 +24,6 @@ const { color } = useTheme();
 const isDarkMode = computed(() => color.value === 'dark');
 
 const { isMobile, isTablet } = useDevice();
-
-onMounted(() => {
-  initializeTimers();
-});
-
-onUnmounted(() => {
-  cleanupTimers();
-});
 
 // Original refresh function without throttling
 const performRefresh = (): void => {

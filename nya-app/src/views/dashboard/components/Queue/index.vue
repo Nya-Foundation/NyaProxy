@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useQueueStore } from '@/stores/modules/queue';
-import { computed, onMounted } from 'vue';
+import { computed } from 'vue';
 
 const queueStore = useQueueStore();
 
@@ -21,10 +21,6 @@ const tableData = computed(() => {
 
     return { name, size: queueSize, statusClass, statusText };
   });
-});
-
-onMounted(() => {
-  queueStore.fetchQueue();
 });
 </script>
 
@@ -53,5 +49,3 @@ onMounted(() => {
     </el-card>
   </div>
 </template>
-
-<style scoped lang="scss"></style>

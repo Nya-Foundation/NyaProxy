@@ -1,4 +1,4 @@
-import { getQuene } from '@/api';
+import { getQuene } from '@/api/dashboardApi';
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 

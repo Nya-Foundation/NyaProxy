@@ -2,7 +2,6 @@
 import { useMetricsStore } from '@/stores/modules/metrics';
 
 const metricsStore = useMetricsStore();
-
 // Get card theme based on index
 const getCardTheme = (index: number): string => {
   const themes = ['primary', 'danger', 'warning', 'purple'];
