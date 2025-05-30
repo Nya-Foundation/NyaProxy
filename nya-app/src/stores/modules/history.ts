@@ -1,4 +1,4 @@
-import { getHistory } from '@/api';
+import { getHistory } from '@/api/dashboardApi';
 import dayjs from 'dayjs';
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';

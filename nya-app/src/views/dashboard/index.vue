@@ -40,7 +40,6 @@ const UPDATE_INTERVALS = {
 const initRealTimeUpdates = async (): Promise<void> => {
   // Initial data fetch
   await Promise.allSettled([
-    metricsStore.fetchMetrics(),
     historyStore.fetchHistory(),
     queueStore.fetchQueue(),
     analyticsStore.fetchAnalytics(
@@ -117,6 +116,8 @@ onMounted(() => {
   // Start real-time data updates
   initRealTimeUpdates();
 });
+
+
 
 onUnmounted(() => {
   // Cleanup all timers

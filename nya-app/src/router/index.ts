@@ -1,4 +1,4 @@
-import { getAuth } from '@/api';
+import { getAuth } from '@/api/dashboardApi';
 import { useAuthStore } from '@/stores/modules/auth';
 import { close, start } from '@/utils/nprogress';
 import type { RouteRecordRaw } from 'vue-router';

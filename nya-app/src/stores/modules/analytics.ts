@@ -1,4 +1,4 @@
-import { getAnalytics } from '@/api';
+import { getAnalytics } from '@/api/dashboardApi';
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 

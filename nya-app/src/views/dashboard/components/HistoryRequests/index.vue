@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import { useHistoryStore } from '@/stores/modules/history';
 import { storeToRefs } from 'pinia';
-import { computed, onMounted } from 'vue';
+import { computed } from 'vue';
 
 const historyStore = useHistoryStore();
 const { dataHistory } = storeToRefs(historyStore);
@@ -37,10 +37,6 @@ const filterByDate = (value: string, row: any) => {
 const filterByApiName = (value: string, row: any) => {
   return row.apiName === value;
 };
-
-onMounted(() => {
-  historyStore.fetchHistory();
-});
 </script>
 
 <template>

@@ -1,4 +1,4 @@
-import { getMetrics } from '@/api/index';
+import { getMetrics } from '@/api/dashboardApi';
 import dayjs from 'dayjs';
 import { defineStore } from 'pinia';
 import { computed, ref, shallowRef } from 'vue';
