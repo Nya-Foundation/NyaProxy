@@ -1,7 +1,7 @@
 import pytest
 
 from nya.common.constants import API_PATH_PREFIX
-from nya.common.models import NyaRequest
+from nya.common.models import ProxyRequest
 from nya.core.factory import ServiceFactory
 from nya.core.proxy import NyaProxyCore
 
@@ -74,14 +74,13 @@ def mock_factory(mock_config, mocker):
 @pytest.fixture
 def core(mock_config, mock_factory, mocker):
     core = NyaProxyCore(config=mock_config, factory=mock_factory)
-    core.logger = mocker.Mock()
     return core
 
 
 @pytest.fixture
 def make_request(mocker):
     def _make(path):
-        req = mocker.Mock(spec=NyaRequest)
+        req = mocker.Mock(spec=ProxyRequest)
         req._url = mocker.Mock()
         req._url.path = path
         req.headers = {"Host": "localhost:8080"}

@@ -22,21 +22,13 @@ class AdvancedConfig:
     response.
     """
 
-    # Simulated Streaming
-    simulated_stream_enabled: bool = False
-    delay_seconds: float = 0.2
-    init_delay_seconds: float = 0.5
-    chunk_size_bytes: int = 256
-    # List of response content types to apply simulated streaming to
-    apply_to: List[str] = field(default_factory=lambda: ["application/json"])
-
     # Request Body Substitution
     req_body_subst_enabled: bool = False
     subst_rules: List[Dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
-class NyaRequest:
+class ProxyRequest:
     """
     Structured representation of an API request for processing.
 
@@ -72,17 +64,15 @@ class NyaRequest:
     # Whether to apply rate limiting for this request
     _apply_rate_limit: bool = True
 
-    # Whether the original request ask for a streaming response (openai)
-    _is_streaming: bool = False
     _config: AdvancedConfig = field(default_factory=AdvancedConfig)
 
     @staticmethod
-    async def from_request(request: "Request") -> "NyaRequest":
+    async def from_request(request: "Request") -> "ProxyRequest":
         """
-        Create a NyaRequest instance from a FastAPI Request object.
+        Create a ProxyRequest instance from a FastAPI Request object.
         """
 
-        return NyaRequest(
+        return ProxyRequest(
             method=request.method,
             _url=request.url,
             headers=dict(request.headers),

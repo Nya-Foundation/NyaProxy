@@ -6,9 +6,9 @@ import re
 from typing import Any, Dict, Optional, Set, Union
 
 from httpx import Headers
+from loguru import logger
 
 from ..common.constants import EXCLUDED_REQUEST_HEADERS
-from ..common.logger import getLogger
 
 
 class HeaderUtils:
@@ -20,7 +20,6 @@ class HeaderUtils:
     # Compiled regex pattern for variable detection
     _VARIABLE_PATTERN = re.compile(r"\$\{\{([^}]+)\}\}")
     _EXCLUDED_HEADERS = EXCLUDED_REQUEST_HEADERS
-    _LOGGER = getLogger(__name__)
 
     @staticmethod
     def extract_required_variables(header_templates: Dict[str, Any]) -> Set[str]:
@@ -127,9 +126,7 @@ class HeaderUtils:
                 # Replace just this match
                 result = result[:start] + value + result[end:]
             else:
-                HeaderUtils._LOGGER.warning(
-                    f"Variable '{var_name}' not found in variable values"
-                )
+                logger.warning(f"Variable '{var_name}' not found in variable values")
 
         return result
 

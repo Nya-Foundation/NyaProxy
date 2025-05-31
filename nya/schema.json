@@ -124,17 +124,17 @@
                     "properties": {
                         "endpoint_rate_limit": {
                             "type": "string",
-                            "pattern": "^\\d+\\/(s|m|h|d)$",
+                            "pattern": "^(\\d+)/((\\d+[smhd])|[smhd])$",
                             "description": "Endpoint rate limit"
                         },
                         "ip_rate_limit": {
                             "type": "string",
-                            "pattern": "^\\d+\\/(s|m|h|d)$",
+                            "pattern": "^(\\d+)/((\\d+[smhd])|[smhd])$",
                             "description": "Per IP rate limit"
                         },
                         "key_rate_limit": {
                             "type": "string",
-                            "pattern": "^\\d+\\/(s|m|h|d)$",
+                            "pattern": "^(\\d+)/((\\d+[smhd])|[smhd])$",
                             "description": "Per key rate limit"
                         },
                         "rate_limit_paths": {
@@ -203,39 +203,6 @@
                             "type": "integer",
                             "description": "Request timeout",
                             "minimum": 1
-                        }
-                    },
-                    "additionalProperties": false
-                },
-                "simulated_streaming": {
-                    "type": "object",
-                    "properties": {
-                        "enabled": {
-                            "type": "boolean",
-                            "description": "Enable simulated streaming responses"
-                        },
-                        "delay_seconds": {
-                            "type": "number",
-                            "description": "Delay between chunks in seconds",
-                            "minimum": 0
-                        },
-                        "init_delay_seconds": {
-                            "type": "number",
-                            "description": "Initial delay before first chunk in seconds",
-                            "minimum": 0
-                        },
-                        "chunk_size_bytes": {
-                            "type": "integer",
-                            "description": "Size of each chunk in bytes",
-                            "minimum": 1
-                        },
-                        "apply_to": {
-                            "type": "array",
-                            "items": {
-                                "type": "string",
-                                "description": "Content types to apply simulated streaming to, e.g. 'application/json', 'text/plain'"
-                            },
-                            "uniqueItems": true
                         }
                     },
                     "additionalProperties": false
@@ -466,9 +433,6 @@
                         },
                         "timeouts": {
                             "$ref": "#/$defs/default_settings/properties/timeouts"
-                        },
-                        "simulated_streaming": {
-                            "$ref": "#/$defs/default_settings/properties/simulated_streaming"
                         },
                         "request_body_substitution": {
                             "$ref": "#/$defs/req_body_subst"

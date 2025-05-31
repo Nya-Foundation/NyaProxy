@@ -11,10 +11,11 @@ from typing import TYPE_CHECKING, List, Optional, Union
 
 import httpx
 import orjson
+from loguru import logger
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
 from ..common.exceptions import APIKeyExhaustedError
-from ..common.models import NyaRequest
+from ..common.models import ProxyRequest
 from ..utils.helper import (
     _mask_api_key,
     apply_body_substitutions,
@@ -38,7 +39,6 @@ class RequestExecutor:
         config: "ConfigManager",
         metrics_collector: Optional["MetricsCollector"] = None,
         key_manager: Optional["KeyManager"] = None,
-        logger: Optional[logging.Logger] = None,
     ):
         """
         Initialize the request executor.
@@ -47,10 +47,8 @@ class RequestExecutor:
             config: Configuration manager instance
             metrics_collector: Metrics collector (optional)
             key_manager: Key manager instance (optional)
-            logger: Logger instance (optional)
         """
         self.config = config
-        self.logger = logger or logging.getLogger(__name__)
         self.metrics_collector = metrics_collector
         self.key_manager = key_manager
         self.client = self._setup_client()
@@ -95,11 +93,11 @@ class RequestExecutor:
 
                 transport = AsyncProxyTransport.from_url(proxy_address)
                 client_kwargs["transport"] = transport
-                self.logger.info(f"Using SOCKS proxy: {proxy_address}")
+                logger.info(f"Using SOCKS proxy: {proxy_address}")
             else:
                 # For HTTP/HTTPS proxies
                 client_kwargs["proxies"] = proxy_address
-                self.logger.info(f"Using HTTP(S) proxy: {proxy_address}")
+                logger.info(f"Using HTTP(S) proxy: {proxy_address}")
 
         return httpx.AsyncClient(**client_kwargs)
 
@@ -133,13 +131,13 @@ class RequestExecutor:
         )
 
     async def execute_request(
-        self, r: NyaRequest
+        self, r: ProxyRequest
     ) -> Union[Response, JSONResponse, StreamingResponse]:
         """
         Execute a single request to the target API.
 
         Args:
-            r: NyaRequest object with request details
+            r: ProxyRequest object with request details
 
         Returns:
             Response object from the HTTPX client, which can be a JSONResponse,
@@ -149,7 +147,7 @@ class RequestExecutor:
         key_id = _mask_api_key(r.api_key)
         start_time = time.time()
 
-        self.logger.debug(
+        logger.debug(
             f"Executing request to {r.url} with key_id {key_id} (attempt {r._attempts})"
         )
 
@@ -196,13 +194,13 @@ class RequestExecutor:
             )
 
     async def _execute_http_request(
-        self, r: NyaRequest, timeout: httpx.Timeout
+        self, r: ProxyRequest, timeout: httpx.Timeout
     ) -> httpx.Response:
         """
         Execute the actual HTTP request with proper error handling.
 
         Args:
-            r: NyaRequest object
+            r: ProxyRequest object
             timeout: httpx.Timeout object
 
         Returns:
@@ -212,8 +210,8 @@ class RequestExecutor:
             Various httpx exceptions if request fails
         """
         # Log request details at debug level
-        self.logger.debug(f"Request Content:\n{json_safe_dumps(r.content)}")
-        self.logger.debug(f"Request Headers:\n{json_safe_dumps(r.headers)}")
+        logger.debug(f"Request Content:\n{json_safe_dumps(r.content)}")
+        logger.debug(f"Request Headers:\n{json_safe_dumps(r.headers)}")
 
         # Send the request and handle stream-specific errors
         stream = self.client.stream(
@@ -229,25 +227,22 @@ class RequestExecutor:
 
         return httpx_response
 
-    def _preprocess_request_body(self, r: NyaRequest) -> None:
+    def _preprocess_request_body(self, r: ProxyRequest) -> None:
         """
         Preprocess the request body, applying substitutions and streaming settings.
 
         Args:
-            r: NyaRequest object
+            r: ProxyRequest object
         """
         # Apply request body substitutions
         self._apply_body_substitutions(r)
 
-        # Patch simulated streaming if needed
-        self._patch_simulated_streaming(r)
-
-    def _apply_body_substitutions(self, r: NyaRequest) -> None:
+    def _apply_body_substitutions(self, r: ProxyRequest) -> None:
         """
         Apply configured body substitutions to the request.
 
         Args:
-            r: NyaRequest object
+            r: ProxyRequest object
         """
         content_type = r.headers.get("content-type", "").lower()
 
@@ -261,50 +256,13 @@ class RequestExecutor:
                     r.content, r._config.subst_rules
                 )
                 r.content = orjson.dumps(modified_content)
-                self.logger.debug(f"Request body substitutions applied successfully")
+                logger.debug(f"Request body substitutions applied successfully")
             except Exception as e:
-                self.logger.warning(f"Error applying body substitutions: {str(e)}")
-
-    def _patch_simulated_streaming(self, r: NyaRequest) -> None:
-        """
-        Patch the request body for simulated streaming (mostly for OpenAI compatibility).
-
-        Args:
-            r: NyaRequest object
-        """
-        content_type = r.headers.get("content-type", "").lower()
-
-        if "application/json" not in content_type:
-            return
-
-        # Apply simulated streaming rules
-        if r._config.simulated_stream_enabled and r._config.apply_to:
-            if not any(ct in content_type for ct in r._config.apply_to):
-                return
-
-            try:
-                if isinstance(r.content, bytes):
-                    data = orjson.loads(r.content)
-                    if "stream" not in data or data["stream"] is not True:
-                        return
-
-                    # Mark the original request as streaming
-                    r._is_streaming = True
-
-                    # Patch the request body to disable streaming on the API side
-                    del data["stream"]
-                    r.content = orjson.dumps(data)
-                    self.logger.debug(
-                        "Simulated streaming patch applied to request body"
-                    )
-            except (orjson.JSONDecodeError, TypeError) as e:
-                self.logger.debug(
-                    f"Could not parse request body as JSON for stream simulation: {str(e)}"
-                )
+                logger.warning(f"Error applying body substitutions: {str(e)}")
 
     def _create_error_response(
         self,
-        request: NyaRequest,
+        request: ProxyRequest,
         error: Exception,
         error_type: str,
         status_code: int,
@@ -315,7 +273,7 @@ class RequestExecutor:
         Create a standardized error response.
 
         Args:
-            request: NyaRequest object
+            request: ProxyRequest object
             error: Exception that occurred
             error_type: Type of error (connection, timeout, etc.)
             status_code: HTTP status code to return
@@ -332,15 +290,15 @@ class RequestExecutor:
             error_msg = (
                 str(error) if str(error) else "Connection closed while reading response"
             )
-            self.logger.error(
+            logger.error(
                 f"{error_type.capitalize()} to {request.url}: {error_msg} after {format_elapsed_time(elapsed)}"
             )
         else:
-            self.logger.error(
+            logger.error(
                 f"{error_type.capitalize()} to {request.url}: {str(error)} after {format_elapsed_time(elapsed)}"
             )
 
-        self.logger.debug(traceback.format_exc())
+        logger.debug(traceback.format_exc())
 
         # Record error metrics if available
         if (
@@ -364,7 +322,7 @@ class RequestExecutor:
 
     async def execute_with_retry(
         self,
-        r: NyaRequest,
+        r: ProxyRequest,
         max_attempts: int = 3,
         retry_delay: float = 10.0,
     ) -> Union[Response, JSONResponse, StreamingResponse]:
@@ -372,7 +330,7 @@ class RequestExecutor:
         Execute a request with retry logic based on configured strategy.
 
         Args:
-            r: NyaRequest object with request details
+            r: ProxyRequest object with request details
             max_attempts: Maximum number of retry attempts
             retry_delay: Base delay in seconds between retries
 
@@ -381,7 +339,7 @@ class RequestExecutor:
         """
         # Skip retry logic if method is not configured for retries
         if not self._validate_retry_request_methods(r.api_name, r.method):
-            self.logger.debug(
+            logger.debug(
                 f"Skipping retry logic for {r.api_name}, {r.method} was not configured for retries."
             )
             return await self.execute_request(r)
@@ -408,7 +366,7 @@ class RequestExecutor:
 
             # Check if the request succeeded or should be retried
             if res and 200 <= res.status_code < 300:
-                self.logger.info(
+                logger.debug(
                     f"Request to {r.api_name} succeeded on attempt {attempt} with status {res.status_code}"
                 )
                 break
@@ -419,7 +377,7 @@ class RequestExecutor:
 
             # If this was the last attempt, don't wait
             if attempt >= max_attempts:
-                self.logger.warning(
+                logger.warning(
                     f"Max retry attempts ({max_attempts}) reached for {r.api_name}"
                 )
                 break
@@ -435,7 +393,7 @@ class RequestExecutor:
                     r.api_name, r.api_key, next_delay
                 )
 
-            self.logger.info(
+            logger.info(
                 f"Retrying request to {r.api_name} in {next_delay:.1f}s "
                 f"(attempt {attempt}/{max_attempts}, status {res.status_code if res else 'no response'})"
             )
@@ -446,12 +404,12 @@ class RequestExecutor:
 
         return res
 
-    async def _rotate_api_key(self, r: NyaRequest) -> None:
+    async def _rotate_api_key(self, r: ProxyRequest) -> None:
         """
         Rotate the API key for a request during retry.
 
         Args:
-            r: NyaRequest object
+            r: ProxyRequest object
 
         Returns:
             None - the request object is updated in place
@@ -463,12 +421,12 @@ class RequestExecutor:
             key = await self.key_manager.get_available_key(
                 r.api_name, r._apply_rate_limit
             )
-            self.logger.info(
+            logger.info(
                 f"Rotating API key for {r.api_name} from {_mask_api_key(r.api_key)} to {_mask_api_key(key)}"
             )
             r.api_key = key
         except APIKeyExhaustedError as e:
-            self.logger.error(
+            logger.error(
                 f"API key exhausted for {r.api_name}, will use the same key for this attempt: {str(e)}"
             )
 
@@ -581,5 +539,5 @@ class RequestExecutor:
                 delta = retry_date - datetime.now(retry_date.tzinfo)
                 return max(0.1, delta.total_seconds())
             except Exception:
-                self.logger.debug(f"Could not parse Retry-After header: {retry_after}")
+                logger.debug(f"Could not parse Retry-After header: {retry_after}")
                 return None

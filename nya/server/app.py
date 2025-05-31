@@ -6,9 +6,11 @@ import argparse
 import contextlib
 import logging
 import os
+import sys
 
 import uvicorn
 from fastapi import FastAPI, Request, Response
+from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
@@ -19,14 +21,17 @@ from ..common.constants import (
     DEFAULT_HOST,
     DEFAULT_PORT,
     DEFAULT_SCHEMA_NAME,
+    WATCH_FILE,
 )
-from ..common.logger import getLogger
-from ..common.models import NyaRequest
+from ..common.models import ProxyRequest
 from ..config.manager import ConfigManager
 from ..core.factory import ServiceFactory
 from ..core.proxy import NyaProxyCore
 from ..dashboard.api import DashboardAPI
 from .auth import AuthManager, AuthMiddleware
+
+logger.remove()
+logger.add(sys.stderr, level="INFO")
 
 
 class RootPathMiddleware(BaseHTTPMiddleware):
@@ -47,7 +52,6 @@ class NyaProxyApp:
 
         # Initialize instance variables
         self.config: ConfigManager = None
-        self.logger: logging.Logger = None
 
         self._init_config(config_path=config_path, schema_path=schema_path)
         self.auth = AuthManager()
@@ -66,18 +70,15 @@ class NyaProxyApp:
         schema_path = schema_path or os.environ.get("SCHEMA_PATH")
         remote_url = os.environ.get("CONFIG_REMOTE_URL")
         remote_api_key = os.environ.get("CONFIG_REMOTE_API_KEY")
-
-        # if not config_path:
-        #     raise ValueError("Configuration path is required")
-
-        # if not schema_path:
-        #     raise ValueError("Schema path is required")
+        remote_app_name = os.environ.get("CONFIG_REMOTE_APP_NAME")
 
         config = ConfigManager(
             config_path=config_path,
             schema_path=schema_path,
             remote_url=remote_url or None,
             remote_api_key=remote_api_key or None,
+            remote_app_name=remote_app_name or None,
+            callback=trigger_reload,
         )
         if not config:
             raise RuntimeError("Failed to initialize config manager")
@@ -87,7 +88,6 @@ class NyaProxyApp:
         """Initialize the authentication manager"""
         auth = AuthManager(
             config=self.config,
-            logger=self.logger,
         )
         if not auth:
             raise RuntimeError("Failed to initialize auth manager")
@@ -98,6 +98,7 @@ class NyaProxyApp:
         app = FastAPI(
             title="NyaProxy",
             description="A simple low-level API proxy with dynamic token rotation and load balancing",
+            lifespan=self.lifespan,
             version=__version__,
         )
 
@@ -124,18 +125,19 @@ class NyaProxyApp:
         app.add_middleware(AuthMiddleware, auth=self.auth)
 
         # Set up basic routes
-        self._setup_routes(app)
+        self.setup_routes(app)
 
         return app
 
     @contextlib.asynccontextmanager
     async def lifespan(self, app):
         """Lifespan context manager for FastAPI"""
+        logger.info("Starting NyaProxy...")
         await self.init_nya_services()
         yield
         await self.shutdown()
 
-    def _setup_routes(self, app):
+    def setup_routes(self, app):
         """Set up FastAPI routes"""
 
         @app.get("/", include_in_schema=False)
@@ -169,53 +171,58 @@ class NyaProxyApp:
                 content={"error": "Proxy service is starting up or unavailable"},
             )
 
-        req = await NyaRequest.from_request(request)
+        req = await ProxyRequest.from_request(request)
         return await self.core.handle_request(req)
 
     async def init_nya_services(self):
         """Initialize services for NyaProxy"""
         try:
 
-            self._init_logging()
+            self.init_logging()
             # Create FastAPI app with middleware pre-configured
 
-            self._init_factory()
+            self.init_factory()
 
-            self._init_core()
+            self.init_core()
             # Mount sub-applications for NyaProxy if available
-            self._init_config_server()
+            self.init_config_ui()
 
             # Initialize dashboard if enabled
-            self._init_dashboard()
+            self.init_dashboard()
             # Initialize proxy routes last to act as a catch-all
-            self._setup_proxy_routes()
+            self.setup_proxy_routes()
 
         except Exception as e:
-            self.logger.error(f"Error during startup: {str(e)}")
+            logger.error(f"Error during startup: {str(e)}")
             raise
 
-    def _init_logging(self) -> None:
+    def init_logging(self) -> None:
         """Initialize logging."""
         log_config = self.config.get_logging_config()
-        logger = getLogger(name=__name__, log_config=log_config)
-        logger.info(f"Logging initialized with level {log_config.get('level', 'INFO')}")
+        logger.remove()  # Remove default logger
+        logger.add(
+            sys.stderr,
+            level=log_config.get("level", "INFO").upper(),
+        )
+        logger.add(
+            log_config.get("log_file", "app.log"),
+            level=log_config.get("level", "INFO").upper(),
+        )
 
-        self.logger = logger or logging.getLogger(__name__)
-
-    def _init_factory(self) -> ServiceFactory:
+    def init_factory(self) -> ServiceFactory:
         """Initialize service factory."""
-        factory = ServiceFactory(config_manager=self.config, logger=self.logger)
-        self.logger.info("Service factory initialized")
+        factory = ServiceFactory(config_manager=self.config)
+        logger.info("Service factory initialized")
         self.factory = factory
 
-    def _init_core(self) -> NyaProxyCore:
+    def init_core(self) -> NyaProxyCore:
         """Initialize the core proxy handler."""
         if not self.config:
             raise RuntimeError(
                 "Config manager must be initialized before proxy handler"
             )
 
-        if not self.logger:
+        if not logger:
             logging.warning(
                 "Logger not initialized, proxy handler will use default logging"
             )
@@ -224,30 +231,26 @@ class NyaProxyApp:
             raise RuntimeError("Service factory must be initialized before core")
 
         # Use the service factory to create the core
-        core = NyaProxyCore(
-            logger=self.logger, config=self.config, factory=self.factory
-        )
-        self.logger.info("Proxy handler initialized")
+        core = NyaProxyCore(config=self.config, factory=self.factory)
+        logger.info("Proxy handler initialized")
         self.core = core
 
-    def _init_config_server(self):
+    def init_config_ui(self):
         """Initialize and mount configuration web server if available."""
         if not self.config:
-            self.logger.warning(
-                "Config manager not initialized, config server disabled"
-            )
+            logger.warning("Config manager not initialized, config server disabled")
             return False
 
         if not hasattr(self.config, "server") or not hasattr(self.config.server, "app"):
-            self.logger.warning("Configuration web server not available")
+            logger.warning("Configuration web server not available")
             return False
 
-        host = os.environ.get("NYA_SERVER_HOST") or self.config.get_host()
-        port = os.environ.get("NYA_SERVER_PORT") or self.config.get_port()
+        host = os.environ.get("SERVER_HOST") or self.config.get_host()
+        port = os.environ.get("SERVER_PORT") or self.config.get_port()
         remote_url = os.environ.get("CONFIG_REMOTE_URL")
 
         if remote_url:
-            self.logger.info(
+            logger.info(
                 "Configuration web server disabled since remote config url is set"
             )
             return False
@@ -261,27 +264,24 @@ class NyaProxyApp:
         # Mount the config server app
         self.app.mount("/config", config_app, name="config_app")
 
-        self.logger.info(
-            f"Configuration web server mounted at http://{host}:{port}/config"
-        )
+        logger.info(f"Configuration web server mounted at http://{host}:{port}/config")
         return True
 
-    def _init_dashboard(self):
+    def init_dashboard(self):
         """Initialize and mount dashboard if enabled."""
         if not self.config:
-            self.logger.warning("Config manager not initialized, dashboard disabled")
+            logger.warning("Config manager not initialized, dashboard disabled")
             return False
 
         if not self.config.get_dashboard_enabled():
-            self.logger.info("Dashboard disabled in configuration")
+            logger.info("Dashboard disabled in configuration")
             return False
 
-        host = os.environ.get("NYA_SERVER_HOST") or self.config.get_host()
-        port = os.environ.get("NYA_SERVER_PORT") or self.config.get_port()
+        host = os.environ.get("SERVER_HOST") or self.config.get_host()
+        port = os.environ.get("SERVER_PORT") or self.config.get_port()
 
         try:
             self.dashboard = DashboardAPI(
-                logger=self.logger,
                 port=port,
                 enable_control=True,
             )
@@ -300,18 +300,18 @@ class NyaProxyApp:
             # Mount the dashboard app
             self.app.mount("/dashboard", dashboard_app, name="dashboard_app")
 
-            self.logger.info(f"Dashboard mounted at http://{host}:{port}/dashboard")
+            logger.info(f"Dashboard mounted at http://{host}:{port}/dashboard")
             return True
 
         except Exception as e:
             error_msg = f"Failed to initialize dashboard: {str(e)}"
-            self.logger.error(error_msg)
+            logger.error(error_msg)
             raise RuntimeError(error_msg)
 
-    def _setup_proxy_routes(self):
+    def setup_proxy_routes(self):
         """Set up routes for proxying requests"""
-        if self.logger:
-            self.logger.info("Setting up generic proxy routes")
+        if logger:
+            logger.info("Setting up generic proxy routes")
 
         @self.app.get("/api/{path:path}", name="proxy_get")
         async def proxy_get_request(request: Request):
@@ -345,7 +345,7 @@ class NyaProxyApp:
                 "access-control-request-headers", "Content-Type, Authorization"
             )
 
-            self.logger.debug(
+            logger.debug(
                 f"Handling CORS preflight request from {origin} with headers {request.headers}"
             )
 
@@ -362,7 +362,7 @@ class NyaProxyApp:
 
     async def shutdown(self):
         """Clean up resources on shutdown."""
-        self.logger.info("Shutting down NyaProxy")
+        logger.info("Shutting down NyaProxy")
 
         # Close proxy handler client
         if self.core and hasattr(self.core, "request_executor"):
@@ -392,6 +392,13 @@ def parse_args():
     )
 
     parser.add_argument(
+        "--remote-app-name",
+        "-a",
+        type=str,
+        help="Name of the remote application for config [optional]",
+    )
+
+    parser.add_argument(
         "--version", action="version", version=f"NyaProxy {__version__}"
     )
     return parser.parse_args()
@@ -399,11 +406,19 @@ def parse_args():
 
 def create_app():
     """Create the FastAPI application with the NyaProxy app"""
-
     nya_proxy_app = NyaProxyApp()
-    app = nya_proxy_app.app
-    app.router.lifespan_context = nya_proxy_app.lifespan
-    return app
+    return nya_proxy_app.app
+
+
+def trigger_reload(**kwargs):
+    """Trigger a reload of the application."""
+    logger.info("[Info] Configuration changed, triggering reload...")
+    if os.path.exists(WATCH_FILE):
+        with open(WATCH_FILE, "a") as f:
+            f.write("\n")  # Append a newline to trigger reload
+    else:
+        with open(WATCH_FILE, "w") as f:
+            f.write("Reload triggered\n")  # Create the file if it doesn't exist
 
 
 def main():
@@ -412,85 +427,76 @@ def main():
 
     # Priority order for configuration:
     # 1. Command line arguments (--host, --port, --config)
-    # 2. Environment variables (CONFIG_PATH, NYA_SERVER_HOST, NYA_SERVER_PORT)
+    # 2. Environment variables (CONFIG_PATH, SERVER_HOST, SERVER_PORT)
     # 3. Configuration file (DEFAULT_CONFIG_PATH)
     # 4. Default values (DEFAULT_HOST, DEFAULT_PORT)
 
-    config_path_abs = args.config or os.environ.get("CONFIG_PATH")
-    host = args.host or os.environ.get("NYA_SERVER_HOST")
-    port = args.port or os.environ.get("NYA_SERVER_PORT")
+    config_path = args.config or os.environ.get("CONFIG_PATH")
+    host = args.host or os.environ.get("SERVER_HOST")
+    port = args.port or os.environ.get("SERVER_PORT")
     remote_url = args.remote_url or os.environ.get("CONFIG_REMOTE_URL")
     remote_api_key = args.remote_api_key or os.environ.get("CONFIG_REMOTE_API_KEY")
+    remote_app_name = args.remote_app_name or os.environ.get("CONFIG_REMOTE_APP_NAME")
     schema_path = None
 
     import importlib.resources as pkg_resources
 
     import nya
 
-    if not config_path_abs or not os.path.exists(config_path_abs):
-        # Create copies of the default config and schema in current directory
+    with pkg_resources.path(nya, DEFAULT_SCHEMA_NAME) as default_schema:
+        schema_path = str(default_schema)
 
+    # Create copy of the default config to the current directory
+    if (not config_path or not os.path.exists(config_path)) and not remote_url:
         cwd = os.getcwd()
-        config_path_abs = os.path.join(cwd, DEFAULT_CONFIG_NAME)
+        config_path = os.path.join(cwd, DEFAULT_CONFIG_NAME)
 
         # if config file does not exist, copy the default config from package resources to current directory
-        if not os.path.exists(config_path_abs):
+        if not os.path.exists(config_path):
             import shutil
 
             # Import the nya module to access the default config file
             with pkg_resources.path(nya, DEFAULT_CONFIG_NAME) as default_config:
-                shutil.copy(default_config, config_path_abs)
-            print(
-                f"[Warning] No config file provided, create default configuration at {config_path_abs}"
+                shutil.copy(default_config, config_path)
+            logger.warning(
+                f"No config file provided, create default configuration at {config_path}"
             )
 
-    with pkg_resources.path(nya, DEFAULT_SCHEMA_NAME) as default_schema:
-        schema_path = str(default_schema)
-
-    config_path_rel = os.path.relpath(config_path_abs, os.getcwd())
-
-    # load the config manager to get the host and port
-    if port is None or host is None:
+    # load the port and host from local config if not provided
+    if (port is None or host is None) and not remote_url:
         config = ConfigManager(
-            config_path=config_path_abs,
+            config_path=config_path,
             schema_path=schema_path,
-            remote_url=remote_url,
-            remote_api_key=remote_api_key,
         )
-
         host = config.get_host() or DEFAULT_HOST
         port = config.get_port() or DEFAULT_PORT
 
-    os.environ["CONFIG_PATH"] = config_path_abs
-    os.environ["SCHEMA_PATH"] = schema_path
-    os.environ["NYA_SERVER_HOST"] = host
-    os.environ["NYA_SERVER_PORT"] = str(port)
+    if not host:
+        host = DEFAULT_HOST
+    if not port:
+        port = DEFAULT_PORT
 
+    os.environ["SCHEMA_PATH"] = schema_path
+    os.environ["SERVER_HOST"] = host
+    os.environ["SERVER_PORT"] = str(port)
+
+    if config_path:
+        os.environ["CONFIG_PATH"] = config_path
     if remote_url:
         os.environ["CONFIG_REMOTE_URL"] = remote_url
     if remote_api_key:
         os.environ["CONFIG_REMOTE_API_KEY"] = remote_api_key
+    if remote_app_name:
+        os.environ["CONFIG_REMOTE_APP_NAME"] = remote_app_name
 
-    log_config = {
-        "version": 1,
-        "disable_existing_loggers": False,
-        "loggers": {
-            "uvicorn": {"level": "INFO", "propagate": True},
-            "uvicorn.access": {"level": "INFO", "propagate": True},
-            "uvicorn.error": {"level": "INFO", "propagate": True},
-        },
-    }
-
-    # Run the server
     uvicorn.run(
         "nya.server.app:create_app",
         host=host,
         port=int(port),
         reload=True,
-        reload_includes=[config_path_rel],  # Reload on config changes
+        reload_includes=[WATCH_FILE],  # Reload on config changes
         timeout_keep_alive=15,
         limit_concurrency=1000,
-        log_config=log_config,
     )
 
 

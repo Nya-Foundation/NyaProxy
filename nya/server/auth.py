@@ -4,11 +4,11 @@ Provides authentication mechanisms and middleware.
 """
 
 import importlib.resources
-import logging
 from typing import Optional
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import APIKeyHeader
+from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import HTMLResponse, JSONResponse
 
@@ -170,10 +170,9 @@ class AuthManager:
 class AuthMiddleware(BaseHTTPMiddleware):
     """Authentication middleware for FastAPI applications"""
 
-    def __init__(self, app, auth: AuthManager, logger: Optional[logging.Logger] = None):
+    def __init__(self, app, auth: AuthManager):
         super().__init__(app)
         self.auth = auth
-        self.logger = logger or logging.getLogger(__name__)
 
     async def dispatch(self, request: Request, call_next):
 

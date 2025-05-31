@@ -169,7 +169,9 @@ cython_debug/
 #.idea/
 
 .metrics/
-.config.yaml
 .build.sh
 .toDo.md
 .clean.py
+
+watch_file.txt
+config.yaml

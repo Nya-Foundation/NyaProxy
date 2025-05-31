@@ -6,6 +6,8 @@ import logging
 import random
 from typing import Callable, List, Optional, TypeVar
 
+from loguru import logger
+
 from ..common.constants import MAX_QUEUE_SIZE
 
 T = TypeVar("T")
@@ -36,7 +38,6 @@ class LoadBalancer:
         self,
         values: List[str],
         strategy: str = "round_robin",
-        logger: Optional[logging.Logger] = None,
     ):
         """
         Initialize the load balancer.
@@ -46,7 +47,6 @@ class LoadBalancer:
             strategy: Load balancing strategy to use
             logger: Logger instance
         """
-        self.logger = logger or logging.getLogger(__name__)
         self.values = values or [""]  # Ensure we always have at least an empty value
         self.strategy_name = strategy.lower()
 
@@ -56,12 +56,6 @@ class LoadBalancer:
         self.weights = [1] * len(self.values)  # Default to equal weights
         self.current_index = 0  # Used for round_robin strategy
 
-        # Log initialization
-        self.logger.debug(
-            f"Initialized load balancer with {len(self.values)} values "
-            f"using '{self.strategy_name}' strategy"
-        )
-
     def get_next(self) -> str:
         """
         Get the next value based on the selected load balancing strategy.
@@ -70,7 +64,7 @@ class LoadBalancer:
             The selected value
         """
         if not self.values:
-            self.logger.warning("No values available for load balancing")
+            logger.warning("No values available for load balancing")
             return ""
 
         # Select strategy function
@@ -97,7 +91,7 @@ class LoadBalancer:
         }
 
         if self.strategy_name not in strategies:
-            self.logger.warning(
+            logger.warning(
                 f"Unknown strategy '{self.strategy_name}', using round_robin instead"
             )
             return self._round_robin_select
@@ -186,7 +180,7 @@ class LoadBalancer:
             )
 
         self.weights = weights
-        self.logger.debug(f"Set weights: {weights}")
+        logger.debug(f"Set weights: {weights}")
 
     def record_request_count(self, value: str, active: bool = True) -> None:
         """

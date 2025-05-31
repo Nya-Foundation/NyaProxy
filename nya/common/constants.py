@@ -28,7 +28,21 @@ EXCLUDED_REQUEST_HEADERS = {
     "x-forwarded-port",
     "x-forwarded-server",
     "x-real-ip",
+    # Cloudflare headers
+    "cf-connecting-ip",
+    "cf-connecting-ipv6",
+    "cf-ew-via",
+    "cf-pseudo-ipv4",
+    "true-client-ip",
+    "cf-ray",
+    "cf-ipcountry",
+    "cf-visitor",
+    "cdn-loop",
+    "cf-worker",
 }
 
 # Metrics
 MAX_QUEUE_SIZE = 200
+
+
+WATCH_FILE = "watch_file.txt"
