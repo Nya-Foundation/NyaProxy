@@ -1,6 +1,5 @@
-from .manager import ConfigError, ConfigManager
+from .manager import ConfigManager
 
 __all__ = [
     "ConfigManager",
-    "ConfigError",
 ]

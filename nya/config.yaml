@@ -40,13 +40,7 @@ default_settings:
     retry_status_codes: [ 429, 500, 502, 503, 504 ]
   timeouts:
     request_timeout_seconds: 300
-  # Simulated streaming settings
-  simulated_streaming:
-    enabled: false
-    delay_seconds: 0.2 # Delay between chunks in seconds
-    init_delay_seconds: 0.5 # Initial delay before starting streaming in seconds
-    chunk_size_bytes: 256 # Size of each chunk in bytes
-    apply_to: ["application/json", "application/xml", "text/plain", "image/png", "image/jpeg"] # Response content types to apply simulated streaming to
+
   # Request body substitution settings
   request_body_substitution:
     enabled: false
@@ -100,7 +94,7 @@ apis:
 
   test:
     name: Test API
-    endpoint: http://127.0.0.1:8000
+    endpoint: http://127.0.0.1:8082
     key_variable: keys
     headers:
       Authorization: 'Bearer ${{keys}}'
@@ -117,6 +111,6 @@ apis:
     load_balancing_strategy: least_requests
     rate_limit:
       endpoint_rate_limit: 20/m
-      key_rate_limit: 10/m
+      key_rate_limit: 1/10s
       rate_limit_paths:
         - "/v1/*"

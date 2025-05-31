@@ -185,15 +185,6 @@ class TestHeaderUtils:
         assert result4["x-bool-true"] == "True"
         assert result4["x-bool-false"] == "False"
 
-    def test_missing_variable_logs_warning(self, mocker):
-        mock_logger = mocker.Mock()
-        HeaderUtils._LOGGER = mock_logger
-        template = "Bearer ${{missing}}"
-        values = {}
-        result = HeaderUtils._substitute_variables(template, values)
-        assert result == "Bearer ${{missing}}"
-        assert mock_logger.warning.called
-
     def test_process_headers_handles_excluded_headers_correctly(self, mocker):
         """Test that excluded headers are properly handled by _process_headers"""
         # Mock the excluded_headers list to ensure predictable behavior

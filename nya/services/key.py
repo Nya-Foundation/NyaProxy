@@ -7,6 +7,8 @@ import logging
 import time
 from typing import Dict, Optional, Tuple
 
+from loguru import logger
+
 from ..common.exceptions import APIKeyExhaustedError, VariablesConfigurationError
 from .lb import LoadBalancer
 from .limit import RateLimiter
@@ -24,7 +26,6 @@ class KeyManager:
         self,
         load_balancers: Dict[str, LoadBalancer],
         rate_limiters: Dict[str, RateLimiter],
-        logger: Optional[logging.Logger] = None,
     ):
         """
         Initialize the key manager.
@@ -32,11 +33,9 @@ class KeyManager:
         Args:
             load_balancers: Dictionary of API key load balancers
             rate_limiters: Dictionary of API key rate limiters {api_}
-            logger: Logger instance
         """
         self.load_balancers = load_balancers
         self.rate_limiters = rate_limiters
-        self.logger = logger or logging.getLogger(__name__)
 
         # Lock to prevent race conditions in key selection
         self.lock = asyncio.Lock()
@@ -142,7 +141,7 @@ class KeyManager:
             # Get all keys from the load balancer
             all_keys = set(key_lb.values)
             if not all_keys:
-                self.logger.error(f"No API keys configured for {api_name}")
+                logger.error(f"No API keys configured for {api_name}")
                 raise APIKeyExhaustedError(f"No API keys configured for {api_name}")
 
             # Find a non-rate-limited key
@@ -155,7 +154,7 @@ class KeyManager:
                     return key
 
             # If we've tried all keys and none are available, raise exception
-            self.logger.warning(
+            logger.warning(
                 f"All API keys for {api_name} are exhausted or rate limited"
             )
             raise APIKeyExhaustedError(api_name)
@@ -172,7 +171,7 @@ class KeyManager:
             if name.startswith(f"{api_name}_") and name != f"{api_name}_endpoint":
                 # Reset the key limiter
                 limiter.reset()
-                self.logger.info(f"Reset rate limit for key {name}")
+                logger.info(f"Reset rate limit for key {name}")
 
     async def get_api_rate_limit_reset(
         self, api_name: str, default: float = 1.0
@@ -242,14 +241,14 @@ class KeyManager:
         key_limiter = self.get_key_rate_limiter(api_name, key)
 
         if not key_limiter:
-            self.logger.warning(
+            logger.warning(
                 f"Cannot mark key {key[:4]}... for {api_name} as rate limited: no rate limiter found"
             )
             return
 
         key_limiter.mark_rate_limited(reset_time)
 
-        self.logger.info(
+        logger.info(
             f"Manually marked key {key[:4]}... for {api_name} as rate limited for {reset_time:.1f}s"
         )
 
@@ -271,10 +270,10 @@ class KeyManager:
                 if name.startswith(f"{api_name}_") and name != f"{api_name}_endpoint":
                     limiter.reset()
 
-            self.logger.info(f"Reset rate limits for {api_name}")
+            logger.info(f"Reset rate limits for {api_name}")
         else:
             # Reset all limiters
             for _, limiter in self.rate_limiters.items():
                 limiter.reset()
 
-            self.logger.info("Reset all rate limits")
+            logger.info("Reset all rate limits")

@@ -2,19 +2,19 @@
 Response processing utilities for NyaProxy.
 """
 
-import logging
 import time
-from typing import TYPE_CHECKING, Any, Dict, Optional, Union
+from typing import TYPE_CHECKING, Dict, Optional, Union
 
 import httpx
 from fastapi import Response
+from loguru import logger
 from starlette.responses import JSONResponse, StreamingResponse
 
 from ..utils.helper import decode_content, json_safe_dumps
 from .streaming import StreamingHandler
 
 if TYPE_CHECKING:
-    from ..common.models import NyaRequest
+    from ..common.models import ProxyRequest
     from ..services.lb import LoadBalancer
     from ..services.metrics import MetricsCollector
 
@@ -28,7 +28,6 @@ class ResponseProcessor:
         self,
         metrics_collector: Optional["MetricsCollector"] = None,
         load_balancer: Optional[Dict[str, "LoadBalancer"]] = {},
-        logger: Optional[logging.Logger] = None,
     ):
         """
         Initialize the response processor.
@@ -36,11 +35,10 @@ class ResponseProcessor:
         Args:
             logger: Logger instance
         """
-        self.logger = logger or logging.getLogger(__name__)
 
         self.metrics_collector = metrics_collector
         self.load_balancer = load_balancer
-        self.streaming_handler = StreamingHandler(logger=self.logger)
+        self.streaming_handler = StreamingHandler()
 
     def record_lb_stats(self, api_name: str, api_key: str, elapsed: float) -> None:
         """
@@ -59,14 +57,14 @@ class ResponseProcessor:
 
     def record_response_metrics(
         self,
-        r: "NyaRequest",
+        r: "ProxyRequest",
         response: Optional[httpx.Response],
         start_time: float = 0.0,
     ) -> None:
         """
         Record response metrics for the API.
         Args:
-            r: NyaRequest object containing request data
+            r: ProxyRequest object containing request data
             response: Response from httpx client
             start_time: Request start time
         """
@@ -81,7 +79,7 @@ class ResponseProcessor:
         response_time = now - start_time
         status_code = response.status_code if response else 502
 
-        self.logger.debug(
+        logger.debug(
             f"Received response from {api_name} with status {status_code} in {elapsed:.2f}s"
         )
 
@@ -94,7 +92,7 @@ class ResponseProcessor:
 
     async def process_response(
         self,
-        r: "NyaRequest",
+        r: "ProxyRequest",
         httpx_response: Optional[httpx.Response],
         start_time: float,
         original_host: str = "",
@@ -103,7 +101,7 @@ class ResponseProcessor:
         Process an API response.
 
         Args:
-            request: NyaRequest object containing request data
+            request: ProxyRequest object containing request data
             httpx_response: Response from httpx client
             start_time: Request start time
             original_host: Original host for HTML responses
@@ -132,10 +130,8 @@ class ResponseProcessor:
         # Determine the response content type
         content_type = httpx_response.headers.get("content-type", "application/json")
 
-        self.logger.debug(f"Response status code: {httpx_response.status_code}")
-        self.logger.debug(
-            f"Response Headers\n: {json_safe_dumps(dict(headers.items()))}"
-        )
+        logger.debug(f"Response status code: {httpx_response.status_code}")
+        logger.debug(f"Response Headers\n: {json_safe_dumps(dict(headers.items()))}")
 
         # Check if it's streaming based on headers
         is_streaming = self.streaming_handler.detect_streaming_content(
@@ -148,7 +144,7 @@ class ResponseProcessor:
                 httpx_response
             )
 
-        # If non-streaming reeponses
+        # If non-streaming responses
         content_chunks = []
 
         async for chunk in httpx_response.aiter_bytes():
@@ -157,20 +153,7 @@ class ResponseProcessor:
 
         httpx_response._content = raw_content  # Store raw content in httpx response
 
-        # Handle simulated streaming, if all the following conditions are met:
-        # - simulated streaming enabled
-        # - user requested it as streaming
-        # - content type matches
-        if (
-            r._is_streaming
-            and r._config.simulated_stream_enabled
-            and content_type in r._config.apply_to
-        ):
-            return await self.streaming_handler.handle_simulated_streaming(
-                r, httpx_response
-            )
-
-        # Get content-encode from upstream api, decode content if encoded
+        # Get content-encoding from upstream api, decode content if encoded
         content_encoding = headers.get("content-encoding", "")
         raw_content = decode_content(raw_content, content_encoding)
 
@@ -184,7 +167,7 @@ class ResponseProcessor:
             raw_content = self.add_base_tag(raw_content, original_host)
             raw_content = raw_content.encode("utf-8")
 
-        self.logger.debug(f"Response Content: {json_safe_dumps(raw_content)}")
+        logger.debug(f"Response Content: {json_safe_dumps(raw_content)}")
 
         return Response(
             content=raw_content,

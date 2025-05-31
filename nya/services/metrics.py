@@ -2,10 +2,11 @@
 Metrics collection for monitoring API usage.
 """
 
-import logging
 import time
 from collections import deque
 from typing import Any, Dict, List, Optional
+
+from loguru import logger
 
 from ..common.constants import MAX_QUEUE_SIZE
 from ..utils.helper import _mask_api_key
@@ -20,14 +21,15 @@ class MetricsCollector:
     across different APIs and keys.
     """
 
-    def __init__(self, logger: Optional[logging.Logger] = None):
+    def __init__(
+        self,
+    ):
         """
         Initialize the metrics collector.
 
         Args:
             logger: Logger instance
         """
-        self.logger = logger or logging.getLogger(__name__)
         self.last_reset = time.time()
 
         # Initialize request history tracking
@@ -452,7 +454,7 @@ class MetricsCollector:
         """
         self.last_reset = time.time()
         self._init_metrics()
-        self.logger.info("Metrics have been reset")
+        logger.info("Metrics have been reset")
 
     def _init_metrics(self) -> None:
         """
