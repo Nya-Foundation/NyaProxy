@@ -1,6 +1,28 @@
 # CHANGELOG
 
 
+## v0.2.4 (2025-05-31)
+
+### Bug Fixes
+
+- Add logic to exclude Cloudflare headers
+  ([`172cca3`](https://github.com/Nya-Foundation/NyaProxy/commit/172cca3224369625558e6bf11092ee9bbd532955))
+
+- Bump nekoconf version to 1.1.0, remove simulated streaming, add loguru for logging, add support
+  for python 3.10
+  ([`2043c0f`](https://github.com/Nya-Foundation/NyaProxy/commit/2043c0f3f1bca878b53e448126d76a85655c1331))
+
+### Chores
+
+- Black code format
+  ([`61a8707`](https://github.com/Nya-Foundation/NyaProxy/commit/61a8707ad08601f0fe70225904a6470369c5c388))
+
+### Documentation
+
+- Update README.md
+  ([`4986383`](https://github.com/Nya-Foundation/NyaProxy/commit/498638336138489908bc1db6d690a87bb4dd2f32))
+
+
 ## v0.2.3 (2025-05-12)
 
 ### Bug Fixes
