@@ -4,9 +4,9 @@ The NyaProxyCore class handles the main proxy logic, including request processin
 
 import asyncio
 import traceback
-from loguru import logger
 from typing import TYPE_CHECKING, Optional, Union
 
+from loguru import logger
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
 from ..common.exceptions import (

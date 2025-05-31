@@ -5,9 +5,9 @@ Streaming response handling utilities for NyaProxy.
 import asyncio
 import traceback
 from typing import Dict
-from loguru import logger
 
 import httpx
+from loguru import logger
 from starlette.responses import StreamingResponse
 
 

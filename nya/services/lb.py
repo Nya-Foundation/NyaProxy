@@ -5,7 +5,9 @@ Load balancer for selecting API keys based on various strategies.
 import logging
 import random
 from typing import Callable, List, Optional, TypeVar
+
 from loguru import logger
+
 from ..common.constants import MAX_QUEUE_SIZE
 
 T = TypeVar("T")

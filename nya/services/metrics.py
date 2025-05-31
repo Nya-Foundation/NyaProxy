@@ -5,7 +5,9 @@ Metrics collection for monitoring API usage.
 import time
 from collections import deque
 from typing import Any, Dict, List, Optional
+
 from loguru import logger
+
 from ..common.constants import MAX_QUEUE_SIZE
 from ..utils.helper import _mask_api_key
 

@@ -2,9 +2,10 @@
 Proxy handler for intercepting and forwarding HTTP requests with token rotation.
 """
 
-from loguru import logger
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 from urllib.parse import urlparse
+
+from loguru import logger
 
 from ..common.constants import API_PATH_PREFIX
 from ..common.exceptions import (

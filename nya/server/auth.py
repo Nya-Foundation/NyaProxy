@@ -4,11 +4,11 @@ Provides authentication mechanisms and middleware.
 """
 
 import importlib.resources
-from loguru import logger
 from typing import Optional
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import APIKeyHeader
+from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import HTMLResponse, JSONResponse
 

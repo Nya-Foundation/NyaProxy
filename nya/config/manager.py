@@ -3,14 +3,13 @@ Configuration manager for NyaProxy using NekoConf.
 """
 
 import os
-from loguru import logger
 from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar, Union, cast
 
-from nekoconf import NekoConfOrchestrator, NekoConf
-from nekoconf.storage import RemoteStorageBackend, FileStorageBackend
+from loguru import logger
+from nekoconf import NekoConf, NekoConfOrchestrator
+from nekoconf.storage import FileStorageBackend, RemoteStorageBackend
 
 from nya.common.exceptions import ConfigurationError
-
 
 T = TypeVar("T")
 

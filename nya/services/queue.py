@@ -8,7 +8,6 @@ import logging
 import time
 import traceback
 import uuid
-from loguru import logger
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -21,6 +20,8 @@ from typing import (
     TypeVar,
 )
 
+from loguru import logger
+
 from ..common.exceptions import (
     APIKeyExhaustedError,
     QueueFullError,
@@ -28,7 +29,6 @@ from ..common.exceptions import (
 )
 from ..common.models import ProxyRequest
 from ..utils.helper import format_elapsed_time
-
 
 if TYPE_CHECKING:
     from .key import KeyManager

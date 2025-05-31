@@ -10,6 +10,7 @@ import sys
 
 import uvicorn
 from fastapi import FastAPI, Request, Response
+from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
@@ -22,14 +23,12 @@ from ..common.constants import (
     DEFAULT_SCHEMA_NAME,
     WATCH_FILE,
 )
-from loguru import logger
 from ..common.models import ProxyRequest
 from ..config.manager import ConfigManager
 from ..core.factory import ServiceFactory
 from ..core.proxy import NyaProxyCore
 from ..dashboard.api import DashboardAPI
 from .auth import AuthManager, AuthMiddleware
-
 
 logger.remove()
 logger.add(sys.stderr, level="INFO")
@@ -441,6 +440,7 @@ def main():
     schema_path = None
 
     import importlib.resources as pkg_resources
+
     import nya
 
     with pkg_resources.path(nya, DEFAULT_SCHEMA_NAME) as default_schema:

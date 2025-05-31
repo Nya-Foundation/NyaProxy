@@ -7,10 +7,12 @@ import logging
 import time
 from typing import Dict, Optional, Tuple
 
+from loguru import logger
+
 from ..common.exceptions import APIKeyExhaustedError, VariablesConfigurationError
 from .lb import LoadBalancer
 from .limit import RateLimiter
-from loguru import logger
+
 
 class KeyManager:
     """

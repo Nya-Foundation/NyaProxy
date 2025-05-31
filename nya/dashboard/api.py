@@ -2,9 +2,8 @@
 Dashboard API for NyaProxy.
 """
 
-import os
 import importlib.resources
-from loguru import logger
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
@@ -13,6 +12,7 @@ from fastapi import FastAPI, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from loguru import logger
 
 from .._version import __version__
 from ..services.metrics import MetricsCollector

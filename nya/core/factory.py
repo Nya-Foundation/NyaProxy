@@ -5,6 +5,8 @@ Service factory for creating and managing NyaProxy components.
 import logging
 from typing import Any, Dict, Optional, Type
 
+from loguru import logger
+
 from ..common.exceptions import VariablesConfigurationError
 from ..config.manager import ConfigManager
 from ..services.key import KeyManager
@@ -14,7 +16,6 @@ from ..services.metrics import MetricsCollector
 from ..services.queue import RequestQueue
 from .request import RequestExecutor
 from .response import ResponseProcessor
-from loguru import logger
 
 
 class ServiceFactory:

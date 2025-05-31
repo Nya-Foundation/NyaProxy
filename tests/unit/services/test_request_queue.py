@@ -5,16 +5,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from nya.services.key import KeyManager
-from nya.services.queue import (
-    RequestQueue,
-)
 from nya.common.exceptions import (
     APIKeyExhaustedError,
     QueueFullError,
     RequestExpiredError,
 )
 from nya.common.models import ProxyRequest
+from nya.services.key import KeyManager
+from nya.services.queue import (
+    RequestQueue,
+)
 
 
 @pytest.fixture

@@ -3,11 +3,11 @@ Response processing utilities for NyaProxy.
 """
 
 import time
-from loguru import logger
 from typing import TYPE_CHECKING, Dict, Optional, Union
 
 import httpx
 from fastapi import Response
+from loguru import logger
 from starlette.responses import JSONResponse, StreamingResponse
 
 from ..utils.helper import decode_content, json_safe_dumps

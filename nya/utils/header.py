@@ -6,9 +6,9 @@ import re
 from typing import Any, Dict, Optional, Set, Union
 
 from httpx import Headers
+from loguru import logger
 
 from ..common.constants import EXCLUDED_REQUEST_HEADERS
-from loguru import logger
 
 
 class HeaderUtils:
