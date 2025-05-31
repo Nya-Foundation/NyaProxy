@@ -42,8 +42,6 @@ Here's how NyaProxy can help:
 | 🕵️ Request Masking   | Dynamic header substitution across multiple identity providers              | `headers` + `variables`   |
 | 📊 Real-time Metrics | Interactive dashboard with request analytics and system health              | `dashboard`               |
 | 🔧 Body Substitution | Dynamic JSON payload transformation using JSONPath                          | `request_body_substitution` |
-| 🔄 Simulated Streaming | Stream chunked responses for better UX                                    | `simulated_streaming`     |
-
 
 ## 📥 Quick Start
 
@@ -187,13 +185,6 @@ default_settings:
     retry_status_codes: [ 429, 500, 502, 503, 504 ]
   timeouts:
     request_timeout_seconds: 300
-  # Simulated streaming settings
-  simulated_streaming:
-    enabled: false
-    delay_seconds: 0.2 # Delay between chunks in seconds
-    init_delay_seconds: 0.5 # Initial delay before starting streaming in seconds
-    chunk_size_bytes: 256 # Size of each chunk in bytes
-    apply_to: ["application/json", "application/xml", "text/plain", "image/png", "image/jpeg"] # Response content types to apply simulated streaming to
   
 # API configurations, each API can have its own settings, but will inherit from default_settings if not specified
 apis:

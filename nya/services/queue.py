@@ -8,6 +8,7 @@ import logging
 import time
 import traceback
 import uuid
+from loguru import logger
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -25,8 +26,9 @@ from ..common.exceptions import (
     QueueFullError,
     RequestExpiredError,
 )
-from ..common.models import NyaRequest
+from ..common.models import ProxyRequest
 from ..utils.helper import format_elapsed_time
+
 
 if TYPE_CHECKING:
     from .key import KeyManager
@@ -47,7 +49,6 @@ class RequestQueue:
     def __init__(
         self,
         key_manager: "KeyManager",
-        logger: logging.Logger,
         max_size: int = 100,
         expiry_seconds: int = 300,
         start_task: bool = True,  # New parameter to control background task
@@ -57,19 +58,17 @@ class RequestQueue:
 
         Args:
             key_manager: KeyManager instance for managing API keys
-            logger: Logger instance
             max_size: Maximum queue size per API
             expiry_seconds: Default expiry time for queued requests in seconds
             start_task: Whether to start the background processing task
         """
-        self.logger = logger
         self.max_size = max_size
         self.default_expiry = expiry_seconds
         self.key_manager = key_manager
 
         # Use a priority queue (min heap) for each API
-        # Each queue entry is a tuple of api_name: List[(scheduled_time, request_id, NyaRequest)]
-        self.queues: Dict[str, List[Tuple[float, str, NyaRequest]]] = {}
+        # Each queue entry is a tuple of api_name: List[(scheduled_time, request_id, ProxyRequest)]
+        self.queues: Dict[str, List[Tuple[float, str, ProxyRequest]]] = {}
 
         # Track queue sizes for quick access
         self.sizes: Dict[str, int] = {}
@@ -78,7 +77,7 @@ class RequestQueue:
         self.lock = asyncio.Lock()
 
         # Request processor callback
-        self.processor: Optional[Callable[[NyaRequest], Awaitable[Any]]] = None
+        self.processor: Optional[Callable[[ProxyRequest], Awaitable[Any]]] = None
 
         # Metrics for monitoring
         self.metrics = {
@@ -98,7 +97,7 @@ class RequestQueue:
             self.processing_task.add_done_callback(self._background_tasks.discard)
 
     def register_processor(
-        self, processor: Callable[[NyaRequest], Awaitable[Any]]
+        self, processor: Callable[[ProxyRequest], Awaitable[Any]]
     ) -> None:
         """
         Register a callback function to process queued requests.
@@ -107,18 +106,18 @@ class RequestQueue:
             processor: Async callback function that processes a request
         """
         self.processor = processor
-        self.logger.debug("Request processor registered")
+        logger.debug("Request processor registered")
 
     async def enqueue_request(
         self,
-        r: NyaRequest,
+        r: ProxyRequest,
         reset_in_seconds: Optional[int] = None,
     ) -> asyncio.Future:
         """
         Add a request to the queue and return a future that will resolve with the response.
 
         Args:
-            r: NyaRequest object to enqueue
+            r: ProxyRequest object to enqueue
             reset_in_seconds: Optional time in seconds after which the rate limit will be reset
 
         Returns:
@@ -133,7 +132,7 @@ class RequestQueue:
 
             # Check if queue is full
             if self.sizes[r.api_name] >= self.max_size:
-                self.logger.warning(
+                logger.warning(
                     f"Queue for {r.api_name} is full ({self.sizes[r.api_name]}/{self.max_size})"
                 )
                 raise QueueFullError(r.api_name, self.max_size)
@@ -162,7 +161,7 @@ class RequestQueue:
             self.sizes[r.api_name] += 1
             self.metrics["total_enqueued"] += 1
 
-            self.logger.info(
+            logger.info(
                 f"Request enqueued due to rate limit for {r.api_name}, queue size: {self.get_queue_size(r.api_name)}, "
                 f"scheduled in {format_elapsed_time(scheduled_time - time.time())}"
             )
@@ -243,13 +242,13 @@ class RequestQueue:
                     await self._process_all_queues()
                     await asyncio.sleep(0.1)  # Check queues every second
                 except Exception as e:
-                    self.logger.error(f"Error in queue processing task: {str(e)}")
-                    self.logger.debug(f"Traceback: {traceback.format_exc()}")
+                    logger.error(f"Error in queue processing task: {str(e)}")
+                    logger.debug(f"Traceback: {traceback.format_exc()}")
 
                     await asyncio.sleep(2.0)  # Backoff if there are errors
         except asyncio.CancelledError:
             # Handle cancellation gracefully when the queue is stopped
-            self.logger.debug("Queue processing task cancelled")
+            logger.debug("Queue processing task cancelled")
             return
 
     async def _process_all_queues(self) -> None:
@@ -324,7 +323,7 @@ class RequestQueue:
                 asyncio.create_task(self._process_request_item(request))
 
     async def _handle_expired_request(
-        self, request: NyaRequest, wait_time: float
+        self, request: ProxyRequest, wait_time: float
     ) -> None:
         """
         Handle an expired request by completing its future with an error.
@@ -333,21 +332,21 @@ class RequestQueue:
             request: The expired request
             wait_time: How long the request has been waiting
         """
-        self.logger.warning(
+        logger.warning(
             f"Request in queue for {request.api_name} expired after waiting {format_elapsed_time(wait_time)}"
         )
         self.metrics["total_expired"] += 1
         self._fail_request(request, RequestExpiredError(request.api_name, wait_time))
 
-    async def _process_request_item(self, request: NyaRequest) -> None:
+    async def _process_request_item(self, request: ProxyRequest) -> None:
         """
         Process a single request item from the queue.
 
         Args:
-            request: NyaRequest object with request details
+            request: ProxyRequest object with request details
         """
         if not self.processor:
-            self.logger.error("No request processor registered")
+            logger.error("No request processor registered")
             self._fail_request(request, RuntimeError("No request processor registered"))
             return
 
@@ -359,21 +358,19 @@ class RequestQueue:
             if hasattr(request, "_future") and not request._future.done():
                 request._future.set_result(response)
             else:
-                self.logger.warning(
+                logger.warning(
                     f"Future for request to {api_name} was already done when setting result"
                 )
 
             # Successfully processed
             self.metrics["total_processed"] += 1
-            self.logger.info(f"Successfully processed queued request for {api_name}")
+            logger.debug(f"Successfully processed queued request for {api_name}")
         except Exception as e:
-            self.logger.error(
-                f"Error processing queued request for {api_name}: {str(e)}"
-            )
+            logger.error(f"Error processing queued request for {api_name}: {str(e)}")
             self._fail_request(request, e)
             raise
 
-    def _fail_request(self, request: NyaRequest, error: Exception) -> None:
+    def _fail_request(self, request: ProxyRequest, error: Exception) -> None:
         """
         Fail a request by setting an exception on its future.
 
@@ -417,9 +414,7 @@ class RequestQueue:
             self.sizes[api_name] = 0
 
             self.metrics["total_failed"] += failed_count
-            self.logger.info(
-                f"Cleared {failed_count} requests from queue for {api_name}"
-            )
+            logger.info(f"Cleared {failed_count} requests from queue for {api_name}")
 
             return failed_count
 
@@ -436,9 +431,7 @@ class RequestQueue:
             api_cleared = await self.clear_queue(api_name)
             total_cleared += api_cleared
 
-        self.logger.info(
-            f"Cleared all queues, total of {total_cleared} requests removed"
-        )
+        logger.info(f"Cleared all queues, total of {total_cleared} requests removed")
 
         return total_cleared
 

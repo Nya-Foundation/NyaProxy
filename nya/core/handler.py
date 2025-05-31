@@ -2,7 +2,7 @@
 Proxy handler for intercepting and forwarding HTTP requests with token rotation.
 """
 
-import logging
+from loguru import logger
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 from urllib.parse import urlparse
 
@@ -11,7 +11,7 @@ from ..common.exceptions import (
     EndpointRateLimitExceededError,
     VariablesConfigurationError,
 )
-from ..common.models import AdvancedConfig, NyaRequest
+from ..common.models import AdvancedConfig, ProxyRequest
 from ..config.manager import ConfigManager
 from ..utils.header import HeaderUtils
 
@@ -32,7 +32,6 @@ class RequestHandler:
         config: ConfigManager,
         key_manager: "KeyManager",
         metrics_collector: Optional["MetricsCollector"] = None,
-        logger: Optional[logging.Logger] = None,
     ):
         """
         Initialize the request handler.
@@ -41,20 +40,18 @@ class RequestHandler:
             config: Configuration manager instance
             key_manager: Key manager instance
             metrics_collector: Metrics collector instance (optional)
-            logger: Logger instance (optional)
         """
         self.config = config
         self.key_manager = key_manager
         self.metrics_collector = metrics_collector
-        self.logger = logger or logging.getLogger(__name__)
         self.load_balancers = {}  # Will be set from outside
 
-    def prepare_request(self, request: NyaRequest) -> Tuple[str, str, str]:
+    def prepare_request(self, request: ProxyRequest) -> Tuple[str, str, str]:
         """
         Prepare a request for forwarding by identifying target API and setting config.
 
         Args:
-            request: NyaRequest object to prepare
+            request: ProxyRequest object to prepare
 
         Returns:
             Tuple of (api_name, trail_path, target_url)
@@ -76,12 +73,14 @@ class RequestHandler:
 
         return api_name, trail_path, target_url
 
-    def parse_request(self, request: NyaRequest) -> Tuple[Optional[str], Optional[str]]:
+    def parse_request(
+        self, request: ProxyRequest
+    ) -> Tuple[Optional[str], Optional[str]]:
         """
         Determine which API to route to based on the request path.
 
         Args:
-            request: NyaRequest object
+            request: ProxyRequest object
 
         Returns:
             Tuple of (api_name, remaining_path)
@@ -116,7 +115,7 @@ class RequestHandler:
                 return api_name, trail_path
 
         # No match found
-        self.logger.warning(f"No API configuration found for endpoint: {api_name}")
+        logger.warning(f"No API configuration found for endpoint: {api_name}")
         return None, None
 
     def should_apply_rate_limit(self, api_name: str, path: str) -> bool:
@@ -150,7 +149,7 @@ class RequestHandler:
                 return True
 
         # No matches found, don't apply rate limiting
-        self.logger.debug(
+        logger.debug(
             f"Path {path} not in rate_limit_paths for {api_name}, skipping rate limiting"
         )
         return False
@@ -171,17 +170,17 @@ class RequestHandler:
 
         if endpoint_limiter and not endpoint_limiter.allow_request():
             remaining = endpoint_limiter.get_reset_time()
-            self.logger.warning(
+            logger.warning(
                 f"Endpoint rate limit exceeded for {api_name}, reset in {remaining:.2f}s"
             )
             raise EndpointRateLimitExceededError(api_name, reset_in_seconds=remaining)
 
-    async def set_request_headers(self, request: NyaRequest) -> None:
+    async def set_request_headers(self, request: ProxyRequest) -> None:
         """
         Set headers for the request, including API key and custom headers.
 
         Args:
-            request: NyaRequest object
+            request: ProxyRequest object
 
         Raises:
             VariablesConfigurationError: If variable configuration is incorrect

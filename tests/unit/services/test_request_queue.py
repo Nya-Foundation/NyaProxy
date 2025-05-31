@@ -1,6 +1,5 @@
 import asyncio
 import heapq
-import logging
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -8,17 +7,14 @@ import pytest
 
 from nya.services.key import KeyManager
 from nya.services.queue import (
-    APIKeyExhaustedError,
-    NyaRequest,
-    QueueFullError,
-    RequestExpiredError,
     RequestQueue,
 )
-
-
-@pytest.fixture
-def mock_logger():
-    return MagicMock(spec=logging.Logger)
+from nya.common.exceptions import (
+    APIKeyExhaustedError,
+    QueueFullError,
+    RequestExpiredError,
+)
+from nya.common.models import ProxyRequest
 
 
 @pytest.fixture
@@ -37,7 +33,7 @@ def nya_request_factory():
         # Create a mock URL object if starlette is not installed or needed
         mock_url = MagicMock()
         mock_url.path = url
-        return NyaRequest(
+        return ProxyRequest(
             method=method,
             _url=mock_url,
             api_name=api_name,
@@ -49,10 +45,9 @@ def nya_request_factory():
 
 
 @pytest.fixture
-async def request_queue(mock_key_manager, mock_logger):
+async def request_queue(mock_key_manager):
     queue = RequestQueue(
         key_manager=mock_key_manager,
-        logger=mock_logger,
         max_size=2,  # Use a small size for testing limits
         expiry_seconds=10,  # Short expiry for testing
         start_task=False,  # Prevent background task in tests
@@ -60,30 +55,32 @@ async def request_queue(mock_key_manager, mock_logger):
 
     yield queue
     # Cleanup: Stop the queue (cancels the mocked task if it existed)
-    queue.running = False
-    if queue.processing_task and not queue.processing_task.done():
-        queue.processing_task.cancel()
+    await queue.stop()
 
 
 # --- Test Cases ---
-def test_init(request_queue, mock_key_manager, mock_logger):
+@patch("nya.services.queue.logger")
+def test_init(mock_logger, request_queue, mock_key_manager):
     assert request_queue.key_manager == mock_key_manager
-    assert request_queue.logger == mock_logger
     assert request_queue.max_size == 2
     assert request_queue.default_expiry == 10
     assert request_queue.metrics["total_enqueued"] == 0
     assert request_queue.running is True
+    assert request_queue.processor is None
+    assert request_queue.processing_task is None  # Not started due to start_task=False
 
 
-def test_register_processor(request_queue):
+@patch("nya.services.queue.logger")
+def test_register_processor(mock_logger, request_queue):
     mock_processor = AsyncMock()
     request_queue.register_processor(mock_processor)
     assert request_queue.processor == mock_processor
-    request_queue.logger.debug.assert_called_with("Request processor registered")
+    mock_logger.debug.assert_called_with("Request processor registered")
 
 
 @pytest.mark.asyncio
-async def test_enqueue_request_success(request_queue, nya_request_factory):
+@patch("nya.services.queue.logger")
+async def test_enqueue_request_success(mock_logger, request_queue, nya_request_factory):
     req = nya_request_factory()
     future = await request_queue.enqueue_request(req, reset_in_seconds=5)
 
@@ -93,11 +90,14 @@ async def test_enqueue_request_success(request_queue, nya_request_factory):
     assert req._future == future
     assert req._expiry > time.time()  # Scheduled in the future
     assert req._added_at <= time.time()
-    request_queue.logger.info.assert_called()
+    mock_logger.info.assert_called()
 
 
 @pytest.mark.asyncio
-async def test_enqueue_request_queue_full(request_queue, nya_request_factory):
+@patch("nya.services.queue.logger")
+async def test_enqueue_request_queue_full(
+    mock_logger, request_queue, nya_request_factory
+):
     req1 = nya_request_factory(api_name="full_api")
     req2 = nya_request_factory(api_name="full_api")
     req3 = nya_request_factory(api_name="full_api")
@@ -113,6 +113,7 @@ async def test_enqueue_request_queue_full(request_queue, nya_request_factory):
         await request_queue.enqueue_request(req3)
 
     assert request_queue.get_queue_size("full_api") == 2  # Size didn't increase
+    mock_logger.warning.assert_called()
 
 
 def test_ensure_queue_exists(request_queue):
@@ -151,7 +152,34 @@ def test_get_metrics(request_queue):
 
 
 @pytest.mark.asyncio
-async def test_process_request_item_no_processor(request_queue, nya_request_factory):
+async def test_get_estimated_wait_time(
+    request_queue, mock_key_manager, nya_request_factory
+):
+    # Test empty queue
+    wait_time = await request_queue.get_estimated_wait_time("empty_api")
+    assert wait_time == 0.0
+
+    # Test with queued requests
+    api_name = "wait_time_api"
+    req = nya_request_factory(api_name=api_name)
+
+    # Mock key manager reset time
+    mock_key_manager.get_key_rate_limit_reset.return_value = 5.0
+
+    current_time = time.time()
+    with patch("time.time", return_value=current_time):
+        await request_queue.enqueue_request(req, reset_in_seconds=10)
+
+    wait_time = await request_queue.get_estimated_wait_time(api_name)
+    # Should be max of key reset time (5.0) and queue wait time (~10.0)
+    assert wait_time >= 5.0
+
+
+@pytest.mark.asyncio
+@patch("nya.services.queue.logger")
+async def test_process_request_item_no_processor(
+    mock_logger, request_queue, nya_request_factory
+):
     req = nya_request_factory()
     req._future = asyncio.Future()  # Assign a future
 
@@ -163,13 +191,14 @@ async def test_process_request_item_no_processor(request_queue, nya_request_fact
     assert req._future.done()
     with pytest.raises(RuntimeError, match="No request processor registered"):
         await req._future  # Check the exception set on the future
-    request_queue.logger.error.assert_called_with("No request processor registered")
+    mock_logger.error.assert_called_with("No request processor registered")
     assert request_queue.metrics["total_failed"] == 1
 
 
 @pytest.mark.asyncio
+@patch("nya.services.queue.logger")
 async def test_process_api_queue_success(
-    request_queue, mock_key_manager, nya_request_factory
+    mock_logger, request_queue, mock_key_manager, nya_request_factory
 ):
     api_name = "process_success_api"
     req = nya_request_factory(api_name=api_name)
@@ -211,13 +240,16 @@ async def test_process_api_queue_success(
     assert future.done()
     assert await future == "Success Response"
     assert request_queue.metrics["total_processed"] == 1
-    request_queue.logger.info.assert_called_with(
+    mock_logger.debug.assert_called_with(
         f"Successfully processed queued request for {api_name}"
     )
 
 
 @pytest.mark.asyncio
-async def test_process_api_queue_expired(request_queue, nya_request_factory):
+@patch("nya.services.queue.logger")
+async def test_process_api_queue_expired(
+    mock_logger, request_queue, nya_request_factory
+):
     api_name = "expired_api"
     req = nya_request_factory(api_name=api_name)
 
@@ -239,7 +271,7 @@ async def test_process_api_queue_expired(request_queue, nya_request_factory):
     with pytest.raises(RequestExpiredError):
         await future
     assert request_queue.metrics["total_expired"] == 1
-    request_queue.logger.warning.assert_called()
+    mock_logger.warning.assert_called()
 
 
 @pytest.mark.asyncio
@@ -352,7 +384,8 @@ async def test_process_api_queue_key_exhausted_during_processing(
 
 
 @pytest.mark.asyncio
-async def test_clear_queue(request_queue, nya_request_factory):
+@patch("nya.services.queue.logger")
+async def test_clear_queue(mock_logger, request_queue, nya_request_factory):
     api_name = "clear_api"
     req1 = nya_request_factory(api_name=api_name)
     req2 = nya_request_factory(api_name=api_name)
@@ -374,13 +407,12 @@ async def test_clear_queue(request_queue, nya_request_factory):
     with pytest.raises(RuntimeError, match="Request was cleared"):
         await future2
     assert request_queue.metrics["total_failed"] == 2
-    request_queue.logger.info.assert_called_with(
-        f"Cleared 2 requests from queue for {api_name}"
-    )
+    mock_logger.info.assert_called_with(f"Cleared 2 requests from queue for {api_name}")
 
 
 @pytest.mark.asyncio
-async def test_clear_all_queues(request_queue, nya_request_factory):
+@patch("nya.services.queue.logger")
+async def test_clear_all_queues(mock_logger, request_queue, nya_request_factory):
     req_a1 = await request_queue.enqueue_request(nya_request_factory(api_name="api_a"))
     req_a2 = await request_queue.enqueue_request(nya_request_factory(api_name="api_a"))
     req_b1 = await request_queue.enqueue_request(nya_request_factory(api_name="api_b"))
@@ -399,11 +431,171 @@ async def test_clear_all_queues(request_queue, nya_request_factory):
     assert req_a2.done()
     assert req_b1.done()
     assert request_queue.metrics["total_failed"] == 3
-    request_queue.logger.info.assert_called_with(
+    mock_logger.info.assert_called_with(
         "Cleared all queues, total of 3 requests removed"
     )
 
 
-# Note: Testing the background task loop directly is complex.
-# We've tested the core logic (_process_api_queue) which the task calls.
-# Testing the stop() method's cancellation effect requires more intricate async mocking.
+@pytest.mark.asyncio
+@patch("nya.services.queue.logger")
+async def test_process_request_item_success(
+    mock_logger, request_queue, nya_request_factory
+):
+    """Test successful processing of a request item."""
+    req = nya_request_factory()
+    req._future = asyncio.Future()
+    req.api_key = "test_key"
+
+    mock_processor = AsyncMock(return_value="Success Response")
+    request_queue.register_processor(mock_processor)
+
+    await request_queue._process_request_item(req)
+
+    assert req._future.done()
+    assert await req._future == "Success Response"
+    assert request_queue.metrics["total_processed"] == 1
+    mock_processor.assert_awaited_once_with(req)
+    mock_logger.debug.assert_called_with(
+        f"Successfully processed queued request for {req.api_name}"
+    )
+
+
+@pytest.mark.asyncio
+@patch("nya.services.queue.logger")
+async def test_process_request_item_processor_error(
+    mock_logger, request_queue, nya_request_factory
+):
+    """Test handling of processor errors."""
+    req = nya_request_factory()
+    req._future = asyncio.Future()
+    req.api_key = "test_key"
+
+    test_error = ValueError("Test processor error")
+    mock_processor = AsyncMock(side_effect=test_error)
+    request_queue.register_processor(mock_processor)
+
+    with pytest.raises(ValueError, match="Test processor error"):
+        await request_queue._process_request_item(req)
+
+    assert req._future.done()
+    with pytest.raises(ValueError, match="Test processor error"):
+        await req._future
+    assert request_queue.metrics["total_failed"] == 1
+    mock_logger.error.assert_called_with(
+        f"Error processing queued request for {req.api_name}: Test processor error"
+    )
+
+
+@pytest.mark.asyncio
+async def test_ready_to_process(request_queue, mock_key_manager):
+    """Test _ready_to_process method logic."""
+    api_name = "test_api"
+    request_queue._ensure_queue_exists(api_name)
+
+    # Empty queue - should return False
+    assert not await request_queue._ready_to_process(api_name)
+
+    # Add a dummy request to the queue
+    request_queue.queues[api_name].append((time.time(), "req_id", MagicMock()))
+
+    # All conditions met - should return True
+    mock_key_manager.is_api_available.return_value = True
+    mock_key_manager.has_available_keys.return_value = True
+    assert await request_queue._ready_to_process(api_name)
+
+    # API not available - should return False
+    mock_key_manager.is_api_available.return_value = False
+    assert not await request_queue._ready_to_process(api_name)
+
+    # No available keys - should return False
+    mock_key_manager.is_api_available.return_value = True
+    mock_key_manager.has_available_keys.return_value = False
+    assert not await request_queue._ready_to_process(api_name)
+
+
+@pytest.mark.asyncio
+@patch("nya.services.queue.logger")
+async def test_handle_expired_request(mock_logger, request_queue, nya_request_factory):
+    """Test expired request handling."""
+    req = nya_request_factory()
+    req._future = asyncio.Future()
+    wait_time = 15.0
+
+    await request_queue._handle_expired_request(req, wait_time)
+
+    assert req._future.done()
+    with pytest.raises(RequestExpiredError):
+        await req._future
+    assert request_queue.metrics["total_expired"] == 1
+    mock_logger.warning.assert_called()
+
+
+@pytest.mark.asyncio
+@patch("nya.services.queue.logger")
+async def test_fail_request(mock_logger, request_queue, nya_request_factory):
+    """Test _fail_request method."""
+    req = nya_request_factory()
+    req._future = asyncio.Future()
+    test_error = RuntimeError("Test error")
+
+    request_queue._fail_request(req, test_error)
+
+    assert req._future.done()
+    with pytest.raises(RuntimeError, match="Test error"):
+        await req._future
+    assert request_queue.metrics["total_failed"] == 1
+
+
+@pytest.mark.asyncio
+async def test_clear_queue_non_existent_api(request_queue):
+    """Test clearing queue for non-existent API."""
+    cleared_count = await request_queue.clear_queue("non_existent_api")
+    assert cleared_count == 0
+
+
+@pytest.mark.asyncio
+@patch("nya.services.queue.logger")
+async def test_process_queue_task_error_handling(mock_logger, mock_key_manager):
+    """Test error handling in background processing task."""
+    queue = RequestQueue(
+        key_manager=mock_key_manager,
+        max_size=2,
+        expiry_seconds=10,
+        start_task=True,  # Start the background task
+    )
+
+    # Mock _process_all_queues to raise an error
+    original_method = queue._process_all_queues
+    queue._process_all_queues = AsyncMock(side_effect=RuntimeError("Test error"))
+
+    # Give the task time to run and handle the error
+    await asyncio.sleep(0.1)
+
+    # Verify error was logged
+    mock_logger.error.assert_called()
+
+    # Restore original method and stop queue
+    queue._process_all_queues = original_method
+    await queue.stop()
+
+
+@pytest.mark.asyncio
+async def test_stop_queue(mock_key_manager):
+    """Test stopping the queue properly cancels tasks."""
+    queue = RequestQueue(
+        key_manager=mock_key_manager,
+        max_size=2,
+        expiry_seconds=10,
+        start_task=True,
+    )
+
+    # Verify the task is running
+    assert queue.processing_task is not None
+    assert not queue.processing_task.done()
+
+    # Stop the queue
+    await queue.stop()
+
+    # Verify the task is cancelled/stopped
+    assert not queue.running
+    assert queue.processing_task.done()

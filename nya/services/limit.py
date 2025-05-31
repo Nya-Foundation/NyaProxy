@@ -2,10 +2,10 @@
 Rate limiting implementation for API requests.
 """
 
-import logging
 import re
 import time
 from typing import List, Optional, Tuple
+from loguru import logger
 
 
 class RateLimiter:
@@ -14,12 +14,15 @@ class RateLimiter:
 
     Supports time-based rate limits in the format "X/Y" where:
     - X is the number of requests allowed
-    - Y is the time unit (s=seconds, m=minutes, h=hours, d=days)
+    - Y is the time unit (s=seconds, m=minutes, h=hours, d=days) or
+    - Y is a number followed by time unit (e.g., 10s, 30m, 2h)
 
     Example rate limits:
     - "100/m": 100 requests per minute
     - "5/s": 5 requests per second
     - "1000/h": 1000 requests per hour
+    - "1/10s": 1 request per 10 seconds
+    - "5/30m": 5 requests per 30 minutes
     """
 
     # Time unit to seconds conversion
@@ -30,15 +33,13 @@ class RateLimiter:
         "d": 86400,
     }
 
-    def __init__(self, rate_limit: str, logger: Optional[logging.Logger] = None):
+    def __init__(self, rate_limit: str = None):
         """
         Initialize rate limiter.
 
         Args:
             rate_limit: Rate limit string in format "X/Y"
-            logger: Logger instance
         """
-        self.logger = logger or logging.getLogger(__name__)
 
         # Parse rate limit
         self.requests_limit, self.window_seconds = self._parse_rate_limit(rate_limit)
@@ -52,7 +53,7 @@ class RateLimiter:
         Parse rate limit string into numeric values.
 
         Args:
-            rate_limit: Rate limit string in format "X/Y"
+            rate_limit: Rate limit string in format "X/Y" or "X/Ys"
 
         Returns:
             Tuple of (requests_limit, window_seconds)
@@ -61,21 +62,30 @@ class RateLimiter:
         if not rate_limit or rate_limit == "0":
             return 0, 0
 
-        # Parse rate limit string (e.g., "100/m")
-        pattern = r"^(\d+)/([smhd])$"
-        match = re.match(pattern, rate_limit)
+        # Try parsing compound time units first (e.g., "1/10s", "5/30m")
+        compound_pattern = r"^(\d+)/(\d+)([smhd])$"
+        compound_match = re.match(compound_pattern, rate_limit)
 
-        if not match:
-            self.logger.warning(
-                f"Invalid rate limit format: {rate_limit}, using no limit"
-            )
-            return 0, 0
+        if compound_match:
+            requests_limit = int(compound_match.group(1))
+            time_value = int(compound_match.group(2))
+            time_unit = compound_match.group(3)
+            unit_seconds = self.TIME_UNITS.get(time_unit, 0)
+            window_seconds = time_value * unit_seconds
+            return requests_limit, window_seconds
 
-        requests_limit = int(match.group(1))
-        time_unit = match.group(2)
-        window_seconds = self.TIME_UNITS.get(time_unit, 0)
+        # Fall back to simple format (e.g., "100/m")
+        simple_pattern = r"^(\d+)/([smhd])$"
+        simple_match = re.match(simple_pattern, rate_limit)
 
-        return requests_limit, window_seconds
+        if simple_match:
+            requests_limit = int(simple_match.group(1))
+            time_unit = simple_match.group(2)
+            window_seconds = self.TIME_UNITS.get(time_unit, 0)
+            return requests_limit, window_seconds
+
+        logger.warning(f"Invalid rate limit format: {rate_limit}, using no limit")
+        return 0, 0
 
     def is_rate_limited(self) -> bool:
         """

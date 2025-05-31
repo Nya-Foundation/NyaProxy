@@ -32,3 +32,6 @@ EXCLUDED_REQUEST_HEADERS = {
 
 # Metrics
 MAX_QUEUE_SIZE = 200
+
+
+WATCH_FILE = "watch_file.txt"

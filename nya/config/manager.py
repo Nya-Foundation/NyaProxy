@@ -2,17 +2,14 @@
 Configuration manager for NyaProxy using NekoConf.
 """
 
-import logging
 import os
+from loguru import logger
 from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar, Union, cast
 
-from nekoconf import NekoConfigServer, NekoConfigWrapper
+from nekoconf import NekoConfOrchestrator, NekoConf
+from nekoconf.storage import RemoteStorageBackend, FileStorageBackend
 
-
-class ConfigError(Exception):
-    """Exception raised for configuration errors."""
-
-    pass
+from nya.common.exceptions import ConfigurationError
 
 
 T = TypeVar("T")
@@ -82,7 +79,8 @@ class ConfigManager:
         schema_path: Optional[str] = None,
         remote_url: Optional[str] = None,
         remote_api_key: Optional[str] = None,
-        logger: Optional[logging.Logger] = None,
+        remote_app_name: Optional[str] = None,
+        callback: Optional[Callable] = None,
     ):
         """
         Initialize the configuration manager (once).
@@ -92,27 +90,29 @@ class ConfigManager:
             schema_file: Path to the schema file for validation (optional)
             remote_url: URL for remote configuration (optional)
             remote_api_key: API key for remote configuration (optional)
-            logger: Logger instance for logging (optional)
+            remote_app_name: Name of the application for remote configuration (optional)
+            callback: Callback function to call after configuraiton is updated (optional)
         """
         # Skip initialization if already initialized
         if self._initialized:
             return
 
-        self.config: NekoConfigWrapper = None
-        self.server: NekoConfigServer = None
+        self.config: NekoConf = None
+        self.server: NekoConfOrchestrator = None
 
         self.config_path = config_path
         self.schema_path = schema_path
         self.remote_url = remote_url
         self.remote_api_key = remote_api_key
+        self.remote_app_name = remote_app_name
 
-        self.logger = logger or logging.getLogger(__name__)
+        self.callback = callback
 
         if config_path and not os.path.exists(config_path):
-            raise ConfigError(f"Configuration file not found: {config_path}")
+            raise ConfigurationError(f"Configuration file not found: {config_path}")
 
-        self.config = self._init_config_client()
-        self.server = self._init_config_server()
+        self.config = self.init_config_client()
+        self.server = self.init_config_server()
 
         # Mark as initialized
         ConfigManager._initialized = True
@@ -130,46 +130,64 @@ class ConfigManager:
             cls._instance = ConfigManager()
         return cls._instance
 
-    def _init_config_client(self) -> NekoConfigWrapper:
-        """Initialize the NekoConfigWrapper."""
-        client = NekoConfigWrapper(
-            config_path=self.config_path,
+    def init_config_client(self) -> NekoConf:
+        """Initialize the NekoConf."""
+
+        storage: Union[FileStorageBackend, RemoteStorageBackend, None] = None
+
+        if self.remote_url:
+            storage = RemoteStorageBackend(
+                remote_url=self.remote_url,
+                api_key=self.remote_api_key,
+                app_name=self.remote_app_name or "default",
+                logger=logger,
+            )
+
+        else:
+            storage = FileStorageBackend(config_path=self.config_path, logger=logger)
+
+        storage.set_change_callback(self.callback)
+
+        if not storage:
+            raise ConfigurationError(
+                "No storage backend configured. Please set a config path or remote URL."
+            )
+
+        client = NekoConf(
+            storage=storage,
             schema_path=self.schema_path,
+            logger=logger,
             env_override_enabled=True,
             env_prefix="NYA",
-            remote_url=self.remote_url,
-            remote_api_key=self.remote_api_key,
-            logger=self.logger,
         )
 
         # Validate against the schema
         results = client.validate()
         if results:
-            raise ConfigError(f"Configuration validation failed: {results}")
+            raise ConfigurationError(f"Configuration validation failed: {results}")
 
-        self.logger.info("Configuration loaded and validated successfully")
+        logger.info("Configuration loaded and validated successfully")
         return client
 
-    def _init_config_server(self) -> NekoConfigServer:
+    def init_config_server(self) -> NekoConfOrchestrator:
 
         if self.remote_url is not None:
-            self.logger.warning(
-                "Remote Config URL is set. NekoConfigServer will not be initialized on this local instance."
+            logger.warning(
+                "Remote Config URL is set. NekoConfOrchestrator will not be initialized on this local instance."
             )
             return None
 
         if self.config is None:
-            self.logger.debug("ConfigManager is not initialized. skipping server init.")
+            logger.debug("ConfigManager is not initialized. skipping server init.")
             return None
 
         try:
-            server = NekoConfigServer(
-                config=self.config.config, logger=self.logger, register_signals=True
-            )
+            nya_app = {"NyaProxy": self.config}
+            server = NekoConfOrchestrator(apps=nya_app, logger=logger)
         except Exception as e:
-            error_msg = f"Failed to load configuration from {self.config.config.config_path}: {str(e)}"
-            self.logger.error(f"Failed to load configuration: {error_msg}")
-            raise ConfigError(error_msg)
+            error_msg = f"Failed to load configuration: {str(e)}"
+            logger.error(error_msg)
+            raise ConfigurationError(error_msg)
 
         return server
 
@@ -236,7 +254,7 @@ class ConfigManager:
         """
         apis = self.config.get_dict("apis", {})
         if not apis:
-            raise ConfigError("No APIs configured. Please add at least one API.")
+            raise ConfigurationError("No APIs configured. Please add at least one API.")
 
         return apis
 
@@ -350,62 +368,6 @@ class ConfigManager:
             )
         else:  # Default to string
             return self.config.get_str(f"apis.{api_name}.{setting_path}", default_value)
-
-    # API Setting Descriptors
-    get_api_simulated_streaming_enabled = ApiSettingDescriptor[bool](
-        "simulated_streaming.enabled",
-        "bool",
-        """Get simulated streaming enabled status for an API.
-        Args:
-            api_name: Name of the API
-        Returns:
-            Boolean indicating if simulated streaming is enabled
-        """,
-    )
-
-    get_api_simulated_streaming_delay = ApiSettingDescriptor[int](
-        "simulated_streaming.delay_seconds",
-        "int",
-        """Get simulated streaming delay in seconds.
-        Args:
-            api_name: Name of the API
-        Returns:
-            Delay in seconds
-        """,
-    )
-
-    get_api_simulated_streaming_init_delay = ApiSettingDescriptor[int](
-        "simulated_streaming.init_delay_seconds",
-        "int",
-        """Get initial delay for simulated streaming.
-        Args:
-            api_name: Name of the API
-        Returns:
-            Initial delay in seconds
-        """,
-    )
-
-    get_api_simulated_streaming_chunk_size = ApiSettingDescriptor[int](
-        "simulated_streaming.chunk_size_bytes",
-        "int",
-        """Get chunk size for simulated streaming.
-        Args:
-            api_name: Name of the API
-        Returns:
-            Chunk size in bytes
-        """,
-    )
-
-    get_api_simulated_streaming_apply_to = ApiSettingDescriptor[List[str]](
-        "simulated_streaming.apply_to",
-        "list",
-        """Get endpoints for simulated streaming.
-        Args:
-            api_name: Name of the API
-        Returns:
-            List of endpoint paths
-        """,
-    )
 
     get_api_request_body_substitution_enabled = ApiSettingDescriptor[bool](
         "request_body_substitution.enabled",
@@ -659,13 +621,6 @@ class ConfigManager:
             Dictionary of advanced settings or empty dict if not specified
         """
         return {
-            "simulated_stream_enabled": self.get_api_simulated_streaming_enabled(
-                api_name
-            ),
-            "delay_seconds": self.get_api_simulated_streaming_delay(api_name),
-            "init_delay_seconds": self.get_api_simulated_streaming_init_delay(api_name),
-            "chunk_size_bytes": self.get_api_simulated_streaming_chunk_size(api_name),
-            "apply_to": self.get_api_simulated_streaming_apply_to(api_name),
             "req_body_subst_enabled": self.get_api_request_body_substitution_enabled(
                 api_name
             ),
@@ -675,12 +630,12 @@ class ConfigManager:
     def reload(self) -> None:
         """Reload the configuration from disk."""
         try:
-            self.config = self._init_config_client()
-            self.server = NekoConfigServer(
-                config=self.config.config, llogger=self.logger
-            )
+            self.config = self.init_config_client()
 
-            self.logger.info("Configuration reloaded successfully")
+            nya_app = [{"NyaProxy": self.config}]
+            self.server = NekoConfOrchestrator(apps=nya_app, logger=logger)
+
+            logger.info("Configuration reloaded successfully")
         except Exception as e:
-            self.logger.error(f"Failed to reload configuration: {str(e)}")
-            raise ConfigError(f"Failed to reload configuration: {str(e)}")
+            logger.error(f"Failed to reload configuration: {str(e)}")
+            raise ConfigurationError(f"Failed to reload configuration: {str(e)}")

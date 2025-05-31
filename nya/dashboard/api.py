@@ -2,9 +2,9 @@
 Dashboard API for NyaProxy.
 """
 
-import importlib.resources
-import logging
 import os
+import importlib.resources
+from loguru import logger
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
@@ -29,7 +29,6 @@ class DashboardAPI:
 
     def __init__(
         self,
-        logger: logging.Logger,
         port: int = 8082,
         enable_control: bool = True,
         metrics_path: str = "./.metrics",
@@ -38,19 +37,16 @@ class DashboardAPI:
         Initialize the dashboard API.
 
         Args:
-            logger: Logger instance
             port: Port to run the dashboard on
             enable_control: Whether to enable control API routes
             metrics_path: Path to store metrics data
         """
-        self.logger = logger
         self.port = port
         self.enable_control = enable_control
         self.metrics_path = metrics_path
 
         # Set up template directory
         self.www_dir = self.get_html_directory()
-        self.logger.info(f"Dashboard Template directory resolved to: {self.www_dir}")
 
         # Ensure static directory exists, create it if not
         static_dir = self.www_dir / "static"
@@ -85,7 +81,7 @@ class DashboardAPI:
                 name="static",
             )
         else:
-            self.logger.warning(f"Static directory not found at {static_dir}")
+            logger.warning(f"Static directory not found at {static_dir}")
 
         # Set up routes
         self._setup_routes()
@@ -149,7 +145,7 @@ class DashboardAPI:
                 metrics = self.metrics_collector.get_all_metrics()
                 return metrics
             except Exception as e:
-                self.logger.error(f"Error retrieving metrics: {str(e)}")
+                logger.error(f"Error retrieving metrics: {str(e)}")
                 return JSONResponse(
                     status_code=500,
                     content={"error": f"Error retrieving metrics: {str(e)}"},
@@ -174,7 +170,7 @@ class DashboardAPI:
                     )
                 return metrics
             except Exception as e:
-                self.logger.error(f"Error retrieving API metrics: {str(e)}")
+                logger.error(f"Error retrieving API metrics: {str(e)}")
                 return JSONResponse(
                     status_code=500,
                     content={"error": f"Error retrieving API metrics: {str(e)}"},
@@ -249,7 +245,7 @@ class DashboardAPI:
 
                 return {"history": filtered_history}
             except Exception as e:
-                self.logger.error(f"Error retrieving history: {str(e)}")
+                logger.error(f"Error retrieving history: {str(e)}")
                 return JSONResponse(
                     status_code=500,
                     content={"error": f"Error retrieving history: {str(e)}"},
@@ -271,7 +267,7 @@ class DashboardAPI:
                 ]
                 return {"history": api_history}
             except Exception as e:
-                self.logger.error(f"Error retrieving API history: {str(e)}")
+                logger.error(f"Error retrieving API history: {str(e)}")
                 return JSONResponse(
                     status_code=500,
                     content={"error": f"Error retrieving API history: {str(e)}"},
@@ -363,7 +359,7 @@ class DashboardAPI:
 
                 return analytics
             except Exception as e:
-                self.logger.error(f"Error generating analytics: {str(e)}")
+                logger.error(f"Error generating analytics: {str(e)}")
                 return JSONResponse(
                     status_code=500,
                     content={"error": f"Error generating analytics: {str(e)}"},
@@ -386,7 +382,7 @@ class DashboardAPI:
 
                 return {"queue_sizes": queue_sizes}
             except Exception as e:
-                self.logger.error(f"Error retrieving queue status: {str(e)}")
+                logger.error(f"Error retrieving queue status: {str(e)}")
                 return JSONResponse(
                     status_code=500,
                     content={"error": f"Error retrieving queue status: {str(e)}"},
@@ -412,7 +408,7 @@ class DashboardAPI:
 
                 return {"key_usage": key_usage}
             except Exception as e:
-                self.logger.error(f"Error retrieving key usage: {str(e)}")
+                logger.error(f"Error retrieving key usage: {str(e)}")
                 return JSONResponse(
                     status_code=500,
                     content={"error": f"Error retrieving key usage: {str(e)}"},
@@ -582,7 +578,7 @@ class DashboardAPI:
                 cleared_count = self.request_queue.clear_queue(api_name)
                 return {"cleared_count": cleared_count}
             except Exception as e:
-                self.logger.error(f"Error clearing queue: {str(e)}")
+                logger.error(f"Error clearing queue: {str(e)}")
                 return JSONResponse(
                     status_code=500,
                     content={"error": f"Error clearing queue: {str(e)}"},
@@ -600,7 +596,7 @@ class DashboardAPI:
                 cleared_count = self.request_queue.clear_all_queues()
                 return {"cleared_count": cleared_count}
             except Exception as e:
-                self.logger.error(f"Error clearing all queues: {str(e)}")
+                logger.error(f"Error clearing all queues: {str(e)}")
                 return JSONResponse(
                     status_code=500,
                     content={"error": f"Error clearing all queues: {str(e)}"},
@@ -619,7 +615,7 @@ class DashboardAPI:
                 self.metrics_collector.reset()
                 return {"status": "ok", "message": "Metrics reset successfully"}
             except Exception as e:
-                self.logger.error(f"Error resetting metrics: {str(e)}")
+                logger.error(f"Error resetting metrics: {str(e)}")
                 return JSONResponse(
                     status_code=500,
                     content={"error": f"Error resetting metrics: {str(e)}"},
@@ -651,7 +647,7 @@ class DashboardAPI:
                     "message": f"Metrics for {api_name} reset successfully",
                 }
             except Exception as e:
-                self.logger.error(f"Error resetting API metrics: {str(e)}")
+                logger.error(f"Error resetting API metrics: {str(e)}")
                 return JSONResponse(
                     status_code=500,
                     content={"error": f"Error resetting API metrics: {str(e)}"},

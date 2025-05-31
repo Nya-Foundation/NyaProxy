@@ -7,6 +7,6 @@ setuptools>=42.0.0
 watchfiles>=0.18.0
 brotli>=1.0.9
 jmespath>=1.0.1
-colorlog>=6.9.0
 orjson >= 3.10
-nekoconf[remote,schema,server]==1.0.3
+loguru>=0.7.0
+nekoconf[remote,schema,server]==1.1.0

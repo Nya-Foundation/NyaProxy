@@ -14,6 +14,7 @@ from ..services.metrics import MetricsCollector
 from ..services.queue import RequestQueue
 from .request import RequestExecutor
 from .response import ResponseProcessor
+from loguru import logger
 
 
 class ServiceFactory:
@@ -27,17 +28,15 @@ class ServiceFactory:
     def __init__(
         self,
         config_manager: Optional[ConfigManager] = None,
-        logger: Optional[logging.Logger] = None,
     ):
         """
         Initialize the service factory.
 
         Args:
             config_manager: Configuration manager instance
-            logger: Logger instance
+
         """
         self.config = config_manager or ConfigManager.get_instance()
-        self.logger = logger or logging.getLogger(__name__)
         self._components = {}
         # Track component dependencies
         self._dependencies = {}
@@ -47,7 +46,6 @@ class ServiceFactory:
         return self._get_or_create_component(
             "metrics_collector",
             MetricsCollector,
-            constructor_args={"logger": self.logger},
         )
 
     def create_load_balancers(self) -> Dict[str, LoadBalancer]:
@@ -68,7 +66,7 @@ class ServiceFactory:
                     )
 
                 # Initialize load balancer on the key variable
-                load_balancers[api_name] = LoadBalancer(keys, strategy, self.logger)
+                load_balancers[api_name] = LoadBalancer(keys, strategy)
 
                 # Initialize load balancers for other variables if they exist
                 variables = self.config.get_api_variables(api_name)
@@ -89,11 +87,11 @@ class ServiceFactory:
                         )
 
                     load_balancers[f"{api_name}_{variable_name}"] = LoadBalancer(
-                        values, strategy, self.logger
+                        values, strategy
                     )
 
             self._components["load_balancers"] = load_balancers
-            self.logger.debug(f"Created {len(load_balancers)} load balancers")
+            logger.debug(f"Created {len(load_balancers)} load balancers")
 
         return self._components["load_balancers"]
 
@@ -109,9 +107,7 @@ class ServiceFactory:
                 key_limit = self.config.get_api_key_rate_limit(api_name)
 
                 # Create endpoint rate limiter
-                rate_limiters[f"{api_name}_endpoint"] = RateLimiter(
-                    endpoint_limit, logger=self.logger
-                )
+                rate_limiters[f"{api_name}_endpoint"] = RateLimiter(endpoint_limit)
 
                 # Create rate limiter for each key
                 key_variable = self.config.get_api_key_variable(api_name)
@@ -119,10 +115,10 @@ class ServiceFactory:
 
                 for key in keys:
                     key_id = f"{api_name}_{key}"
-                    rate_limiters[key_id] = RateLimiter(key_limit, logger=self.logger)
+                    rate_limiters[key_id] = RateLimiter(key_limit)
 
             self._components["rate_limiters"] = rate_limiters
-            self.logger.debug(f"Created {len(rate_limiters)} rate limiters")
+            logger.debug(f"Created {len(rate_limiters)} rate limiters")
 
         return self._components["rate_limiters"]
 
@@ -132,7 +128,6 @@ class ServiceFactory:
         dependencies = {
             "load_balancers": self.create_load_balancers(),
             "rate_limiters": self.create_rate_limiters(),
-            "logger": self.logger,
         }
 
         return self._get_or_create_component(
@@ -142,7 +137,7 @@ class ServiceFactory:
     def create_request_queue(self) -> Optional[RequestQueue]:
         """Create a request queue if enabled in configuration."""
         if not self.config.get_queue_enabled():
-            self.logger.debug("Request queue disabled in configuration")
+            logger.debug("Request queue disabled in configuration")
             self._components["request_queue"] = None
             return None
 
@@ -152,7 +147,6 @@ class ServiceFactory:
 
         dependencies = {
             "key_manager": key_manager,
-            "logger": self.logger,
             "max_size": queue_size,
             "expiry_seconds": queue_expiry,
         }
@@ -167,7 +161,6 @@ class ServiceFactory:
             "config": self.config,
             "metrics_collector": self.create_metrics_collector(),
             "key_manager": self.create_key_manager(),
-            "logger": self.logger,
         }
 
         return self._get_or_create_component(
@@ -179,7 +172,6 @@ class ServiceFactory:
         dependencies = {
             "metrics_collector": self.create_metrics_collector(),
             "load_balancer": self.create_load_balancers(),
-            "logger": self.logger,
         }
 
         return self._get_or_create_component(
@@ -199,7 +191,7 @@ class ServiceFactory:
                 "response_processor"
             ]
 
-            self.logger.debug("Connected request executor to response processor")
+            logger.debug("Connected request executor to response processor")
 
     def _get_or_create_component(
         self, name: str, cls_type: Type, constructor_args: Dict[str, Any] = None
@@ -221,7 +213,6 @@ class ServiceFactory:
 
             self._components[name] = cls_type(**constructor_args)
             self._dependencies[name] = list(constructor_args.keys())
-            self.logger.debug(f"Created new {cls_type.__name__}")
 
         return self._components[name]
 
@@ -232,7 +223,7 @@ class ServiceFactory:
     def register_component(self, name: str, component: Any) -> None:
         """Register an external component."""
         self._components[name] = component
-        self.logger.debug(f"Registered external component: {name}")
+        logger.debug(f"Registered external component: {name}")
 
     def get_component_dependencies(self, name: str) -> list:
         """Get component dependencies."""

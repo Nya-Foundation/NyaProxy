@@ -4,7 +4,7 @@ Provides authentication mechanisms and middleware.
 """
 
 import importlib.resources
-import logging
+from loguru import logger
 from typing import Optional
 
 from fastapi import Depends, HTTPException, Request
@@ -170,10 +170,9 @@ class AuthManager:
 class AuthMiddleware(BaseHTTPMiddleware):
     """Authentication middleware for FastAPI applications"""
 
-    def __init__(self, app, auth: AuthManager, logger: Optional[logging.Logger] = None):
+    def __init__(self, app, auth: AuthManager):
         super().__init__(app)
         self.auth = auth
-        self.logger = logger or logging.getLogger(__name__)
 
     async def dispatch(self, request: Request, call_next):
 

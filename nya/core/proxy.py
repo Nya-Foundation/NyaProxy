@@ -3,8 +3,8 @@ The NyaProxyCore class handles the main proxy logic, including request processin
 """
 
 import asyncio
-import logging
 import traceback
+from loguru import logger
 from typing import TYPE_CHECKING, Optional, Union
 
 from starlette.responses import JSONResponse, Response, StreamingResponse
@@ -15,7 +15,7 @@ from ..common.exceptions import (
     QueueFullError,
     RequestExpiredError,
 )
-from ..common.models import NyaRequest
+from ..common.models import ProxyRequest
 from ..config.manager import ConfigManager
 from .handler import RequestHandler
 
@@ -30,7 +30,6 @@ class NyaProxyCore:
 
     def __init__(
         self,
-        logger: Optional[logging.Logger] = None,
         config: Optional[ConfigManager] = None,
         factory: Optional["ServiceFactory"] = None,
     ):
@@ -38,18 +37,14 @@ class NyaProxyCore:
         Initialize the proxy handler with dependency injection.
 
         Args:
-            logger: Logger instance
             config: Configuration manager instance
             factory: Service factory instance for creating components
         """
         # Core dependencies
-        self.logger = logger or logging.getLogger(__name__)
         self.config = config or ConfigManager.get_instance()
 
         # Create or use the service factory
-        self.factory = factory or ServiceFactory(
-            config_manager=self.config, logger=self.logger
-        )
+        self.factory = factory or ServiceFactory(config_manager=self.config)
 
         # Initialize components through the factory
         self.metrics_collector = self.factory.create_metrics_collector()
@@ -70,7 +65,6 @@ class NyaProxyCore:
             config=self.config,
             key_manager=self.key_manager,
             metrics_collector=self.metrics_collector,
-            logger=self.logger,
         )
         self.request_handler.load_balancers = self.load_balancers
 
@@ -79,7 +73,7 @@ class NyaProxyCore:
             self.request_queue.register_processor(self._process_queued_request)
 
     async def handle_request(
-        self, request: NyaRequest
+        self, request: ProxyRequest
     ) -> Union[Response, JSONResponse, StreamingResponse]:
         """
         Handle an incoming proxy request.
@@ -105,7 +99,7 @@ class NyaProxyCore:
                 return await self._process_request(request)
 
             if not await self.key_manager.has_available_keys(api_name):
-                self.logger.debug(
+                logger.debug(
                     f"No available API keys for {api_name}, rate limit exceeded or no keys configured."
                 )
                 return await self._handle_rate_limit_exceeded(request)
@@ -125,26 +119,26 @@ class NyaProxyCore:
                 e, status_code=429, api_name=request.api_name
             )
         except Exception as e:
-            self.logger.error(f"Error handling request: {str(e)}")
-            self.logger.debug(traceback.format_exc())
+            logger.error(f"Error handling request: {str(e)}")
+            logger.debug(traceback.format_exc())
             return self._create_error_response(
                 e, status_code=500, api_name=request.api_name
             )
 
     async def _process_request(
         self,
-        r: NyaRequest,
+        r: ProxyRequest,
     ) -> Union[Response, JSONResponse, StreamingResponse]:
         """
         Process the prepared request and handle the response.
 
         Args:
-            r: Prepared NyaRequest object
+            r: Prepared ProxyRequest object
 
         Returns:
             Response to the client
         """
-        self.logger.debug(f"Processing request to {r.api_name}: {r.url}")
+        logger.debug(f"Processing request to {r.api_name}: {r.url}")
 
         # Get API configuration
         retry_enabled = self.config.get_api_retry_enabled(r.api_name)
@@ -192,13 +186,13 @@ class NyaProxyCore:
 
     async def _handle_rate_limit_exceeded(
         self,
-        request: NyaRequest,
+        request: ProxyRequest,
     ) -> Union[Response, JSONResponse, StreamingResponse]:
         """
         Handle a rate-limited request, queueing it if enabled.
 
         Args:
-            request: NyaRequest object containing the request data
+            request: ProxyRequest object containing the request data
 
         Returns:
             Response to the client
@@ -220,7 +214,7 @@ class NyaProxyCore:
                     # Enqueue the request and wait for response
                     return await self._enqueue_and_wait(request, reset_in_seconds)
                 except (asyncio.TimeoutError, RequestExpiredError) as e:
-                    self.logger.warning(
+                    logger.warning(
                         f"Request to {api_name} timed out in queue: {str(e)}"
                     )
                     return self._create_error_response(
@@ -231,13 +225,13 @@ class NyaProxyCore:
                         e, status_code=429, api_name=api_name
                     )
                 except Exception as e:
-                    self.logger.error(f"Error processing queued request: {str(e)}")
+                    logger.error(f"Error processing queued request: {str(e)}")
                     return self._create_error_response(
                         e, status_code=500, api_name=api_name
                     )
 
             except Exception as queue_error:
-                self.logger.error(
+                logger.error(
                     f"Error queueing request: {str(queue_error)}, "
                     f"{traceback.format_exc() if self.config.get_debug_level().upper() == 'DEBUG' else ''}"
                 )
@@ -278,12 +272,12 @@ class NyaProxyCore:
 
         return await self.request_queue.get_estimated_wait_time(api_name)
 
-    def _record_queue_metrics(self, request: NyaRequest, api_name: str) -> None:
+    def _record_queue_metrics(self, request: ProxyRequest, api_name: str) -> None:
         """
         Record metrics for a queued request.
 
         Args:
-            request: NyaRequest object
+            request: ProxyRequest object
             api_name: Name of the API
         """
         if self.metrics_collector:
@@ -293,13 +287,13 @@ class NyaProxyCore:
             )
 
     async def _enqueue_and_wait(
-        self, request: NyaRequest, reset_in_seconds: int
+        self, request: ProxyRequest, reset_in_seconds: int
     ) -> Union[Response, JSONResponse, StreamingResponse]:
         """
         Enqueue a request and wait for it to be processed.
 
         Args:
-            request: NyaRequest object
+            request: ProxyRequest object
             reset_in_seconds: Time until rate limit reset
 
         Returns:
@@ -322,13 +316,13 @@ class NyaProxyCore:
         return await asyncio.wait_for(future, timeout=timeout)
 
     async def _process_queued_request(
-        self, r: NyaRequest
+        self, r: ProxyRequest
     ) -> Union[Response, JSONResponse, StreamingResponse]:
         """
         Process a request from the queue.
 
         Args:
-            r: NyaRequest object containing the queued request data
+            r: ProxyRequest object containing the queued request data
 
         Returns:
             Response from the target API
