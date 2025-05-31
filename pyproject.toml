@@ -35,7 +35,7 @@ dependencies = [
     "jmespath>=1.0.1",
     "orjson>=3.10,<4",
     "loguru>=0.7.0",
-    "nekoconf[remote,schema,server]==1.1.0",
+    "nekoconf[remote,schema,server]==1.1.1",
 ]
 
 [project.optional-dependencies]

@@ -18,8 +18,7 @@
         --success: #10b981;
         --input-bg: #ffffff;
         --card-bg: #ffffff;
-        --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1),
-          0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
       }
 
       .dark {
@@ -34,16 +33,14 @@
         --success: #34d399;
         --input-bg: #1f2937;
         --card-bg: #1f2937;
-        --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3),
-          0 2px 4px -1px rgba(0, 0, 0, 0.2);
+        --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
       }
 
       * {
         margin: 0;
         padding: 0;
         box-sizing: border-box;
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-          Roboto, "Helvetica Neue", Arial, sans-serif;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       }
 
       body {
@@ -266,29 +263,10 @@
   </head>
   <body>
     <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        class="moon"
-      >
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="moon">
         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
       </svg>
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        class="sun"
-        style="display: none"
-      >
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="sun" style="display: none">
         <circle cx="12" cy="12" r="5"></circle>
         <line x1="12" y1="1" x2="12" y2="3"></line>
         <line x1="12" y1="21" x2="12" y2="23"></line>
@@ -304,12 +282,7 @@
     <div class="login-card">
       <div class="header">
         <div>
-          <img
-            class="app-logo"
-            src="/dashboard/static/logo.svg"
-            width="70"
-            height="70"
-          />
+          <img class="app-logo" src="/dashboard/static/logo.svg" width="70" height="70" />
         </div>
         <h1>NyaProxy</h1>
         <p class="subtitle">Enter your API key to access the service</p>
@@ -318,26 +291,11 @@
       <form id="loginForm" method="post" action="javascript:void(0);">
         <div class="form-group">
           <label for="apiKey">API Key</label>
-          <input
-            type="password"
-            id="apiKey"
-            name="apiKey"
-            required
-            autocomplete="off"
-            placeholder="Enter your API key"
-          />
+          <input type="password" id="apiKey" name="apiKey" required autocomplete="off" placeholder="Enter your API key" />
         </div>
 
         <div id="errorMessage" class="error" style="display: none">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"></circle>
             <line x1="12" y1="8" x2="12" y2="12"></line>
             <line x1="12" y1="16" x2="12.01" y2="16"></line>
@@ -354,12 +312,7 @@
       <div class="footer">
         <p>
           Powered by
-          <a
-            href="https://github.com/Nya-Foundation/NyaProxy"
-            target="_blank"
-            rel="noopener noreferrer"
-            >NyaProxy</a
-          >
+          <a href="https://github.com/Nya-Foundation/NyaProxy" target="_blank" rel="noopener noreferrer">NyaProxy</a>
         </p>
       </div>
     </div>
@@ -386,9 +339,7 @@
       };
 
       // Check for saved theme preference or respect OS preference
-      const prefersDark = window.matchMedia(
-        "(prefers-color-scheme: dark)"
-      ).matches;
+      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
       const savedTheme = localStorage.getItem("theme");
 
       // Default to dark theme as requested
@@ -411,49 +362,44 @@
       });
 
       // Listen for OS theme changes
-      window
-        .matchMedia("(prefers-color-scheme: dark)")
-        .addEventListener("change", (e) => {
-          if (!localStorage.theme) {
-            // Only auto-switch if user hasn't set a preference
-            setTheme(e.matches);
-          }
-        });
+      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
+        if (!localStorage.theme) {
+          // Only auto-switch if user hasn't set a preference
+          setTheme(e.matches);
+        }
+      });
 
       // Form submission
-      document
-        .getElementById("loginForm")
-        .addEventListener("submit", async function (e) {
-          e.preventDefault();
+      document.getElementById("loginForm").addEventListener("submit", async function (e) {
+        e.preventDefault();
 
-          const apiKey = document.getElementById("apiKey").value;
-          const submitButton = document.getElementById("submitButton");
-          const errorElem = document.getElementById("errorMessage");
+        const apiKey = document.getElementById("apiKey").value;
+        const submitButton = document.getElementById("submitButton");
+        const errorElem = document.getElementById("errorMessage");
 
-          // Show loading state
-          submitButton.classList.add("loading");
-          submitButton.disabled = true;
-          errorElem.style.display = "none";
+        // Show loading state
+        submitButton.classList.add("loading");
+        submitButton.disabled = true;
+        errorElem.style.display = "none";
 
-          try {
-            // Simulate a slight delay for better UX
-            await new Promise((resolve) => setTimeout(resolve, 800));
+        try {
+          // Simulate a slight delay for better UX
+          await new Promise((resolve) => setTimeout(resolve, 800));
 
-            // Set the API key as a cookie with path=/
-            document.cookie = `nyaproxy_api_key=${apiKey}; path=/; max-age=3600; SameSite=Strict`;
+          // Set the API key as a cookie with path=/
+          document.cookie = `nyaproxy_api_key=${apiKey}; path=/; max-age=7200; SameSite=Strict`;
 
-            // Redirect back to the original path
-            window.location.href = "{{ return_path }}";
-          } catch (error) {
-            document.getElementById("errorText").textContent =
-              "Error during authentication. Please try again.";
-            errorElem.style.display = "flex";
+          // Redirect back to the original path
+          window.location.href = "{{ return_path }}";
+        } catch (error) {
+          document.getElementById("errorText").textContent = "Error during authentication. Please try again.";
+          errorElem.style.display = "flex";
 
-            // Reset button state
-            submitButton.classList.remove("loading");
-            submitButton.disabled = false;
-          }
-        });
+          // Reset button state
+          submitButton.classList.remove("loading");
+          submitButton.disabled = false;
+        }
+      });
 
       // Add focus animation to input
       const input = document.getElementById("apiKey");
