@@ -4,7 +4,6 @@ Provides authentication mechanisms and middleware.
 """
 
 import importlib.resources
-from typing import Optional
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import APIKeyHeader
