@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.2.5 (2025-05-31)
+
+### Bug Fixes
+
+- Bump nekoconf version to 1.1.1
+  ([`c239589`](https://github.com/Nya-Foundation/NyaProxy/commit/c23958954b6b39d97e34e490d281df8019872caf))
+
+
 ## v0.2.4 (2025-05-31)
 
 ### Bug Fixes
