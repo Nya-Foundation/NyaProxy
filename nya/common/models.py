@@ -4,8 +4,7 @@ Data models for request handling in NyaProxy.
 
 import asyncio
 import time
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, Optional, Union
+from typing import TYPE_CHECKING, Optional
 
 from httpx import Headers
 
@@ -14,7 +13,6 @@ if TYPE_CHECKING:
     from starlette.datastructures import URL
 
 
-@dataclass
 class ProxyRequest:
     """
     Structured representation of an API request for processing.
@@ -23,49 +21,61 @@ class ProxyRequest:
     a request throughout the proxy processing pipeline.
     """
 
-    # Required request fields
-    method: str
+    def __init__(
+        self,
+        method: str,
+        _url: "URL",
+        headers: Optional[Headers],
+        content: Optional[bytes],
+        ip: str = None,
+    ):
+        self.method = method
 
-    priority: int  # Lower number = higher priority (1=retry, 2=priority, 3=normal)
+        # Lower number = higher priority (1=retry, 2=priority, 3=normal)
+        self.priority = 3
 
-    # original url from the proxy request
-    _url: Union["URL", str]
+        # original url from the proxy request
+        self._url = _url
 
-    # final url to be requested
-    url: Optional[Union["URL", str]] = None
+        # final url to be requested, will be set later
+        self.url = None
 
-    headers: Dict[str, Any] = field(default_factory=dict)
-    content: Optional[bytes] = None
+        self.headers = headers
+        self.content = content
 
-    # API Related metadata
-    api_name: str = "unknown"
-    api_key: Optional[str] = None
+        # API Related metadata
+        self.api_name: str = "unknow"
+        self.api_key: Optional[str] = None
+        self.ip = ip
 
-    future: Optional[asyncio.Future] = None
+        # Number of attempts made for this request
+        self.attempts = 0
+        # Timestamp when added to queue
+        self.added_at = time.time()
+        # Whether to apply rate limiting for this request
+        self._rate_limited = False
 
-    added_at: float = field(default_factory=time.time)  # Timestamp when added to queue
-    is_retry: bool = False
-    attempts: int = 0  # Number of attempts made for this request
+        self.future: Optional[asyncio.Future] = None
+        self._original_future: Optional[asyncio.Future] = None
 
-    # Whether to apply rate limiting for this request
-    _rate_limited: bool = False
-
-    @staticmethod
-    async def from_request(request: "Request") -> "ProxyRequest":
+    @classmethod
+    async def from_request(cls, request: "Request") -> "ProxyRequest":
         """
         Create a ProxyRequest instance from a FastAPI Request object.
         """
 
-        return ProxyRequest(
+        return cls(
             method=request.method,
-            priority=3,
             _url=request.url,
             headers=Headers(request.headers),
             content=await request.body(),
+            ip=request.client.host,
         )
 
     def __lt__(self, other):
-        """Compare for heap ordering (priority first, then timestamp)."""
+        """
+        Compare for heap ordering (priority first, then timestamp).
+        """
         if self.priority != other.priority:
             return self.priority < other.priority
         return self.added_at < other.added_at

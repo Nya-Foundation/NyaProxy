@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 from loguru import logger
 
 from ..common.constants import MAX_QUEUE_SIZE
-from ..utils.helper import _mask_api_key
+from ..utils.helper import mask_secret
 
 
 class MetricsCollector:
@@ -47,7 +47,7 @@ class MetricsCollector:
             api_key: the API key used for the request
         """
 
-        key_id = _mask_api_key(api_key)
+        key_id = mask_secret(api_key)
 
         # Initialize API in dictionaries if not present
         self._ensure_api_exists(api_name)
@@ -84,7 +84,7 @@ class MetricsCollector:
             elapsed: Time taken for the request in seconds
         """
 
-        key_id = _mask_api_key(api_key)
+        key_id = mask_secret(api_key)
 
         # Initialize API in dictionaries if not present
         self._ensure_api_exists(api_name)
@@ -420,21 +420,27 @@ class MetricsCollector:
         return list(self.request_history)[-count:]
 
     def _get_last_request_time(self, api_name: str) -> Optional[float]:
-        """Get the timestamp of the last request for a specific API."""
+        """
+        Get the timestamp of the last request for a specific API.
+        """
         for entry in reversed(self.request_history):
             if entry["api_name"] == api_name and entry["type"] == "request":
                 return entry["timestamp"]
         return None
 
     def _get_total_rate_limit_hits(self) -> int:
-        """Get total rate limit hits across all APIs."""
+        """
+        Get total rate limit hits across all APIs.
+        """
         total = 0
         for limit_hit in self._rate_limit_hits.values():
             total += limit_hit
         return total
 
     def _get_total_queue_hits(self) -> int:
-        """Get total queue hits across all APIs."""
+        """
+        Get total queue hits across all APIs.
+        """
         return sum(self._queue_hits.values())
 
     def reset(self) -> None:

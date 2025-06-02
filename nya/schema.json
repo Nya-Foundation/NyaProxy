@@ -108,6 +108,10 @@
                     "type": "string",
                     "description": "Variable name for API keys"
                 },
+                "key_concurrency": {
+                    "type": "boolean",
+                    "description": "Whether or not each key can handle concurrent requests"
+                },
                 "load_balancing_strategy": {
                     "type": "string",
                     "enum": [
@@ -118,6 +122,21 @@
                         "weighted"
                     ],
                     "description": "Load balancing strategy"
+                },
+                "queue": {
+                    "type": "object",
+                    "properties": {
+                        "max_size": {
+                            "type": "integer",
+                            "description": "Maximum queue size per API",
+                            "minimum": 1
+                        },
+                        "expiry_seconds": {
+                            "type": "integer",
+                            "description": "How long to keep requests in queue before expiry",
+                            "minimum": 1
+                        }
+                    }
                 },
                 "rate_limit": {
                     "type": "object",
@@ -135,6 +154,11 @@
                             "type": "string",
                             "pattern": "^(\\d+)/((\\d+[smhd])|[smhd])$",
                             "description": "Per key rate limit"
+                        },
+                        "ip_rate_limit": {
+                            "type": "string",
+                            "pattern": "^(\\d+)/((\\d+[smhd])|[smhd])$",
+                            "description": "Per IP rate limit"
                         },
                         "rate_limit_paths": {
                             "type": "array",
@@ -331,21 +355,6 @@
                             "description": "Enable/disable the metrics dashboard"
                         }
                     }
-                },
-                "queue": {
-                    "type": "object",
-                    "properties": {
-                        "max_size": {
-                            "type": "integer",
-                            "description": "Maximum queue size per API",
-                            "minimum": 1
-                        },
-                        "expiry_seconds": {
-                            "type": "integer",
-                            "description": "How long to keep requests in queue before expiry",
-                            "minimum": 1
-                        }
-                    }
                 }
             }
         },
@@ -385,6 +394,9 @@
                         "key_variable": {
                             "$ref": "#/$defs/default_settings/properties/key_variable"
                         },
+                        "key_concurrency": {
+                            "$ref": "#/$defs/default_settings/properties/key_concurrency"
+                        },
                         "headers": {
                             "type": "object",
                             "additionalProperties": {
@@ -419,6 +431,9 @@
                         },
                         "load_balancing_strategy": {
                             "$ref": "#/$defs/default_settings/properties/load_balancing_strategy"
+                        },
+                        "queue": {
+                            "$ref": "#/$defs/default_settings/properties/queue"
                         },
                         "rate_limit": {
                             "$ref": "#/$defs/default_settings/properties/rate_limit"

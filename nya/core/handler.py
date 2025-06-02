@@ -56,6 +56,10 @@ class RequestHandler:
 
         request._rate_limited = self.should_enforce_rate_limit(api_name, trail_path)
 
+        # parse the original request ip from proxy headers
+        proxy_ip = HeaderUtils.parse_source_ip_address(request.headers)
+        request.ip = proxy_ip if proxy_ip else request.ip
+
         # Set request priority based on Master API key presence
         self.check_priority_request(request)
 
