@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.3.1 (2025-06-02)
+
+### Bug Fixes
+
+- Request_body_substitution logic refinement
+  ([`b25ca72`](https://github.com/Nya-Foundation/NyaProxy/commit/b25ca7289fbee103041b62cc622529f624a188be))
+
+
 ## v0.3.0 (2025-06-02)
 
 ### Features
