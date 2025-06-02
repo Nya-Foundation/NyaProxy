@@ -1,6 +1,25 @@
 # CHANGELOG
 
 
+## v0.3.2 (2025-06-02)
+
+### Bug Fixes
+
+- Refined and optimized request queue, update config settings and schema, performce optimization
+  ([`6e347ff`](https://github.com/Nya-Foundation/NyaProxy/commit/6e347ff1bd4b7e345deb7018276aa0eff1a9b323))
+
+### Chores
+
+- Black format
+  ([`6e87482`](https://github.com/Nya-Foundation/NyaProxy/commit/6e87482be10b5769d04895d388543ba8eb851942))
+
+- **format**: Apply automatic formatting [skip ci]
+  ([`459c671`](https://github.com/Nya-Foundation/NyaProxy/commit/459c67184668bc588ac545f199e15dd55c5c278b))
+
+- **format**: Apply automatic formatting [skip ci]
+  ([`707320f`](https://github.com/Nya-Foundation/NyaProxy/commit/707320f861f14a53621573a618d9f303659c7e48))
+
+
 ## v0.3.1 (2025-06-02)
 
 ### Bug Fixes
