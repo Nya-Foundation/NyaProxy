@@ -2,7 +2,6 @@
 Load balancer for selecting API keys based on various strategies.
 """
 
-import logging
 import random
 from typing import Callable, List, Optional, TypeVar
 
@@ -20,7 +19,7 @@ class LoadBalancer:
     Supports multiple load balancing strategies:
     - round_robin: Cycle through values in sequence
     - random: Choose a random value
-    - least_requests: Select the value with the fewest reqeust counts
+    - least_requests: Select the value with the fewest request counts
     - fastest_response: Select the value with the lowest average response time
     - weighted: Distribute based on assigned weights
     """
@@ -45,7 +44,6 @@ class LoadBalancer:
         Args:
             values: List of values (keys, tokens, etc.) to balance between
             strategy: Load balancing strategy to use
-            logger: Logger instance
         """
         self.values = values or [""]  # Ensure we always have at least an empty value
         self.strategy_name = strategy.lower()
@@ -56,7 +54,7 @@ class LoadBalancer:
         self.weights = [1] * len(self.values)  # Default to equal weights
         self.current_index = 0  # Used for round_robin strategy
 
-    def get_next(self) -> str:
+    def get_next(self, strategy_name: Optional[str] = None) -> str:
         """
         Get the next value based on the selected load balancing strategy.
 
@@ -68,21 +66,14 @@ class LoadBalancer:
             return ""
 
         # Select strategy function
-        strategy_func = self._get_strategy_function()
+        strategy_func = self._get_strategy_function(strategy_name)
 
-        obj = strategy_func()
-        self.record_request_count(obj, active=True)
+        selected_value = strategy_func()
+        return selected_value
 
-        return obj
-
-    def _get_strategy_function(self) -> Callable[[], str]:
-        """
-        Get the appropriate strategy function based on strategy name.
-
-        Returns:
-            A function that returns the next value
-        """
-        strategies = {
+    def _get_strategy_function(self, strategy_name: Optional[str]) -> Callable[[], str]:
+        """Get the strategy function based on selected strategy."""
+        strategy_map = {
             "round_robin": self._round_robin_select,
             "random": self._random_select,
             "least_requests": self._least_requests_select,
@@ -90,16 +81,15 @@ class LoadBalancer:
             "weighted": self._weighted_select,
         }
 
-        if self.strategy_name not in strategies:
-            logger.warning(
-                f"Unknown strategy '{self.strategy_name}', using round_robin instead"
-            )
-            return self._round_robin_select
-
-        return strategies[self.strategy_name]
+        return strategy_map.get(
+            strategy_name or self.strategy_name, self._round_robin_select
+        )
 
     def _round_robin_select(self) -> str:
-        """Select the next value in a round-robin fashion."""
+        """Select next value in round-robin fashion."""
+        if not self.values:
+            return ""
+
         value = self.values[self.current_index]
         self.current_index = (self.current_index + 1) % len(self.values)
         return value
@@ -118,101 +108,51 @@ class LoadBalancer:
             if count == min_requests
         ]
 
-        # If multiple values have the same count, pick one randomly
+        # If multiple candidates, choose randomly among them
         return random.choice(candidates)
 
     def _fastest_response_select(self) -> str:
         """Select the value with the fastest average response time."""
         # Calculate average response times
         avg_times = {}
-        for value, times in self.response_times.items():
+        for value in self.values:
+            times = self.response_times.get(value, [])
             if times:
                 avg_times[value] = sum(times) / len(times)
             else:
-                # No data means we should try this value to gather data
-                avg_times[value] = 0  # Prefer values with no data over slow ones
+                avg_times[value] = 0  # Give priority to unused values
 
-        # If no data available, fall back to random selection
-        if not avg_times:
-            return random.choice(self.values)
-
-        # Find values with minimum average response time
-        min_time = min(avg_times.values())
-        candidates = [
-            value for value, avg_time in avg_times.items() if avg_time == min_time
-        ]
-
-        # If multiple values have the same average time, pick one randomly
-        return random.choice(candidates)
+        # Find value with minimum average response time
+        return min(avg_times, key=avg_times.get)
 
     def _weighted_select(self) -> str:
         """Select a value based on weights."""
-        # Handle case where all weights are zero
-        if sum(self.weights) == 0:
-            return random.choice(self.values)
+        # Create weighted list
+        weighted_choices = []
+        for i, value in enumerate(self.values):
+            weight = self.weights[i] if i < len(self.weights) else 1
+            weighted_choices.extend([value] * weight)
 
-        # Weighted random selection
-        total = sum(self.weights)
-        r = random.uniform(0, total)
-        cumulative = 0
-
-        for i, weight in enumerate(self.weights):
-            cumulative += weight
-            if r <= cumulative:
-                return self.values[i]
-
-        # Fallback (should never reach here)
-        return self.values[-1]
+        return random.choice(weighted_choices)
 
     def set_weights(self, weights: List[int]) -> None:
-        """
-        Set weights for weighted distribution strategy.
+        """Set weights for weighted load balancing."""
+        self.weights = weights[: len(self.values)]
+        # Pad with 1s if not enough weights provided
+        while len(self.weights) < len(self.values):
+            self.weights.append(1)
 
-        Args:
-            weights: List of integer weights, must match length of values
-
-        Raises:
-            ValueError: If weights length doesn't match values length
-        """
-        if len(weights) != len(self.values):
-            raise ValueError(
-                f"Weights length ({len(weights)}) must match values length ({len(self.values)})"
-            )
-
-        self.weights = weights
-        logger.debug(f"Set weights: {weights}")
-
-    def record_request_count(self, value: str, active: bool = True) -> None:
-        """
-        Record request count to a value for least_requests strategy.
-
-        Args:
-            value: The value that is being connected to
-            active: True to increment, False to decrement
-        """
-        if value not in self.requests_count:
-            return
-
-        if active:
+    def record_request_count(self, value: str) -> None:
+        """Record a request for the given value."""
+        if value in self.requests_count:
             self.requests_count[value] += 1
-        else:
-            self.requests_count[value] = max(0, self.requests_count[value] - 1)
 
     def record_response_time(self, value: str, response_time: float) -> None:
-        """
-        Record response time for a value for fastest_response strategy.
-
-        Args:
-            value: The value
-            response_time: Response time in seconds
-        """
+        """Record response time for the given value."""
         if value not in self.response_times:
-            return
+            self.response_times[value] = []
 
-        # Add response time to history
-        times = self.response_times[value]
-        times.append(response_time)
-
-        # Limit history length to last 10 responses
-        if len(times) > MAX_QUEUE_SIZE:
-            self.response_times[value] = times[-MAX_QUEUE_SIZE:]
+        # Keep only last 100 response times for efficiency
+        self.response_times[value].append(response_time)
+        if len(self.response_times[value]) > MAX_QUEUE_SIZE:
+            self.response_times[value] = self.response_times[value][-MAX_QUEUE_SIZE:]

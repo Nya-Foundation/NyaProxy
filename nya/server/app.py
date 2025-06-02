@@ -25,9 +25,9 @@ from ..common.constants import (
 )
 from ..common.models import ProxyRequest
 from ..config.manager import ConfigManager
-from ..core.factory import ServiceFactory
 from ..core.proxy import NyaProxyCore
 from ..dashboard.api import DashboardAPI
+from ..services.metrics import MetricsCollector
 from .auth import AuthManager, AuthMiddleware
 
 logger.remove()
@@ -56,7 +56,6 @@ class NyaProxyApp:
         self._init_config(config_path=config_path, schema_path=schema_path)
         self.auth = AuthManager()
 
-        self.factory = None
         self.core = None
         self.dashboard = None
 
@@ -181,7 +180,8 @@ class NyaProxyApp:
             self.init_logging()
             # Create FastAPI app with middleware pre-configured
 
-            self.init_factory()
+            # Initialize metrics collector
+            self.init_metrics_collector()
 
             self.init_core()
             # Mount sub-applications for NyaProxy if available
@@ -209,11 +209,9 @@ class NyaProxyApp:
             level=log_config.get("level", "INFO").upper(),
         )
 
-    def init_factory(self) -> ServiceFactory:
-        """Initialize service factory."""
-        factory = ServiceFactory(config_manager=self.config)
-        logger.info("Service factory initialized")
-        self.factory = factory
+    def init_metrics_collector(self) -> None:
+        """Initialize metrics collector."""
+        self.metrics_collector = MetricsCollector()
 
     def init_core(self) -> NyaProxyCore:
         """Initialize the core proxy handler."""
@@ -227,11 +225,11 @@ class NyaProxyApp:
                 "Logger not initialized, proxy handler will use default logging"
             )
 
-        if not self.factory:
-            raise RuntimeError("Service factory must be initialized before core")
-
         # Use the service factory to create the core
-        core = NyaProxyCore(config=self.config, factory=self.factory)
+        core = NyaProxyCore(
+            config=self.config,
+            metrics_collector=self.metrics_collector,
+        )
         logger.info("Proxy handler initialized")
         self.core = core
 
@@ -287,7 +285,7 @@ class NyaProxyApp:
             )
 
             # Set dependencies from the core
-            self.dashboard.set_metrics_collector(self.core.metrics_collector)
+            self.dashboard.set_metrics_collector(self.metrics_collector)
             self.dashboard.set_request_queue(self.core.request_queue)
             self.dashboard.set_config_manager(self.config)
 
@@ -494,9 +492,12 @@ def main():
         host=host,
         port=int(port),
         reload=True,
-        reload_includes=[WATCH_FILE],  # Reload on config changes
-        timeout_keep_alive=15,
+        reload_includes=[WATCH_FILE],
+        timeout_keep_alive=30,
         limit_concurrency=1000,
+        limit_max_requests=5000,
+        backlog=2048,
+        server_header=False,
     )
 
 

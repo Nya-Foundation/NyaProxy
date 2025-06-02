@@ -133,24 +133,17 @@ class MetricsCollector:
             }
         )
 
-    def record_rate_limit_hit(self, api_name: str, api_key: Optional[str]) -> None:
+    def record_rate_limit_hit(self, api_name: str) -> None:
         """
         Record a rate limit hit.
 
         Args:
             api_name: Name of the API
-            api_key: the API key used for the request [Optional]
         """
         # Initialize API in dictionaries if not present
 
         self._ensure_api_exists(api_name)
-        key_id = _mask_api_key(api_key)
-
-        # Record rate limit hit
-        if key_id not in self._rate_limit_hits[api_name]:
-            self._rate_limit_hits[api_name][key_id] = 0
-
-        self._rate_limit_hits[api_name][key_id] += 1
+        self._rate_limit_hits[api_name] += 1
 
     def record_queue_hit(self, api_name: str) -> None:
         """
@@ -182,7 +175,7 @@ class MetricsCollector:
             self._response_times[api_name] = deque(maxlen=MAX_QUEUE_SIZE)
 
         if api_name not in self._rate_limit_hits:
-            self._rate_limit_hits[api_name] = {}
+            self._rate_limit_hits[api_name] = 0
 
         if api_name not in self._queue_hits:
             self._queue_hits[api_name] = 0
@@ -273,8 +266,7 @@ class MetricsCollector:
             metrics["max_response_time"] = max(times)
 
         # Fill in rate limit and queue hits
-        if api_name in self._rate_limit_hits:
-            metrics["rate_limit_hits"] = sum(self._rate_limit_hits[api_name].values())
+        metrics["rate_limit_hits"] = self._rate_limit_hits.get(api_name, 0)
 
         if api_name in self._queue_hits:
             metrics["queue_hits"] = self._queue_hits[api_name]
@@ -296,9 +288,6 @@ class MetricsCollector:
                     "active": key_metrics.get("active", 0),
                     "success": key_success,
                     "error": key_error,
-                    "rate_limit_hits": self._rate_limit_hits.get(api_name, {}).get(
-                        key_id, 0
-                    ),
                     "success_rate": key_success_rate,
                 }
 
@@ -440,8 +429,8 @@ class MetricsCollector:
     def _get_total_rate_limit_hits(self) -> int:
         """Get total rate limit hits across all APIs."""
         total = 0
-        for api_data in self._rate_limit_hits.values():
-            total += sum(api_data.values())
+        for limit_hit in self._rate_limit_hits.values():
+            total += limit_hit
         return total
 
     def _get_total_queue_hits(self) -> int:
@@ -469,8 +458,8 @@ class MetricsCollector:
         # Status code distribution by API
         self._status_codes: Dict[str, Dict[int, int]] = {}
 
-        # Rate limit hits by API and key
-        self._rate_limit_hits: Dict[str, Dict[str, int]] = {}
+        # Rate limit hits by API
+        self._rate_limit_hits: Dict[str, int] = {}
 
         # Queue hits by API
         self._queue_hits: Dict[str, int] = {}

@@ -1,32 +1,19 @@
 """
-Rate limiting implementation for API requests.
+Simple rate limiting with time-based recovery.
 """
 
 import re
 import time
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 from loguru import logger
 
 
 class RateLimiter:
     """
-    Rate limiter for throttling requests to comply with API limits.
-
-    Supports time-based rate limits in the format "X/Y" where:
-    - X is the number of requests allowed
-    - Y is the time unit (s=seconds, m=minutes, h=hours, d=days) or
-    - Y is a number followed by time unit (e.g., 10s, 30m, 2h)
-
-    Example rate limits:
-    - "100/m": 100 requests per minute
-    - "5/s": 5 requests per second
-    - "1000/h": 1000 requests per hour
-    - "1/10s": 1 request per 10 seconds
-    - "5/30m": 5 requests per 30 minutes
+    Simple rate limiter that tracks request timestamps.
     """
 
-    # Time unit to seconds conversion
     TIME_UNITS = {
         "s": 1,
         "m": 60,
@@ -39,175 +26,100 @@ class RateLimiter:
         Initialize rate limiter.
 
         Args:
-            rate_limit: Rate limit string in format "X/Y"
+            rate_limit: Rate limit string (e.g., "10/m", "1/5s")
         """
-
-        # Parse rate limit
+        self.rate_limit = rate_limit or "0/s"
         self.requests_limit, self.window_seconds = self._parse_rate_limit(rate_limit)
-
-        # Initialize timestamps with fixed-size list
         self.request_timestamps: List[float] = []
-        self.last_cleanup_time = 0
+
+    def __repr__(self):
+        return f"<RateLimiter rate_limit={self.rate_limit}>"
 
     def _parse_rate_limit(self, rate_limit: str) -> Tuple[int, int]:
-        """
-        Parse rate limit string into numeric values.
-
-        Args:
-            rate_limit: Rate limit string in format "X/Y" or "X/Ys"
-
-        Returns:
-            Tuple of (requests_limit, window_seconds)
-        """
-        # Handle empty or zero rate limit (no limit)
+        """Parse rate limit string into numeric values."""
         if not rate_limit or rate_limit == "0":
             return 0, 0
 
-        # Try parsing compound time units first (e.g., "1/10s", "5/30m")
+        # Try compound format first (e.g., "1/10s")
         compound_pattern = r"^(\d+)/(\d+)([smhd])$"
         compound_match = re.match(compound_pattern, rate_limit)
 
         if compound_match:
-            requests_limit = int(compound_match.group(1))
-            time_value = int(compound_match.group(2))
-            time_unit = compound_match.group(3)
-            unit_seconds = self.TIME_UNITS.get(time_unit, 0)
-            window_seconds = time_value * unit_seconds
-            return requests_limit, window_seconds
+            requests = int(compound_match.group(1))
+            multiplier = int(compound_match.group(2))
+            unit = compound_match.group(3)
+            return requests, multiplier * self.TIME_UNITS[unit]
 
-        # Fall back to simple format (e.g., "100/m")
+        # Simple format (e.g., "100/m")
         simple_pattern = r"^(\d+)/([smhd])$"
         simple_match = re.match(simple_pattern, rate_limit)
 
         if simple_match:
-            requests_limit = int(simple_match.group(1))
-            time_unit = simple_match.group(2)
-            window_seconds = self.TIME_UNITS.get(time_unit, 0)
-            return requests_limit, window_seconds
+            requests = int(simple_match.group(1))
+            unit = simple_match.group(2)
+            return requests, self.TIME_UNITS[unit]
 
-        logger.warning(f"Invalid rate limit format: {rate_limit}, using no limit")
+        logger.warning(f"Invalid rate limit format: {rate_limit}")
         return 0, 0
 
     def is_rate_limited(self) -> bool:
-        """
-        Check if a request would be rate limited without recording it.
-
-        Returns:
-            True if rate limited, False if request would be allowed
-        """
-        # If no limit is set, never rate limited
-        if self.requests_limit == 0 or self.window_seconds == 0:
+        """Check if currently at rate limit."""
+        if self.requests_limit == 0:
             return False
 
-        current_time = time.time()
-
-        # Clean up timestamps outside the current window
-        self._clean_old_timestamps(current_time)
-
-        # Check if we've hit the limit
+        self._clean_old_timestamps()
         return len(self.request_timestamps) >= self.requests_limit
 
+    def allow_request(self) -> bool:
+        """Check if request is allowed and record it."""
+        if self.is_rate_limited():
+            return False
+
+        self.record_request()
+        return True
+
     def record_request(self) -> None:
-        """
-        Record a request without checking rate limits.
-        This should be called after checking is_rate_limited() returns False.
-        """
-        current_time = time.time()
-        self.request_timestamps.append(current_time)
+        """Record a request timestamp."""
+        self.request_timestamps.append(time.time())
 
     def mark_rate_limited(self, duration: float) -> None:
-        """
-        Explicitly mark this rate limiter as rate limited for a specific duration.
-
-        This is useful when receiving a 429 response from an API to avoid sending
-        requests for the specified time period.
-
-        Args:
-            duration: Number of seconds to mark as rate limited
-        """
+        """Mark as rate limited for specific duration."""
         current_time = time.time()
-
-        # Clear existing timestamps to avoid accumulation
         self.request_timestamps = []
 
-        # Fill with enough timestamps to exceed the limit
-        # Use timestamps that will expire after the specified duration
+        # Fill with timestamps that expire after duration
         expiry_time = current_time - self.window_seconds + duration
         for _ in range(self.requests_limit):
             self.request_timestamps.append(expiry_time)
 
-        self.last_cleanup_time = current_time
-
-    def allow_request(self) -> bool:
-        """
-        Check if a request is allowed under the rate limit and record it if allowed.
-
-        Returns:
-            True if request is allowed, False if rate limited
-        """
-        # Check if rate limited
-        if self.is_rate_limited():
-            return False
-
-        # Record this request
-        self.record_request()
-        return True
-
-    def _clean_old_timestamps(self, current_time: float) -> None:
-        """
-        Remove timestamps that are outside the current window.
-
-        Args:
-            current_time: Current time in seconds
-        """
+    def _clean_old_timestamps(self) -> None:
+        """Remove timestamps outside current window."""
+        current_time = time.time()
         window_start = current_time - self.window_seconds
         self.request_timestamps = [
             t for t in self.request_timestamps if t >= window_start
         ]
-        self.last_cleanup_time = current_time
 
     def get_reset_time(self) -> float:
-        """
-        Get the time in seconds until the rate limit resets.
-
-        Returns:
-            Time in seconds until reset
-        """
-        # If no limit or no timestamps, no reset needed
+        """Get time until rate limit resets."""
         if self.window_seconds == 0 or not self.request_timestamps:
             return 0
 
-        current_time = time.time()
-
-        # If we haven't hit the limit, no reset needed
         if len(self.request_timestamps) < self.requests_limit:
             return 0
 
-        # Calculate when the oldest timestamp will leave the window
+        current_time = time.time()
         oldest_timestamp = min(self.request_timestamps)
         reset_time = oldest_timestamp + self.window_seconds - current_time
-
         return max(0, reset_time)
 
     def get_remaining_requests(self) -> int:
-        """
-        Get the number of remaining requests in the current window.
-
-        Returns:
-            Number of remaining requests
-        """
-        # If no limit, return a large number
+        """Get remaining requests in current window."""
         if self.requests_limit == 0:
             return 999
-
-        # Clean up old timestamps
-        self._clean_old_timestamps(time.time())
-
+        self._clean_old_timestamps()
         return max(0, self.requests_limit - len(self.request_timestamps))
 
     def reset(self) -> None:
-        """
-        Reset the rate limiter state.
-        """
+        """Reset rate limiter state."""
         self.request_timestamps = []
-        self.last_cleanup_time = 0

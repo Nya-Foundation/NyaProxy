@@ -3,7 +3,7 @@ Configuration manager for NyaProxy using NekoConf.
 """
 
 import os
-from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar, Union, cast
+from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
 from loguru import logger
 from nekoconf import NekoConf, NekoConfOrchestrator
@@ -12,49 +12,6 @@ from nekoconf.storage import FileStorageBackend, RemoteStorageBackend
 from nya.common.exceptions import ConfigurationError
 
 T = TypeVar("T")
-
-
-class ApiSettingDescriptor(Generic[T]):
-    """Descriptor for API settings that reduces duplication in ConfigManager."""
-
-    def __init__(
-        self, setting_path: str, value_type: str = "str", doc: Optional[str] = None
-    ):
-        """
-        Args:
-            setting_path: Path to the setting within the API config
-            value_type: Type of value ("str", "int", "bool", "list", "dict")
-            doc: Docstring for the getter method
-        """
-        self.setting_path = setting_path
-        self.value_type = value_type
-        self.doc = doc
-        self.name = ""
-
-    def __set_name__(self, owner, name):
-        self.name = name
-
-    def __get__(
-        self, instance: Union["ConfigManager", object], owner=None
-    ) -> Callable[[str], T]:
-        if instance is None:
-            return self
-
-        def getter(api_name: str) -> T:
-            return cast(
-                T,
-                instance.get_api_setting(
-                    api_name=api_name,
-                    setting_path=self.setting_path,
-                    value_type=self.value_type,
-                ),
-            )
-
-        getter.__doc__ = self.doc
-        getter.__name__ = self.name
-        getter.__qualname__ = f"{owner.__name__}.{self.name}"
-
-        return getter
 
 
 class ConfigManager:
@@ -206,10 +163,6 @@ class ConfigManager:
         """Check if dashboard is enabled."""
         return self.config.get_bool("server.dashboard.enabled", True)
 
-    def get_queue_enabled(self) -> bool:
-        """Check if request queuing is enabled."""
-        return self.config.get_bool("server.queue.enabled", True)
-
     def get_retry_mode(self) -> str:
         """Get the retry mode for failed requests."""
         return self.config.get_str("server.retry.mode", "default")
@@ -227,13 +180,7 @@ class ConfigManager:
         return self.config.get_int("server.queue.expiry_seconds", 300)
 
     def get_api_key(self) -> Union[None, str, List[str]]:
-        """
-        Get the API key(s) for authenticating with the proxy.
-
-        Returns:
-            None if no API key is configured, a string for a single key,
-            or a list of strings for multiple keys
-        """
+        """Get the API key(s) for authenticating with the proxy."""
 
         api_key = self.config.get("server.api_key", None)
 
@@ -245,12 +192,7 @@ class ConfigManager:
             return str(api_key)
 
     def get_apis(self) -> Dict[str, Any]:
-        """
-        Get the configured APIs.
-
-        Returns:
-            Dictionary of API names and their configurations
-        """
+        """Get the configured APIs."""
         apis = self.config.get_dict("apis", {})
         if not apis:
             raise ConfigurationError("No APIs configured. Please add at least one API.")
@@ -258,15 +200,7 @@ class ConfigManager:
         return apis
 
     def get_api_config(self, api_name: str) -> Optional[Dict[str, Any]]:
-        """
-        Get the configuration for a specific API.
-
-        Args:
-            api_name: Name of the API
-
-        Returns:
-            Dictionary with API configuration or None if not found
-        """
+        """Get the configuration for a specific API."""
         apis = self.get_apis()
         return apis.get(api_name, None)
 
@@ -311,25 +245,11 @@ class ConfigManager:
         return self.config.get_dict("default_settings", {})
 
     def get_default_timeout(self) -> int:
-        """
-        Get the default timeout for API requests.
-
-        Returns:
-            Default timeout in seconds or 10 if not specified
-        """
+        """Get the default timeout for API requests."""
         return self.config.get_int("server.timeouts.request_timeout_seconds", 30)
 
     def get_default_setting(self, setting_path: str, default_value: Any = None) -> Any:
-        """
-        Get a default setting value.
-
-        Args:
-            setting_path: Path to the setting within default_settings
-            default_value: Default value if not specified
-
-        Returns:
-            The setting value or default if not specified
-        """
+        """Get a default setting value."""
         return self.config.get(f"default_settings.{setting_path}", default_value)
 
     def get_api_setting(
@@ -357,6 +277,10 @@ class ConfigManager:
             return self.config.get_bool(
                 f"apis.{api_name}.{setting_path}", default_value
             )
+        elif value_type == "float":
+            return self.config.get_float(
+                f"apis.{api_name}.{setting_path}", default_value
+            )
         elif value_type == "list":
             return self.config.get_list(
                 f"apis.{api_name}.{setting_path}", default_value
@@ -368,230 +292,88 @@ class ConfigManager:
         else:  # Default to string
             return self.config.get_str(f"apis.{api_name}.{setting_path}", default_value)
 
-    get_api_request_body_substitution_enabled = ApiSettingDescriptor[bool](
-        "request_body_substitution.enabled",
-        "bool",
-        """Get request body substitution enabled status.
-        Args:
-            api_name: Name of the API
-        Returns:
-            Boolean indicating if substitution is enabled
-        """,
-    )
+    def get_api_request_body_substitution_enabled(self, api_name: str) -> bool:
+        """Get whether request body substitution is enabled for an API."""
+        return self.get_api_setting(
+            api_name, "request_body_substitution.enabled", "bool"
+        )
 
-    get_api_request_body_substitution_rules = ApiSettingDescriptor[
-        List[Dict[str, Any]]
-    ](
-        "request_body_substitution.rules",
-        "list",
-        """Get request body substitution rules.
-        Args:
-            api_name: Name of the API
-        Returns:
-            List of substitution rules
-        """,
-    )
+    def get_api_request_body_substitution_rules(
+        self, api_name: str
+    ) -> List[Dict[str, Any]]:
+        """Get request body substitution rules."""
+        return self.get_api_setting(api_name, "request_body_substitution.rules", "list")
 
-    get_api_default_timeout = ApiSettingDescriptor[int](
-        "timeouts.request_timeout_seconds",
-        "int",
-        """Get default timeout for API requests.
-        Args:
-            api_name: Name of the API
-        Returns:
-            Timeout in seconds
-        """,
-    )
+    def get_api_default_timeout(self, api_name: str) -> int:
+        """Get default timeout for API requests."""
+        return self.get_api_setting(api_name, "timeouts.request_timeout_seconds", "int")
 
-    get_api_key_variable = ApiSettingDescriptor[str](
-        "key_variable",
-        "str",
-        """Get key variable name.
-        Args:
-            api_name: Name of the API
-        Returns:
-            Key variable name
-        """,
-    )
+    def get_api_key_variable(self, api_name: str) -> str:
+        """Get key variable name."""
+        return self.get_api_setting(api_name, "key_variable", "str")
 
-    get_api_custom_headers = ApiSettingDescriptor[Dict[str, Any]](
-        "headers",
-        "dict",
-        """Get custom headers.
-        Args:
-            api_name: Name of the API
-        Returns:
-            Dictionary of headers
-        """,
-    )
+    def get_api_custom_headers(self, api_name: str) -> Dict[str, Any]:
+        """Get custom headers."""
+        return self.get_api_setting(api_name, "headers", "dict")
 
-    get_api_endpoint = ApiSettingDescriptor[str](
-        "endpoint",
-        "str",
-        """Get API endpoint URL.
-        Args:
-            api_name: Name of the API
-        Returns:
-            Endpoint URL
-        """,
-    )
+    def get_api_endpoint(self, api_name: str) -> str:
+        """Get API endpoint URL."""
+        return self.get_api_setting(api_name, "endpoint", "str")
 
-    get_api_load_balancing_strategy = ApiSettingDescriptor[str](
-        "load_balancing_strategy",
-        "str",
-        """Get load balancing strategy.
-        Args:
-            api_name: Name of the API
-        Returns:
-            Load balancing strategy
-        """,
-    )
+    def get_api_load_balancing_strategy(self, api_name: str) -> str:
+        """Get load balancing strategy."""
+        return self.get_api_setting(api_name, "load_balancing_strategy", "str")
 
-    get_api_endpoint_rate_limit = ApiSettingDescriptor[str](
-        "rate_limit.endpoint_rate_limit",
-        "str",
-        """Get endpoint rate limit.
-        Args:
-            api_name: Name of the API
-        Returns:
-            Endpoint rate limit
-        """,
-    )
+    def get_api_rate_limit_enabled(self, api_name: str) -> bool:
+        """Get rate limit enabled status."""
+        return self.get_api_setting(api_name, "rate_limit.enabled", "bool")
 
-    get_api_ip_rate_limit = ApiSettingDescriptor[str](
-        "rate_limit.ip_rate_limit",
-        "str",
-        """Get IP rate limit.
-        Args:
-            api_name: Name of the API
-        Returns:
-            IP rate limit
-        """,
-    )
+    def get_api_endpoint_rate_limit(self, api_name: str) -> str:
+        """Get endpoint rate limit."""
+        return self.get_api_setting(api_name, "rate_limit.endpoint_rate_limit", "str")
 
-    get_api_key_rate_limit = ApiSettingDescriptor[str](
-        "rate_limit.key_rate_limit",
-        "str",
-        """Get key rate limit.
-        Args:
-            api_name: Name of the API
-        Returns:
-            Key rate limit
-        """,
-    )
+    def get_api_key_rate_limit(self, api_name: str) -> str:
+        """Get key rate limit."""
+        return self.get_api_setting(api_name, "rate_limit.key_rate_limit", "str")
 
-    get_api_retry_enabled = ApiSettingDescriptor[bool](
-        "retry.enabled",
-        "bool",
-        """Get retry enabled status.
-        Args:
-            api_name: Name of the API
-        Returns:
-            Boolean indicating if retry is enabled
-        """,
-    )
+    def get_api_retry_enabled(self, api_name: str) -> bool:
+        """Get retry enabled status."""
+        return self.get_api_setting(api_name, "retry.enabled", "bool")
 
-    get_api_retry_mode = ApiSettingDescriptor[str](
-        "retry.mode",
-        "str",
-        """Get retry mode.
-        Args:
-            api_name: Name of the API
-        Returns:
-            Retry mode
-        """,
-    )
+    def get_api_retry_mode(self, api_name: str) -> str:
+        """Get retry mode."""
+        return self.get_api_setting(api_name, "retry.mode", "str")
 
-    get_api_retry_attempts = ApiSettingDescriptor[int](
-        "retry.attempts",
-        "int",
-        """Get retry attempts count.
-        Args:
-            api_name: Name of the API
-        Returns:
-            Number of retry attempts
-        """,
-    )
+    def get_api_retry_attempts(self, api_name: str) -> int:
+        """Get retry attempts count."""
+        return self.get_api_setting(api_name, "retry.attempts", "int")
 
-    get_api_retry_after_seconds = ApiSettingDescriptor[int](
-        "retry.retry_after_seconds",
-        "int",
-        """Get retry delay.
-        Args:
-            api_name: Name of the API
-        Returns:
-            Retry delay in seconds
-        """,
-    )
+    def get_api_retry_after_seconds(self, api_name: str) -> float:
+        """Get retry delay in seconds."""
+        return self.get_api_setting(api_name, "retry.retry_after_seconds", "float")
 
-    get_api_retry_status_codes = ApiSettingDescriptor[List[int]](
-        "retry.retry_status_codes",
-        "list",
-        """Get retry status codes.
-        Args:
-            api_name: Name of the API
-        Returns:
-            List of status codes to retry on
-        """,
-    )
+    def get_api_retry_status_codes(self, api_name: str) -> List[int]:
+        """Get retry status codes."""
+        return self.get_api_setting(api_name, "retry.retry_status_codes", "list")
 
-    get_api_retry_request_methods = ApiSettingDescriptor[List[str]](
-        "retry.retry_request_methods",
-        "list",
-        """Get retry request methods.
-        Args:
-            api_name: Name of the API
-        Returns:
-            List of request methods to retry
-        """,
-    )
+    def get_api_retry_request_methods(self, api_name: str) -> List[str]:
+        """Get retry request methods."""
+        return self.get_api_setting(api_name, "retry.retry_request_methods", "list")
 
-    get_api_rate_limit_paths = ApiSettingDescriptor[List[str]](
-        "rate_limit.rate_limit_paths",
-        "list",
-        """Get rate limit path patterns.
-        Args:
-            api_name: Name of the API
-        Returns:
-            List of path patterns for rate limiting
-        """,
-    )
+    def get_api_rate_limit_paths(self, api_name: str) -> List[str]:
+        """Get rate limit path patterns."""
+        return self.get_api_setting(api_name, "rate_limit.rate_limit_paths", "list")
 
     def get_api_variables(self, api_name: str) -> Dict[str, List[Any]]:
-        """
-        Get the names of all variables defined for an API.
-
-        Args:
-            api_name: Name of the API
-
-        Returns:
-            List of variable names or empty list if not found
-        """
+        """Get all variables defined for an API."""
         return self.get_api_config(api_name).get("variables", {})
 
     def get_api_aliases(self, api_name: str) -> List[str]:
-        """
-        Get the aliases defined for an API.
-
-        Args:
-            api_name: Name of the API
-
-        Returns:
-            Dictionary of aliases or empty dict if not found
-        """
+        """Get the aliases defined for an API."""
         return self.get_api_config(api_name).get("aliases", [])
 
     def get_api_variable_values(self, api_name: str, variable_name: str) -> List[Any]:
-        """
-        Get variable values for an API.
-
-        Args:
-            api_name: Name of the API
-            variable_name: Name of the variable
-
-        Returns:
-            List of variable values or empty list if not found
-        """
+        """Get variable values for an API."""
         api_config = self.get_api_config(api_name)
         if not api_config:
             return []
@@ -609,22 +391,14 @@ class ConfigManager:
             # If it's not a list or string, try to convert to string
             return [str(values)]
 
-    def get_api_advanced_configs(self, api_name: str) -> Dict[str, Any]:
-        """
-        Get advanced configuration settings for an API.
+    def get_api_request_subst_rules(self, api_name: str) -> Dict[str, Any]:
+        """Get request body substitution rules if enabled."""
 
-        Args:
-            api_name: Name of the API
+        enable = self.get_api_request_body_substitution_enabled(api_name)
 
-        Returns:
-            Dictionary of advanced settings or empty dict if not specified
-        """
-        return {
-            "req_body_subst_enabled": self.get_api_request_body_substitution_enabled(
-                api_name
-            ),
-            "subst_rules": self.get_api_request_body_substitution_rules(api_name),
-        }
+        if not enable:
+            return {}
+        return self.get_api_request_body_substitution_rules(api_name)
 
     def reload(self) -> None:
         """Reload the configuration from disk."""

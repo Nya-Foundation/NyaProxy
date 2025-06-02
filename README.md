@@ -143,14 +143,14 @@ docker run -d \
 Configuration reference can be found under [Configs folder](configs/) folder
 
 ```yaml
-# Basic config.yaml example for Gemini API
+# Basic config.yaml example for OpenAI API Compatible Endpoints
 server:
   host: 0.0.0.0
   port: 8080
   api_key: 
   logging:
     enabled: true
-    level: info
+    level: debug
     log_file: app.log
   proxy:
     enabled: false
@@ -158,7 +158,6 @@ server:
   dashboard:
     enabled: true
   queue:
-    enabled: true
     max_size: 200
     expiry_seconds: 300
   cors:
@@ -172,8 +171,9 @@ default_settings:
   key_variable: keys
   load_balancing_strategy: round_robin
   rate_limit:
-    endpoint_rate_limit: 10/s
-    key_rate_limit: 10/m
+    enabled: true
+    endpoint_rate_limit: 10/s # Default endpoint rate limit, can be overridden by each API
+    key_rate_limit: 10/m # Default key rate limit, can be overridden by each API
     rate_limit_paths: 
       - "*"
   retry:
@@ -185,11 +185,36 @@ default_settings:
     retry_status_codes: [ 429, 500, 502, 503, 504 ]
   timeouts:
     request_timeout_seconds: 300
+
+  # Request body substitution settings
+  request_body_substitution:
+    enabled: false
+    # Substitution rules for request body with JMEPath
+    rules:
+      - name: "Remove frequency_penalty"
+        operation: remove
+        path: "frequency_penalty"
+        conditions:
+          - field: "frequency_penalty"
+            operator: "exists"
+      - name: "Remove presence_penalty"
+        operation: remove
+        path: "presence_penalty"
+        conditions:
+          - field: "presence_penalty"
+            operator: "exists"
   
-# API configurations, each API can have its own settings, but will inherit from default_settings if not specified
 apis:
-  gemini: 
+  gemini:
+    # Any OpenAI-Compatible API
     name: Google Gemini API
+    # Gemini: https://generativelanguage.googleapis.com/v1beta/openai
+    # OpenAI: https://api.openai.com/v1
+    # Anthropic: https://api.anthropic.com/v1
+    # DeepSeek: https://api.deepseek.com/v1
+    # Mistral: https://api.mistral.ai/v1
+    # OpenRouter: https://api.openrouter.ai/v1
+    # Ollama: http://localhost:11434/v1
     endpoint: https://generativelanguage.googleapis.com/v1beta/openai
     aliases:
     - /gemini
@@ -203,6 +228,7 @@ apis:
       - your_gemini_key_3
     load_balancing_strategy: least_requests
     rate_limit:
+      enabled: true
       # For Gemini, the rate limits (gemini-2.5-pro-exp-03-25) for each key are 5 RPM and 25 RPD
       # Ideally, the endpoint rate limit should be n x Per-Key-RPD, where n is the number of keys
       endpoint_rate_limit: 75/d
@@ -212,23 +238,29 @@ apis:
         - "/chat/*"
         - "/images/*"
 
-    # [Advanced] Request body substitution settings, do not enable unless you know what you are doing
-    request_body_substitution: 
-      enabled: true 
-      # Substitution rules for request body with JMEPath
-      rules: # JMEPath rules for request body substitution
-        - name: "Remove frequency_penalty" # if frequency_penalty is present, remove it from the request body since Gemini does not support it
-          operation: remove
-          path: "frequency_penalty"
-          conditions:
-            - field: "frequency_penalty"
-              operator: "exists"
-        - name: "Remove presence_penalty" # if presence_penalty is present, remove it from the request body since Gemini does not support it
-          operation: remove
-          path: "presence_penalty"
-          conditions:
-            - field: "presence_penalty"
-              operator: "exists"
+  test:
+    name: Test API
+    endpoint: http://127.0.0.1:8082
+    key_variable: keys
+    headers:
+      Authorization: 'Bearer ${{keys}}'
+      User-Agent: ${{agents}}
+    variables:
+      keys:
+      - your_test_key_1
+      - your_test_key_2
+      - your_test_key_3
+      agents:
+      - test_agent_1
+      - test_agent_2
+      - test_agent_3
+    load_balancing_strategy: least_requests
+    rate_limit:
+      enabled: true
+      endpoint_rate_limit: 20/m
+      key_rate_limit: 1/10s
+      rate_limit_paths:
+        - "/v1/*"
 
   # feel free to add more APIs here, just follow the same structure as above
 ```
