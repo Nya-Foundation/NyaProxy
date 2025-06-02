@@ -3,10 +3,10 @@ Request handler for intercepting and forwarding HTTP requests with token rotatio
 """
 
 import random
-import orjson
 from typing import Any, Dict, Optional, Tuple
 from urllib.parse import urlparse
 
+import orjson
 from loguru import logger
 
 from ..common.constants import API_PATH_PREFIX
