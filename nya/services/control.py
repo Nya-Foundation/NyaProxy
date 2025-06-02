@@ -8,9 +8,9 @@ from typing import Dict, Optional, Tuple, Union
 from loguru import logger
 
 from ..common.exceptions import APIKeyNotConfiguredError, ConfigurationError
+from ..utils.helper import mask_secret
 from .lb import LoadBalancer
 from .limit import RateLimiter
-from ..utils.helper import mask_secret
 
 
 class TrafficManager:

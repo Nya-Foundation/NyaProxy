@@ -2,28 +2,29 @@
 Simple priority queue for handling requests with built-in retry priority.
 """
 
-import time
 import asyncio
+import time
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional, Tuple
 
 from loguru import logger
 
 from ..common.exceptions import (
     EncounterRetryStatusCodeError,
+    NoAvailableAPIKeyError,
+    NyaProxyError,
     QueueFullError,
     ReachedMaxRetriesError,
     RequestExpiredError,
-    NoAvailableAPIKeyError,
-    NyaProxyError,
     RequestRateLimited,
 )
 from ..common.models import ProxyRequest
 
 if TYPE_CHECKING:
+    from starlette.responses import Response
+
     from ..config import ConfigManager
     from ..services.control import TrafficManager
     from ..services.metrics import MetricsCollector
-    from starlette.responses import Response
 
 
 class RequestQueue:

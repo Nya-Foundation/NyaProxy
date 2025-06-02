@@ -3,8 +3,8 @@ The NyaProxyCore class handles the main proxy logic with queue-first architectur
 """
 
 import asyncio
-import time
 import random
+import time
 import traceback
 from typing import TYPE_CHECKING, Dict, Optional, Union
 

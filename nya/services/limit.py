@@ -4,10 +4,10 @@ Simple rate limiting with time-based recovery.
 
 import re
 import time
-from typing import Tuple, Deque, Optional
+from collections import deque
+from typing import Deque, Optional, Tuple
 
 from loguru import logger
-from collections import deque
 
 
 class RateLimiter:

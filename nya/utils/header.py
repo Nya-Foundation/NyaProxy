@@ -2,8 +2,8 @@
 Header processing utilities for NyaProxy.
 """
 
-import re
 import ipaddress
+import re
 from typing import Any, Dict, Optional, Set, Union
 
 from httpx import Headers
