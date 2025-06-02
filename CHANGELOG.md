@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.3.0 (2025-06-02)
+
+### Features
+
+- Major refactor and architecture re-design, simplify workflow, improve throughput
+  ([`d24ff13`](https://github.com/Nya-Foundation/NyaProxy/commit/d24ff131058ad5c6f50029c6b00aa89783dae941))
+
+
 ## v0.2.5 (2025-05-31)
 
 ### Bug Fixes
