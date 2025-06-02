@@ -15,7 +15,7 @@ import orjson  # Faster JSON library
 from jmespath.exceptions import JMESPathError
 
 __all__ = [
-    "_mask_api_key",
+    "mask_secret",
     "format_elapsed_time",
     "decode_content",
     "json_safe_dumps",
@@ -46,7 +46,7 @@ def json_safe_dumps(
 
     # handle httpx.Headers and starlette.datastructures.Headers
     if isinstance(obj, Mapping):
-        obj = dict(obj)  # Convert Mapping to dict for serialization
+        obj = dict(obj)
 
     def bytes_converter(o: Any) -> Any:
         if isinstance(o, bytes):
@@ -66,7 +66,7 @@ def json_safe_dumps(
         return str(obj)
 
 
-def _mask_api_key(key: Optional[str]) -> str:
+def mask_secret(secret: Optional[str]) -> str:
     """
     Get a key identifier for metrics that doesn't expose the full key.
 
@@ -79,19 +79,15 @@ def _mask_api_key(key: Optional[str]) -> str:
     Returns:
         A truncated version of the key for metrics
     """
-    if not key:
-        return "unknown"
+    if not secret:
+        return "unknown_secret"
 
-    try:
-        # For very short keys, return a masked version
-        if len(key) <= 8:
-            return "*" * len(key)
+    # For very short keys, return a masked version
+    if len(secret) <= 8:
+        return "*" * len(secret)
 
-        # For longer keys, show first and last 4 characters
-        return f"{key[:4]}...{key[-4:]}"
-    except (TypeError, AttributeError):
-        # Handle case where key is not a string
-        return "invalid_key_format"
+    # For longer keys, show first and last 4 characters
+    return f"{secret[:4]}...{secret[-4:]}"
 
 
 def format_elapsed_time(elapsed_seconds: float) -> str:

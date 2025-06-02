@@ -30,13 +30,17 @@ class RequestExecutor:
         config: ConfigManager,
         metrics_collector: Optional[MetricsCollector] = None,
     ):
-        """Initialize the simple request executor."""
+        """
+        Initialize the simple request executor.
+        """
         self.config = config
         self.client = self._create_client()
         self.metrics_collector = metrics_collector
 
     def _create_client(self) -> httpx.AsyncClient:
-        """Create HTTP client with optimized settings."""
+        """
+        Create HTTP client with optimized settings.
+        """
         proxy_timeout = self.config.get_default_timeout()
         timeout = self._get_timeout()
 
@@ -79,11 +83,19 @@ class RequestExecutor:
         if self.metrics_collector and request._rate_limited:
             self.metrics_collector.record_request(api_name, request.api_key)
 
+        logger.debug(f"[Request] Method: {request.method.upper()}, URL: {request.url}")
+
         # Execute HTTP request
         response = await self.execute_request(request, self._get_timeout(api_name))
-        logger.debug(f"[Response] Headers: {json_safe_dumps(response.headers)}")
+
+        # Log request/response details on error response
+        if response.status_code >= 400:
+            logger.debug(f"[Request] Headers: {json_safe_dumps(request.headers)}")
+            logger.debug(f"[Request] Content: {json_safe_dumps(request.content)}")
+            logger.debug(f"[Response] Headers: {json_safe_dumps(response.headers)}")
+
         logger.debug(
-            f"[Response] Status: {response.status_code} "
+            f"[Response] URL: {request.url}, Status: {response.status_code} "
             f"({format_elapsed_time(time.time() - actual_start_time)})"
         )
 
@@ -95,36 +107,15 @@ class RequestExecutor:
                 time.time() - actual_start_time,
             )
 
-        # throw retry error for retry logic
-        self._process_retry_logic(response, api_name)
-
         # process successful response
         return await self.process_response(response)
-
-    def _process_retry_logic(
-        self, httpx_response: httpx.Response, api_name: str
-    ) -> None:
-        """
-        Process retry logic for the given API response.
-        """
-        # Handle retry logic
-        retry_enabled = self.config.get_api_retry_enabled(api_name)
-        if not retry_enabled:
-            return
-
-        retry_status_codes = self.config.get_api_retry_status_codes(api_name)
-        # If status code requires retry, raise exception
-        if httpx_response.status_code in retry_status_codes:
-            raise EncounterRetryStatusCodeError(api_name, httpx_response.status_code)
 
     async def execute_request(
         self, request: ProxyRequest, timeout: httpx.Timeout
     ) -> httpx.Response:
-        """Execute the actual HTTP request."""
-        logger.debug(f"[Request] URL: {request.url}")
-        logger.debug(f"[Request] Headers: {json_safe_dumps(request.headers)}")
-        logger.debug(f"[Request] Content: {json_safe_dumps(request.content)}")
-
+        """
+        Execute the actual HTTP request.
+        """
         stream = self.client.stream(
             method=request.method,
             url=request.url,
@@ -138,7 +129,9 @@ class RequestExecutor:
         return response
 
     def _get_timeout(self, api_name: Optional[str] = None) -> httpx.Timeout:
-        """Get timeout configuration for API."""
+        """
+        Get timeout configuration for API.
+        """
         timeout = (
             self.config.get_api_default_timeout(api_name)
             if api_name
@@ -173,7 +166,9 @@ class RequestExecutor:
         self,
         response: httpx.Response,
     ) -> Union[Response, JSONResponse]:
-        """Create the response to send back to client."""
+        """
+        Create the response to send back to client.
+        """
         # Check if it's a streaming response
         try:
             content_type = response.headers.get("content-type", "")
@@ -216,6 +211,8 @@ class RequestExecutor:
                 response._stream_ctx = None
 
     async def close(self):
-        """Close the HTTP client."""
+        """
+        Close the HTTP client.
+        """
         if self.client:
             await self.client.aclose()

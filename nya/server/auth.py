@@ -15,7 +15,9 @@ from nya.config import ConfigManager  # pragma: no cover
 
 
 class AuthManager:
-    """Centralized authentication manager for NyaProxy"""
+    """
+    Centralized authentication manager for NyaProxy
+    """
 
     def __init__(self, config: ConfigManager = None):
         """
@@ -28,7 +30,9 @@ class AuthManager:
         self.header = APIKeyHeader(name="Authorization", auto_error=False)
 
     def get_api_key(self):
-        """Get the configured API key"""
+        """
+        Get the configured API key
+        """
         if not self.config:
             return ""
         return self.config.get_api_key()
@@ -167,7 +171,9 @@ class AuthManager:
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
-    """Authentication middleware for FastAPI applications"""
+    """
+    Authentication middleware for FastAPI applications
+    """
 
     def __init__(self, app, auth: AuthManager):
         super().__init__(app)
@@ -223,7 +229,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
         )
 
     def _generate_login_page(self, request: Request):
-        """Generate a login page for the dashboard or config app"""
+        """
+        Generate a login page for the dashboard or config app
+        """
         return_path = request.url.path
 
         # load the login HTML template using importlib.resources

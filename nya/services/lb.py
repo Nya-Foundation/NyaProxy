@@ -54,7 +54,7 @@ class LoadBalancer:
         self.weights = [1] * len(self.values)  # Default to equal weights
         self.current_index = 0  # Used for round_robin strategy
 
-    def get_next(self, strategy_name: Optional[str] = None) -> str:
+    def next(self, strategy: Optional[str] = None) -> str:
         """
         Get the next value based on the selected load balancing strategy.
 
@@ -66,12 +66,12 @@ class LoadBalancer:
             return ""
 
         # Select strategy function
-        strategy_func = self._get_strategy_function(strategy_name)
+        strategy_func = self._get_strategy_function(strategy)
 
         selected_value = strategy_func()
         return selected_value
 
-    def _get_strategy_function(self, strategy_name: Optional[str]) -> Callable[[], str]:
+    def _get_strategy_function(self, strategy: Optional[str]) -> Callable[[], str]:
         """Get the strategy function based on selected strategy."""
         strategy_map = {
             "round_robin": self._round_robin_select,
@@ -82,7 +82,7 @@ class LoadBalancer:
         }
 
         return strategy_map.get(
-            strategy_name or self.strategy_name, self._round_robin_select
+            strategy or self.strategy_name, self._round_robin_select
         )
 
     def _round_robin_select(self) -> str:
