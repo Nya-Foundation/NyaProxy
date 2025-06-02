@@ -11,9 +11,6 @@ server:
     address: socks5://username:password@proxy.example.com:1080
   dashboard:
     enabled: true
-  queue:
-    max_size: 200
-    expiry_seconds: 300
   cors:
     allow_origins: ["*"] # Set to "*" to allow all origins, however, when allow_credentials is true, this must be set to a specific origin
     allow_credentials: true
@@ -23,11 +20,16 @@ server:
 # Default settings for the all apis if not specified
 default_settings:
   key_variable: keys
+  key_concurrency: true # Whether or not each key can handle concurrent requests
   load_balancing_strategy: round_robin
+  queue:
+    max_size: 200
+    expiry_seconds: 300
   rate_limit:
     enabled: true
     endpoint_rate_limit: 10/s # Default endpoint rate limit, can be overridden by each API
     key_rate_limit: 10/m # Default key rate limit, can be overridden by each API
+    ip_rate_limit: 200/d # You can also set a global IP rate limit, this is useful for protecting against abuse
     rate_limit_paths: 
       - "*"
   retry:
@@ -57,7 +59,6 @@ default_settings:
         conditions:
           - field: "presence_penalty"
             operator: "exists"
-  
 apis:
   gemini:
     # Any OpenAI-Compatible API
@@ -112,6 +113,6 @@ apis:
     rate_limit:
       enabled: true
       endpoint_rate_limit: 20/m
-      key_rate_limit: 1/10s
+      key_rate_limit: 5/m
       rate_limit_paths:
         - "/v1/*"

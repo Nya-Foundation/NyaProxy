@@ -45,10 +45,14 @@ class RootPathMiddleware(BaseHTTPMiddleware):
 
 
 class NyaProxyApp:
-    """Main NyaProxy application class"""
+    """
+    Main NyaProxy application class
+    """
 
     def __init__(self, config_path=None, schema_path=None):
-        """Initialize the NyaProxy application"""
+        """
+        Initialize the NyaProxy application
+        """
 
         # Initialize instance variables
         self.config: ConfigManager = None
@@ -63,7 +67,9 @@ class NyaProxyApp:
         self.app = self._create_main_app()
 
     def _init_config(self, config_path=None, schema_path=None) -> None:
-        """Initialize the configuration manager"""
+        """
+        Initialize the configuration manager
+        """
 
         config_path = config_path or os.environ.get("CONFIG_PATH")
         schema_path = schema_path or os.environ.get("SCHEMA_PATH")
@@ -84,7 +90,9 @@ class NyaProxyApp:
         self.config = config
 
     def _init_auth(self):
-        """Initialize the authentication manager"""
+        """
+        Initialize the authentication manager
+        """
         auth = AuthManager(
             config=self.config,
         )
@@ -93,7 +101,9 @@ class NyaProxyApp:
         return auth
 
     def _create_main_app(self):
-        """Create the main FastAPI application with middleware pre-configured"""
+        """
+        Create the main FastAPI application with middleware pre-configured
+        """
         app = FastAPI(
             title="NyaProxy",
             description="A simple low-level API proxy with dynamic token rotation and load balancing",
@@ -130,18 +140,24 @@ class NyaProxyApp:
 
     @contextlib.asynccontextmanager
     async def lifespan(self, app):
-        """Lifespan context manager for FastAPI"""
+        """
+        Lifespan context manager for FastAPI
+        """
         logger.info("Starting NyaProxy...")
         await self.init_nya_services()
         yield
         await self.shutdown()
 
     def setup_routes(self, app):
-        """Set up FastAPI routes"""
+        """
+        Set up FastAPI routes
+        """
 
         @app.get("/", include_in_schema=False)
         async def root():
-            """Root endpoint"""
+            """
+            Root endpoint
+            """
             return JSONResponse(
                 content={"message": "Welcome to NyaProxy!"},
                 status_code=200,
@@ -150,7 +166,9 @@ class NyaProxyApp:
         # Info endpoint
         @app.get("/info")
         async def info():
-            """Get information about the proxy."""
+            """
+            Get information about the proxy.
+            """
             apis = {}
             if self.config:
                 for name, config in self.config.get_apis().items():
@@ -163,7 +181,9 @@ class NyaProxyApp:
             return {"status": "running", "version": __version__, "apis": apis}
 
     async def generic_proxy_request(self, request: Request):
-        """Generic handler for all proxy requests."""
+        """
+        Generic handler for all proxy requests.
+        """
         if not self.core:
             return JSONResponse(
                 status_code=503,
@@ -174,7 +194,9 @@ class NyaProxyApp:
         return await self.core.handle_request(req)
 
     async def init_nya_services(self):
-        """Initialize services for NyaProxy"""
+        """
+        Initialize services for NyaProxy
+        """
         try:
 
             self.init_logging()
@@ -197,7 +219,9 @@ class NyaProxyApp:
             raise
 
     def init_logging(self) -> None:
-        """Initialize logging."""
+        """
+        Initialize logging.
+        """
         log_config = self.config.get_logging_config()
         logger.remove()  # Remove default logger
         logger.add(
@@ -210,11 +234,15 @@ class NyaProxyApp:
         )
 
     def init_metrics_collector(self) -> None:
-        """Initialize metrics collector."""
+        """
+        Initialize metrics collector.
+        """
         self.metrics_collector = MetricsCollector()
 
     def init_core(self) -> NyaProxyCore:
-        """Initialize the core proxy handler."""
+        """
+        Initialize the core proxy handler.
+        """
         if not self.config:
             raise RuntimeError(
                 "Config manager must be initialized before proxy handler"
@@ -234,7 +262,9 @@ class NyaProxyApp:
         self.core = core
 
     def init_config_ui(self):
-        """Initialize and mount configuration web server if available."""
+        """
+        Initialize and mount configuration web server if available.
+        """
         if not self.config:
             logger.warning("Config manager not initialized, config server disabled")
             return False
@@ -266,7 +296,9 @@ class NyaProxyApp:
         return True
 
     def init_dashboard(self):
-        """Initialize and mount dashboard if enabled."""
+        """
+        Initialize and mount dashboard if enabled.
+        """
         if not self.config:
             logger.warning("Config manager not initialized, dashboard disabled")
             return False
@@ -307,7 +339,9 @@ class NyaProxyApp:
             raise RuntimeError(error_msg)
 
     def setup_proxy_routes(self):
-        """Set up routes for proxying requests"""
+        """
+        Set up routes for proxying requests
+        """
         if logger:
             logger.info("Setting up generic proxy routes")
 
@@ -359,7 +393,9 @@ class NyaProxyApp:
             )
 
     async def shutdown(self):
-        """Clean up resources on shutdown."""
+        """
+        Clean up resources on shutdown.
+        """
         logger.info("Shutting down NyaProxy")
 
         # Close proxy handler client
@@ -368,7 +404,9 @@ class NyaProxyApp:
 
 
 def parse_args():
-    """Parse command line arguments."""
+    """
+    Parse command line arguments.
+    """
     parser = argparse.ArgumentParser(
         description="NyaProxy - API proxy with dynamic token rotation"
     )
@@ -403,13 +441,17 @@ def parse_args():
 
 
 def create_app():
-    """Create the FastAPI application with the NyaProxy app"""
+    """
+    Create the FastAPI application with the NyaProxy app
+    """
     nya_proxy_app = NyaProxyApp()
     return nya_proxy_app.app
 
 
 def trigger_reload(**kwargs):
-    """Trigger a reload of the application."""
+    """
+    Trigger a reload of the application.
+    """
     logger.info("[Info] Configuration changed, triggering reload...")
     if os.path.exists(WATCH_FILE):
         with open(WATCH_FILE, "a") as f:
@@ -420,7 +462,9 @@ def trigger_reload(**kwargs):
 
 
 def main():
-    """Main entry point for NyaProxy."""
+    """
+    Main entry point for NyaProxy.
+    """
     args = parse_args()
 
     # Priority order for configuration:

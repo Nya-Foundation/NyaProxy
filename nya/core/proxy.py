@@ -4,6 +4,7 @@ The NyaProxyCore class handles the main proxy logic with queue-first architectur
 
 import asyncio
 import time
+import random
 import traceback
 from typing import TYPE_CHECKING, Dict, Optional, Union
 
@@ -41,7 +42,9 @@ class NyaProxyCore:
         config: Optional[ConfigManager] = None,
         metrics_collector: Optional["MetricsCollector"] = None,
     ):
-        """Initialize the proxy with minimal dependencies."""
+        """
+        Initialize the proxy with minimal dependencies.
+        """
         self.config = config or ConfigManager.get_instance()
         self.metrics_collector = metrics_collector
 
@@ -81,10 +84,10 @@ class NyaProxyCore:
 
             # If rate limit does not apply, get a random key and process immediately
             if not request._rate_limited:
-                request.api_key = self.control.get_random_key(request.api_name)
+                request.api_key = self.control.select_any_key(request.api_name)
                 return await self._process_queued_request(request)
 
-            # Enqueue the request for processing if rate limit logic applies
+            # All requests go through the queue for consistent processing
             future = await self.request_queue.enqueue_request(request)
             timeout = self.config.get_api_default_timeout(request.api_name)
             return await asyncio.wait_for(future, timeout=timeout)
@@ -106,11 +109,12 @@ class NyaProxyCore:
     async def _process_queued_request(
         self, request: ProxyRequest
     ) -> Union[Response, JSONResponse, StreamingResponse]:
-        """Process a request from the queue."""
+        """
+        Process a request from the queue.
+        """
 
         # Process request headers by setting API key and custom headers
         await self.handler.process_request_headers(request)
-
         # Process request body if needed based on API configuration
         self.handler.process_request_body(request)
 
@@ -121,12 +125,16 @@ class NyaProxyCore:
         message: str,
         status_code: int = 500,
     ) -> JSONResponse:
-        """Create a simple error response."""
+        """
+        Create a simple error response.
+        """
 
         return JSONResponse(status_code=status_code, content={"error": message})
 
     def setup_load_balancers(self) -> Dict[str, LoadBalancer]:
-        """Create load balancers for keys and variable on the API endpoint level"""
+        """
+        Create load balancers for keys and variable on the API endpoint level
+        """
 
         load_balancers = {}
         apis = self.config.get_apis()
@@ -141,7 +149,9 @@ class NyaProxyCore:
         return load_balancers
 
     def setup_rate_limiters(self) -> Dict[str, RateLimiter]:
-        """Create rate limiters for each API endpoint and key."""
+        """
+        Create rate limiters for each API endpoint and key.
+        """
         rate_limiters = {}
         apis = self.config.get_apis()
 
@@ -163,7 +173,9 @@ class NyaProxyCore:
         return rate_limiters
 
     def create_traffic_manager(self) -> TrafficManager:
-        """Create a traffic manager instance."""
+        """
+        Create a traffic manager instance.
+        """
         load_balancers = self.setup_load_balancers()
         rate_limiters = self.setup_rate_limiters()
         return TrafficManager(

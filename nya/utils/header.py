@@ -3,6 +3,7 @@ Header processing utilities for NyaProxy.
 """
 
 import re
+import ipaddress
 from typing import Any, Dict, Optional, Set, Union
 
 from httpx import Headers
@@ -20,6 +21,45 @@ class HeaderUtils:
     # Compiled regex pattern for variable detection
     _VARIABLE_PATTERN = re.compile(r"\$\{\{([^}]+)\}\}")
     _EXCLUDED_HEADERS = EXCLUDED_REQUEST_HEADERS
+
+    @staticmethod
+    def parse_source_ip_address(headers: Headers) -> Optional[str]:
+        """
+        Extract the source IP address from request headers.
+
+        Args:
+            headers: Request headers
+
+        Returns:
+            Source IP address if found, otherwise None
+        """
+        # Check for common headers that may contain the source IP
+        for header in [
+            "x-forwarded-for",
+            "x-real-ip",
+            "cf-connecting-ip",
+            "true-client-ip",
+            "fastly-client-ip",
+            "x-client-ip",
+            "x-forwarded",
+        ]:
+            proxy_info = headers.get(header)
+            if proxy_info:
+                # Extract first IP and validate it
+                first_ip = proxy_info.split(",")[0].strip()
+                if ipaddress.ip_address(first_ip):
+                    return first_ip
+
+        if "forwarded" in headers:
+            # Handle the Forwarded header which may contain multiple values
+            forwarded = headers["forwarded"]
+            result = re.search(r"for=([^;,]+)", forwarded)
+            if result:
+                ip = result.group(1).strip('"').strip("[]")  # Handle IPv6 brackets
+                if ipaddress.ip_address(ip):
+                    return ip
+
+        return None
 
     @staticmethod
     def extract_required_variables(header_templates: Dict[str, Any]) -> Set[str]:

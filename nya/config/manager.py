@@ -24,7 +24,9 @@ class ConfigManager:
     _initialized = False
 
     def __new__(cls, *args, **kwargs):
-        """Create a singleton instance."""
+        """
+        Create a singleton instance.
+        """
         if cls._instance is None:
             cls._instance = super(ConfigManager, cls).__new__(cls)
         return cls._instance
@@ -75,19 +77,25 @@ class ConfigManager:
 
     @classmethod
     def reset(cls):
-        """Reset the singleton instance (useful for testing)."""
+        """
+        Reset the singleton instance (useful for testing).
+        """
         cls._instance = None
         cls._initialized = False
 
     @classmethod
     def get_instance(cls) -> "ConfigManager":
-        """Get the singleton instance, creating it if needed."""
+        """
+        Get the singleton instance, creating it if needed.
+        """
         if cls._instance is None:
             cls._instance = ConfigManager()
         return cls._instance
 
     def init_config_client(self) -> NekoConf:
-        """Initialize the NekoConf."""
+        """
+        Initialize the NekoConf.
+        """
 
         storage: Union[FileStorageBackend, RemoteStorageBackend, None] = None
 
@@ -148,39 +156,45 @@ class ConfigManager:
         return server
 
     def get_port(self) -> int:
-        """Get the port for the proxy server."""
+        """
+        Get the port for the proxy server.
+        """
         return self.config.get_int("server.port", 8080)
 
     def get_host(self) -> str:
-        """Get the host for the proxy server."""
+        """
+        Get the host for the proxy server.
+        """
         return self.config.get_str("server.host", "0.0.0.0")
 
     def get_debug_level(self) -> str:
-        """Get the debug level for logging."""
+        """
+        Get the debug level for logging.
+        """
         return self.config.get_str("server.debug_level", "INFO")
 
     def get_dashboard_enabled(self) -> bool:
-        """Check if dashboard is enabled."""
+        """
+        Check if dashboard is enabled.
+        """
         return self.config.get_bool("server.dashboard.enabled", True)
 
     def get_retry_mode(self) -> str:
-        """Get the retry mode for failed requests."""
+        """
+        Get the retry mode for failed requests.
+        """
         return self.config.get_str("server.retry.mode", "default")
 
     def get_retry_config(self) -> Dict[str, Any]:
-        """Get the retry configuration."""
+        """
+        Get the retry configuration.
+        """
         return self.config.get_dict("server.retry", {})
 
-    def get_queue_size(self) -> int:
-        """Get the maximum queue size."""
-        return self.config.get_int("server.queue.max_size", 100)
-
-    def get_queue_expiry(self) -> int:
-        """Get the default expiry time for queued requests in seconds."""
-        return self.config.get_int("server.queue.expiry_seconds", 300)
-
     def get_api_key(self) -> Union[None, str, List[str]]:
-        """Get the API key(s) for authenticating with the proxy."""
+        """
+        Get the API key(s) for authenticating with the proxy.
+        """
 
         api_key = self.config.get("server.api_key", None)
 
@@ -192,7 +206,9 @@ class ConfigManager:
             return str(api_key)
 
     def get_apis(self) -> Dict[str, Any]:
-        """Get the configured APIs."""
+        """
+        Get the configured APIs.
+        """
         apis = self.config.get_dict("apis", {})
         if not apis:
             raise ConfigurationError("No APIs configured. Please add at least one API.")
@@ -200,12 +216,16 @@ class ConfigManager:
         return apis
 
     def get_api_config(self, api_name: str) -> Optional[Dict[str, Any]]:
-        """Get the configuration for a specific API."""
+        """
+        Get the configuration for a specific API.
+        """
         apis = self.get_apis()
         return apis.get(api_name, None)
 
     def get_logging_config(self) -> Dict[str, Any]:
-        """Get the logging configuration."""
+        """
+        Get the logging configuration.
+        """
         return {
             "enabled": self.config.get_bool("server.logging.enabled", True),
             "level": self.config.get_str("server.logging.level", "INFO"),
@@ -213,43 +233,61 @@ class ConfigManager:
         }
 
     def get_proxy_enabled(self) -> bool:
-        """Check if the proxy is enabled."""
+        """
+        Check if the proxy is enabled.
+        """
         return self.config.get_bool("server.proxy.enabled", False)
 
     def get_proxy_address(self) -> str:
-        """Get the proxy address."""
+        """
+        Get the proxy address.
+        """
         return self.config.get_str("server.proxy.address", "")
 
     def get_cors_allow_origins(self) -> List[str]:
-        """Get the CORS allow origin for the proxy."""
+        """
+        Get the CORS allow origin for the proxy.
+        """
         return self.config.get_list("server.cors.allow_origins", "*")
 
     def get_cors_allow_methods(self) -> List[str]:
-        """Get the CORS allow methods for the proxy."""
+        """
+        Get the CORS allow methods for the proxy.
+        """
         return self.config.get_list(
             "server.cors.allow_methods", "GET, POST, PUT, DELETE, OPTIONS"
         )
 
     def get_cors_allow_headers(self) -> List[str]:
-        """Get the CORS allow headers for the proxy."""
+        """
+        Get the CORS allow headers for the proxy.
+        """
         return self.config.get_list(
             "server.cors.allow_headers", "Content-Type, Authorization"
         )
 
     def get_cors_allow_credentials(self) -> bool:
-        """Check if CORS allow credentials is enabled for the proxy."""
+        """
+        Check if CORS allow credentials is enabled for the proxy.
+        """
         return self.config.get_bool("server.cors.allow_credentials", False)
 
     def get_default_settings(self) -> Dict[str, Any]:
-        """Get the default settings for endpoints."""
+        """
+        Get the default settings for endpoints.
+        """
         return self.config.get_dict("default_settings", {})
 
     def get_default_timeout(self) -> int:
-        """Get the default timeout for API requests."""
+        """
+        Get the default timeout for API requests.
+        """
         return self.config.get_int("server.timeouts.request_timeout_seconds", 30)
 
     def get_default_setting(self, setting_path: str, default_value: Any = None) -> Any:
-        """Get a default setting value."""
+        """
+        Get a default setting value.
+        """
         return self.config.get(f"default_settings.{setting_path}", default_value)
 
     def get_api_setting(
@@ -293,7 +331,9 @@ class ConfigManager:
             return self.config.get_str(f"apis.{api_name}.{setting_path}", default_value)
 
     def get_api_request_body_substitution_enabled(self, api_name: str) -> bool:
-        """Get whether request body substitution is enabled for an API."""
+        """
+        Get whether request body substitution is enabled for an API.
+        """
         return self.get_api_setting(
             api_name, "request_body_substitution.enabled", "bool"
         )
@@ -301,79 +341,141 @@ class ConfigManager:
     def get_api_request_body_substitution_rules(
         self, api_name: str
     ) -> List[Dict[str, Any]]:
-        """Get request body substitution rules."""
+        """
+        Get request body substitution rules.
+        """
         return self.get_api_setting(api_name, "request_body_substitution.rules", "list")
 
     def get_api_default_timeout(self, api_name: str) -> int:
-        """Get default timeout for API requests."""
+        """
+        Get default timeout for API requests.
+        """
         return self.get_api_setting(api_name, "timeouts.request_timeout_seconds", "int")
 
     def get_api_key_variable(self, api_name: str) -> str:
-        """Get key variable name."""
+        """
+        Get key variable name.
+        """
         return self.get_api_setting(api_name, "key_variable", "str")
 
+    def get_api_key_concurrency(self, api_name: str) -> bool:
+        """
+        Get key concurrency setting.
+        """
+        return self.get_api_setting(api_name, "key_concurrency", "bool")
+
     def get_api_custom_headers(self, api_name: str) -> Dict[str, Any]:
-        """Get custom headers."""
+        """
+        Get custom headers.
+        """
         return self.get_api_setting(api_name, "headers", "dict")
 
     def get_api_endpoint(self, api_name: str) -> str:
-        """Get API endpoint URL."""
+        """
+        Get API endpoint URL.
+        """
         return self.get_api_setting(api_name, "endpoint", "str")
 
     def get_api_load_balancing_strategy(self, api_name: str) -> str:
-        """Get load balancing strategy."""
+        """
+        Get load balancing strategy.
+        """
         return self.get_api_setting(api_name, "load_balancing_strategy", "str")
 
+    def get_api_queue_size(self, api_name: str) -> int:
+        """
+        Get the queue size for the API.
+        """
+        return self.get_api_setting(api_name, "queue.max_size", "int")
+
+    def get_api_queue_expiry(self, api_name: str) -> float:
+        """
+        Get the queue expiry time for the API.
+        """
+        return self.get_api_setting(api_name, "queue.expiry_seconds", "float")
+
     def get_api_rate_limit_enabled(self, api_name: str) -> bool:
-        """Get rate limit enabled status."""
+        """
+        Get rate limit enabled status.
+        """
         return self.get_api_setting(api_name, "rate_limit.enabled", "bool")
 
     def get_api_endpoint_rate_limit(self, api_name: str) -> str:
-        """Get endpoint rate limit."""
+        """
+        Get endpoint rate limit.
+        """
         return self.get_api_setting(api_name, "rate_limit.endpoint_rate_limit", "str")
 
     def get_api_key_rate_limit(self, api_name: str) -> str:
-        """Get key rate limit."""
+        """
+        Get key rate limit.
+        """
         return self.get_api_setting(api_name, "rate_limit.key_rate_limit", "str")
 
+    def get_api_ip_rate_limit(self, api_name: str) -> str:
+        """
+        Get IP rate limit.
+        """
+        return self.get_api_setting(api_name, "rate_limit.ip_rate_limit", "str")
+
     def get_api_retry_enabled(self, api_name: str) -> bool:
-        """Get retry enabled status."""
+        """
+        Get retry enabled status.
+        """
         return self.get_api_setting(api_name, "retry.enabled", "bool")
 
     def get_api_retry_mode(self, api_name: str) -> str:
-        """Get retry mode."""
+        """
+        Get retry mode.
+        """
         return self.get_api_setting(api_name, "retry.mode", "str")
 
     def get_api_retry_attempts(self, api_name: str) -> int:
-        """Get retry attempts count."""
+        """
+        Get retry attempts count.
+        """
         return self.get_api_setting(api_name, "retry.attempts", "int")
 
     def get_api_retry_after_seconds(self, api_name: str) -> float:
-        """Get retry delay in seconds."""
+        """
+        Get retry delay in seconds.
+        """
         return self.get_api_setting(api_name, "retry.retry_after_seconds", "float")
 
     def get_api_retry_status_codes(self, api_name: str) -> List[int]:
-        """Get retry status codes."""
+        """
+        Get retry status codes.
+        """
         return self.get_api_setting(api_name, "retry.retry_status_codes", "list")
 
     def get_api_retry_request_methods(self, api_name: str) -> List[str]:
-        """Get retry request methods."""
+        """
+        Get retry request methods.
+        """
         return self.get_api_setting(api_name, "retry.retry_request_methods", "list")
 
     def get_api_rate_limit_paths(self, api_name: str) -> List[str]:
-        """Get rate limit path patterns."""
+        """
+        Get rate limit path patterns.
+        """
         return self.get_api_setting(api_name, "rate_limit.rate_limit_paths", "list")
 
     def get_api_variables(self, api_name: str) -> Dict[str, List[Any]]:
-        """Get all variables defined for an API."""
+        """
+        Get all variables defined for an API.
+        """
         return self.get_api_config(api_name).get("variables", {})
 
     def get_api_aliases(self, api_name: str) -> List[str]:
-        """Get the aliases defined for an API."""
+        """
+        Get the aliases defined for an API.
+        """
         return self.get_api_config(api_name).get("aliases", [])
 
     def get_api_variable_values(self, api_name: str, variable_name: str) -> List[Any]:
-        """Get variable values for an API."""
+        """
+        Get variable values for an API.
+        """
         api_config = self.get_api_config(api_name)
         if not api_config:
             return []
@@ -392,7 +494,9 @@ class ConfigManager:
             return [str(values)]
 
     def get_api_request_subst_rules(self, api_name: str) -> Dict[str, Any]:
-        """Get request body substitution rules if enabled."""
+        """
+        Get request body substitution rules if enabled.
+        """
 
         enable = self.get_api_request_body_substitution_enabled(api_name)
 
@@ -401,7 +505,9 @@ class ConfigManager:
         return self.get_api_request_body_substitution_rules(api_name)
 
     def reload(self) -> None:
-        """Reload the configuration from disk."""
+        """
+        Reload the configuration from disk.
+        """
         try:
             self.config = self.init_config_client()
 
