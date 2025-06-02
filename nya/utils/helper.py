@@ -6,6 +6,7 @@ import gzip
 import json
 import re
 import zlib
+from collections.abc import Mapping
 from typing import Any, Dict, List, Optional, Union
 
 import brotli
@@ -41,8 +42,11 @@ def json_safe_dumps(
     """
 
     if isinstance(obj, str):
-        # If the object is already a string, return it directly
         return obj
+
+    # handle httpx.Headers and starlette.datastructures.Headers
+    if isinstance(obj, Mapping):
+        obj = dict(obj)  # Convert Mapping to dict for serialization
 
     def bytes_converter(o: Any) -> Any:
         if isinstance(o, bytes):
@@ -53,14 +57,13 @@ def json_safe_dumps(
         raise TypeError(f"Object of type {type(o).__name__} is not JSON serializable")
 
     # Pretty-print JSON with indentation and optional ASCII escaping
-
     try:
         res = json.dumps(
             obj, indent=indent, ensure_ascii=ensure_ascii, default=bytes_converter
         )
         return res
     except Exception as e:
-        return f"<error serializing object: {e}>"
+        return str(obj)
 
 
 def _mask_api_key(key: Optional[str]) -> str:

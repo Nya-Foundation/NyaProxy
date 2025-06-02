@@ -3,10 +3,10 @@
 ser:
   host: 0.0.0.0
   port: 8080
-  api_key: YourNyaProxyAPIKey
+  api_key:
   logging:
     enabled: true
-    level: debug
+    level: info
     log_file: app.log
   proxy:
     enabled: false
@@ -14,7 +14,6 @@ ser:
   dashboard:
     enabled: true
   queue:
-    enabled: true
     max_size: 200
     expiry_seconds: 300
 
@@ -36,12 +35,18 @@ default_settings:
   timeouts:
     request_timeout_seconds: 300
     
-
 apis:
   openai:
     # Any OpenAI-Compatible API
     name: OpenAI API
-    endpoint: https://generativelanguage.googleapis.com/v1beta/openai
+    # Gemini: https://generativelanguage.googleapis.com/v1beta/openai
+    # OpenAI: https://api.openai.com/v1
+    # Anthropic: https://api.anthropic.com/v1
+    # DeepSeek: https://api.deepseek.com/v1
+    # Mistral: https://api.mistral.ai/v1
+    # OpenRouter: https://api.openrouter.ai/v1
+    # Ollama: http://localhost:11434/v1
+    endpoint: https://api.openai.com/v1
     aliases:
     - /openai
     key_variable: keys

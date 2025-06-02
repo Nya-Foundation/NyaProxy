@@ -13,7 +13,7 @@ from ..common.constants import EXCLUDED_REQUEST_HEADERS
 
 class HeaderUtils:
     """
-    Utility class for processing API request headers with variassble substitution.
+    Utility class for processing API request headers with variable substitution.
     All methods are static and have no instance state.
     """
 
@@ -49,7 +49,7 @@ class HeaderUtils:
         header_templates: Dict[str, Any],
         variable_values: Dict[str, Any],
         original_headers: Optional[Dict[str, str]] = None,
-    ) -> Union[Dict[str, str], Headers]:
+    ) -> Headers:
         """
         Process headers with variable substitution.
 
@@ -91,7 +91,7 @@ class HeaderUtils:
             if header_name.lower() == "accept-encoding":
                 final_headers[header_name] = "identity"
 
-        return dict(final_headers.items())
+        return final_headers
 
     @staticmethod
     def _substitute_variables(
@@ -126,7 +126,9 @@ class HeaderUtils:
                 # Replace just this match
                 result = result[:start] + value + result[end:]
             else:
-                logger.warning(f"Variable '{var_name}' not found in variable values")
+                logger.warning(
+                    f"Variable '{var_name}' not found in variable values {variable_values}"
+                )
 
         return result
 
@@ -150,8 +152,8 @@ class HeaderUtils:
 
     @staticmethod
     def merge_headers(
-        base_headers: Dict[str, str], override_headers: Dict[str, str]
-    ) -> Dict[str, str]:
+        base_headers: Union[Dict[str, str], Headers], override_headers: Dict[str, str]
+    ) -> Headers:
         """
         Merge two sets of headers, with override_headers taking precedence.
 
@@ -174,4 +176,4 @@ class HeaderUtils:
             if header.lower() in result:  # Case-insensitive check
                 del result[header.lower()]
 
-        return dict(result)  # Convert back to regular dict for compatibility
+        return result  # Convert back to regular dict for compatibility

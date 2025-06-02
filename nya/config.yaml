@@ -4,7 +4,7 @@ server:
   api_key: 
   logging:
     enabled: true
-    level: info
+    level: debug
     log_file: app.log
   proxy:
     enabled: false
@@ -12,7 +12,6 @@ server:
   dashboard:
     enabled: true
   queue:
-    enabled: true
     max_size: 200
     expiry_seconds: 300
   cors:
@@ -26,8 +25,8 @@ default_settings:
   key_variable: keys
   load_balancing_strategy: round_robin
   rate_limit:
+    enabled: true
     endpoint_rate_limit: 10/s # Default endpoint rate limit, can be overridden by each API
-    ip_rate_limit: 10/m # Default IP rate limit, can be overridden by each API
     key_rate_limit: 10/m # Default key rate limit, can be overridden by each API
     rate_limit_paths: 
       - "*"
@@ -83,6 +82,7 @@ apis:
       - your_gemini_key_3
     load_balancing_strategy: least_requests
     rate_limit:
+      enabled: true
       # For Gemini, the rate limits (gemini-2.5-pro-exp-03-25) for each key are 5 RPM and 25 RPD
       # Ideally, the endpoint rate limit should be n x Per-Key-RPD, where n is the number of keys
       endpoint_rate_limit: 75/d
@@ -110,6 +110,7 @@ apis:
       - test_agent_3
     load_balancing_strategy: least_requests
     rate_limit:
+      enabled: true
       endpoint_rate_limit: 20/m
       key_rate_limit: 1/10s
       rate_limit_paths:
