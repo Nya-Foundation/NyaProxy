@@ -6,11 +6,31 @@ Improved custom exceptions for NyaProxy.
 class NyaProxyError(Exception):
     """Base exception class for all NyaProxy errors."""
 
+    def __init__(self, message: str = None):
+        """
+        Initialize NyaProxy error.
+
+        Args:
+            message: Error message
+        """
+        super().__init__()
+        self.message = message or "An error occurred in NyaProxy"
+
     pass
 
 
 class ConfigurationError(NyaProxyError):
     """Exception raised for configuration errors."""
+
+    def __init__(self, message: str):
+        """
+        Initialize configuration error.
+
+        Args:
+            message: Error message
+        """
+        super().__init__(f"NyaProxy configuration error: {message}")
+        self.message = message
 
     pass
 
@@ -25,7 +45,7 @@ class VariablesConfigurationError(ConfigurationError):
         Args:
             message: Error message
         """
-        super().__init__(f"Variables configuration error: {message}")
+        super().__init__(f"NyaProxy variables configuration error: {message}")
         self.message = message
 
 
@@ -45,7 +65,9 @@ class EndpointRateLimitExceededError(NyaProxyError):
         """
         self.api_name = api_name
         self.reset_in_seconds = reset_in_seconds
-        super().__init__(message or f"Rate limit exceeded for {api_name}")
+        super().__init__(
+            message or f"NyaProxy: Rate limit exceeded for {api_name} endpoint"
+        )
 
 
 class QueueFullError(NyaProxyError):
@@ -61,7 +83,9 @@ class QueueFullError(NyaProxyError):
         """
         self.api_name = api_name
         self.max_size = max_size
-        super().__init__(f"Queue for {api_name} is full (max size: {max_size})")
+        super().__init__(
+            f"NyaProxy: Request queue for {api_name} is full (capacity: {max_size})"
+        )
 
 
 class RequestExpiredError(NyaProxyError):
@@ -78,11 +102,11 @@ class RequestExpiredError(NyaProxyError):
         self.api_name = api_name
         self.wait_time = wait_time
         super().__init__(
-            f"Request for {api_name} expired after waiting {wait_time:.1f}s"
+            f"NyaProxy: Request for {api_name} expired after waiting {wait_time:.1f}s in queue"
         )
 
 
-class APIKeyExhaustedError(NyaProxyError):
+class NoAvailableAPIKeyError(NyaProxyError):
     """Exception raised when no API keys are available (all key are rate limited)."""
 
     def __init__(self, api_name: str):
@@ -93,7 +117,37 @@ class APIKeyExhaustedError(NyaProxyError):
             api_name: Name of the API
         """
         self.api_name = api_name
-        super().__init__(f"No available API keys for {api_name} (all rate limited)")
+        super().__init__(
+            f"NyaProxy: No available API keys for {api_name} (all rate limited)"
+        )
+
+
+class APIKeyNotConfiguredError(NyaProxyError):
+    """Exception raised when there is no API key found in the configuration."""
+
+    def __init__(self, api_name: str):
+        """
+        Initialize API key not found error.
+
+        Args:
+            api_name: Name of the API
+        """
+        self.api_name = api_name
+        super().__init__(f"NyaProxy: No API key found for {api_name}")
+
+
+class MissingAPIKeyError(NyaProxyError):
+    """Exception raised when an API key is missing in the configuration."""
+
+    def __init__(self, api_name: str):
+        """
+        Initialize missing API key error.
+
+        Args:
+            api_name: Name of the API
+        """
+        self.api_name = api_name
+        super().__init__(f"NyaProxy: Missing API key for {api_name}")
 
 
 class APIConfigError(NyaProxyError):
@@ -113,7 +167,7 @@ class UnknownAPIError(NyaProxyError):
             path: Request path
         """
         self.path = path
-        super().__init__(f"Unknown API endpoint for path: {path}")
+        super().__init__(f"NyaProxy: Unknown API endpoint for path: {path}")
 
 
 class ConnectionError(NyaProxyError):
@@ -130,7 +184,9 @@ class ConnectionError(NyaProxyError):
         """
         self.api_name = api_name
         self.url = url
-        super().__init__(message or f"Connection error to {api_name} at {url}")
+        super().__init__(
+            message or f"NyaProxy: Connection error to {api_name} at {url}"
+        )
 
 
 class TimeoutError(NyaProxyError):
@@ -146,4 +202,42 @@ class TimeoutError(NyaProxyError):
         """
         self.api_name = api_name
         self.timeout = timeout
-        super().__init__(f"Request to {api_name} timed out after {timeout:.1f}s")
+        super().__init__(
+            f"NyaProxy: Request to {api_name} timed out after {timeout:.1f}s"
+        )
+
+
+class EncounterRetryStatusCodeError(NyaProxyError):
+    """Exception raised when encountering a retry status code defined in the configuration."""
+
+    def __init__(self, api_name: str, status_code: int):
+        """
+        Initialize retry status code error.
+
+        Args:
+            api_name: Name of the API
+            status_code: HTTP status code that requires retry
+        """
+        self.api_name = api_name
+        self.status_code = status_code
+        super().__init__(
+            f"NyaProxy: Encountered retry status code {status_code} for {api_name}"
+        )
+
+
+class ReachedMaxRetriesError(NyaProxyError):
+    """Exception raised when the maximum number of retries is reached."""
+
+    def __init__(self, api_name: str, max_retries: int):
+        """
+        Initialize reached max retries error.
+
+        Args:
+            api_name: Name of the API
+            max_retries: Maximum number of retries allowed
+        """
+        self.api_name = api_name
+        self.max_retries = max_retries
+        super().__init__(
+            f"NyaProxy: Reached maximum retries ({max_retries}) for {api_name}"
+        )

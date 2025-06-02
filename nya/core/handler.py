@@ -1,25 +1,19 @@
 """
-Proxy handler for intercepting and forwarding HTTP requests with token rotation.
+Request handler for intercepting and forwarding HTTP requests with token rotation.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
+import random
+from typing import Any, Dict, Optional, Tuple
 from urllib.parse import urlparse
 
 from loguru import logger
 
 from ..common.constants import API_PATH_PREFIX
-from ..common.exceptions import (
-    EndpointRateLimitExceededError,
-    VariablesConfigurationError,
-)
-from ..common.models import AdvancedConfig, ProxyRequest
+from ..common.exceptions import MissingAPIKeyError, VariablesConfigurationError
+from ..common.models import ProxyRequest
 from ..config.manager import ConfigManager
 from ..utils.header import HeaderUtils
-
-if TYPE_CHECKING:
-    from ..services.key import KeyManager
-    from ..services.limit import RateLimiter
-    from ..services.metrics import MetricsCollector
+from ..utils.helper import apply_body_substitutions
 
 
 class RequestHandler:
@@ -30,32 +24,24 @@ class RequestHandler:
 
     def __init__(
         self,
-        config: ConfigManager,
-        key_manager: "KeyManager",
-        metrics_collector: Optional["MetricsCollector"] = None,
     ):
         """
         Initialize the request handler.
 
         Args:
-            config: Configuration manager instance
             key_manager: Key manager instance
-            metrics_collector: Metrics collector instance (optional)
         """
-        self.config = config
-        self.key_manager = key_manager
-        self.metrics_collector = metrics_collector
-        self.load_balancers = {}  # Will be set from outside
+        self.config = ConfigManager.get_instance()
 
-    def prepare_request(self, request: ProxyRequest) -> Tuple[str, str, str]:
+        if not self.config:
+            raise ValueError("ConfigManager instance is not initialized.")
+
+    def prepare_request(self, request: ProxyRequest) -> None:
         """
         Prepare a request for forwarding by identifying target API and setting config.
 
         Args:
             request: ProxyRequest object to prepare
-
-        Returns:
-            Tuple of (api_name, trail_path, target_url)
         """
         # Identify target API based on path
         api_name, trail_path = self.parse_request(request)
@@ -64,15 +50,13 @@ class RequestHandler:
         target_endpoint: str = self.config.get_api_endpoint(api_name)
         target_url = f"{target_endpoint}{trail_path}"
 
-        request.api_name = api_name
         request.url = target_url
+        request.api_name = api_name
 
-        # Map advanced configurations for the request
-        kwargs = self.config.get_api_advanced_configs(api_name)
-        adv_config = AdvancedConfig(**kwargs)
-        request._config = adv_config
+        request._rate_limited = self.should_enforce_rate_limit(api_name, trail_path)
 
-        return api_name, trail_path, target_url
+        # Set request priority based on Master API key presence
+        self.check_priority_request(request)
 
     def parse_request(
         self, request: ProxyRequest
@@ -112,16 +96,40 @@ class RequestHandler:
         # Check for aliases in each API config
         for api_name in apis_config.keys():
             aliases = self.config.get_api_aliases(api_name)
-            if aliases and api_name in aliases:
+            if aliases and parts[0] in aliases:
                 return api_name, trail_path
 
         # No match found
         logger.warning(f"No API configuration found for endpoint: {api_name}")
         return None, None
 
-    def should_apply_rate_limit(self, api_name: str, path: str) -> bool:
+    def check_priority_request(self, request: ProxyRequest) -> None:
         """
-        Check if rate limiting should be applied to the given path.
+        Handle priority requests that require immediate processing.
+
+        Args:
+            request: ProxyRequest object to process
+        """
+        authorization_header = request.headers.get("Authorization")
+
+        token = (
+            authorization_header.split("Bearer ")[-1] if authorization_header else None
+        )
+        if not token:
+            return
+
+        keys = self.config.get_api_key()
+        if not keys:
+            return
+
+        if (isinstance(keys, str) and token == keys) or (
+            isinstance(keys, list) and token == keys[0]
+        ):
+            request.priority = 2
+
+    def should_enforce_rate_limit(self, api_name: str, path: str) -> bool:
+        """
+        Check if rate limiting should be applied for the given API and path.
 
         Args:
             api_name: Name of the API endpoint
@@ -130,6 +138,12 @@ class RequestHandler:
         Returns:
             bool: True if rate limiting should be applied, False otherwise
         """
+
+        rate_limit_enabled = self.config.get_api_rate_limit_enabled(api_name)
+
+        if not rate_limit_enabled:
+            return False
+
         # Get rate limit paths from config, default to ['*'] (all paths)
         rate_limit_paths = self.config.get_api_rate_limit_paths(api_name)
 
@@ -139,44 +153,29 @@ class RequestHandler:
 
         # Check each pattern against the path
         for pattern in rate_limit_paths:
-            # Simple wildcard matching (could be extended to use regex)
-            if pattern.endswith("*"):
-                # Check if path starts with the pattern minus the '*'
-                prefix = pattern[:-1]
-                if path.startswith(prefix):
-                    return True
-            # Exact match
-            elif pattern == path:
+            if pattern == path or path.startswith(pattern.rstrip("*")):
                 return True
 
-        # No matches found, don't apply rate limiting
-        logger.debug(
-            f"Path {path} not in rate_limit_paths for {api_name}, skipping rate limiting"
-        )
         return False
 
-    def check_endpoint_rate_limit(self, api_name: str) -> None:
+    def process_request_body(self, request: ProxyRequest) -> None:
         """
-        Check if the endpoint rate limit is exceeded.
+        Modify the request body if needed.
 
-        Args:
-            api_name: Name of the API
-
-        Raises:
-            EndpointRateLimitExceededError: If rate limit is exceeded
+        This method can be overridden to implement custom request body modifications.
         """
-        endpoint_limiter: Optional[RateLimiter] = self.key_manager.get_api_rate_limiter(
-            api_name
-        )
+        content_type = request.headers.get("content-type", "").lower()
 
-        if endpoint_limiter and not endpoint_limiter.allow_request():
-            remaining = endpoint_limiter.get_reset_time()
-            logger.warning(
-                f"Endpoint rate limit exceeded for {api_name}, reset in {remaining:.2f}s"
-            )
-            raise EndpointRateLimitExceededError(api_name, reset_in_seconds=remaining)
+        if "application/json" not in content_type:
+            return
 
-    async def set_request_headers(self, request: ProxyRequest) -> None:
+        rules = self.config.get_api_request_subst_rules(request.api_name)
+        if not rules:
+            return
+
+        apply_body_substitutions(request.content, rules)
+
+    async def process_request_headers(self, request: ProxyRequest) -> None:
         """
         Set headers for the request, including API key and custom headers.
 
@@ -185,18 +184,12 @@ class RequestHandler:
 
         Raises:
             VariablesConfigurationError: If variable configuration is incorrect
-            APIKeyExhaustedError: If no API keys are available
         """
         api_name = request.api_name
 
-        # if api_key is not set, get an available key from the key manager
-        request.api_key = (
-            request.api_key
-            if request.api_key
-            else await self.key_manager.get_available_key(
-                api_name, request._apply_rate_limit
-            )
-        )
+        # Ensure we have an API key
+        if not request.api_key:
+            raise MissingAPIKeyError(f"Missing API key for {api_name}")
 
         # Get key variable for the API
         key_variable = self.config.get_api_key_variable(api_name)
@@ -207,30 +200,30 @@ class RequestHandler:
         # Identify all template variables in headers that needs to be substituted
         required_vars = HeaderUtils.extract_required_variables(header_config)
 
+        required_vars.remove(key_variable)  # Remove key variable if present
         var_values: Dict[str, Any] = {key_variable: request.api_key}
 
-        # Get values for other variables from load_balancers
-        for var in required_vars:
-            if var == key_variable:
-                continue
-
-            variable_balancer = self.load_balancers.get(f"{api_name}_{var}")
-            if not variable_balancer:
-                raise VariablesConfigurationError(
-                    f"Variable configuration error for {var} in {api_name}"
-                )
-
-            variable_value = variable_balancer.get_next()
-            var_values[var] = variable_value
-
-        # Process headers with variable substitution
-        headers = HeaderUtils.process_headers(
-            header_templates=header_config,
-            variable_values=var_values,
-            original_headers=dict(request.headers),
-        )
-
+        # Ensure host header set to the target URL's host
         parsed_url = urlparse(request.url)
-        headers["host"] = parsed_url.netloc
+        request.headers["host"] = parsed_url.netloc
 
-        request.headers = headers
+        try:
+            # Get values for other variables from load_balancers
+            for var in required_vars:
+                # randomly select a value for the variable from the configured values
+                variables = self.config.get_api_variable_values(api_name, var)
+                value = random.choice(variables) if variables else None
+                var_values[var] = value
+
+            # Process headers with variable substitution
+            processed_headers = HeaderUtils.process_headers(
+                header_config, var_values, original_headers=dict(request.headers)
+            )
+            request.headers = HeaderUtils.merge_headers(
+                request.headers, processed_headers
+            )
+
+        except Exception as e:
+            raise VariablesConfigurationError(
+                f"Header processing failed for {api_name}: {str(e)}"
+            )

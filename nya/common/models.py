@@ -5,26 +5,13 @@ Data models for request handling in NyaProxy.
 import asyncio
 import time
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
+
+from httpx import Headers
 
 if TYPE_CHECKING:
     from fastapi import Request
     from starlette.datastructures import URL
-
-
-@dataclass
-class AdvancedConfig:
-    """
-    Advanced configuration for NyaProxy Request Handling.
-
-    This class holds the settings that control how streaming responses
-    are handled, including chunk size and whether to use a streaming
-    response.
-    """
-
-    # Request Body Substitution
-    req_body_subst_enabled: bool = False
-    subst_rules: List[Dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -39,32 +26,29 @@ class ProxyRequest:
     # Required request fields
     method: str
 
-    # original url from the request, contains the full path of nya
+    priority: int  # Lower number = higher priority (1=retry, 2=priority, 3=normal)
+
+    # original url from the proxy request
     _url: Union["URL", str]
 
-    # final url to be requested, differ from _url since the request is proxied
+    # final url to be requested
     url: Optional[Union["URL", str]] = None
 
-    # Optional request fields
-    _raw: Optional["Request"] = None
     headers: Dict[str, Any] = field(default_factory=dict)
     content: Optional[bytes] = None
-    timeout: float = 30.0
 
     # API Related metadata
     api_name: str = "unknown"
     api_key: Optional[str] = None
 
-    # Processing metadata
-    _attempts: int = 0
-    _added_at: float = field(default_factory=time.time)
-    _expiry: float = 0.0
-    _future: Optional[asyncio.Future] = None
+    future: Optional[asyncio.Future] = None
+
+    added_at: float = field(default_factory=time.time)  # Timestamp when added to queue
+    is_retry: bool = False
+    attempts: int = 0  # Number of attempts made for this request
 
     # Whether to apply rate limiting for this request
-    _apply_rate_limit: bool = True
-
-    _config: AdvancedConfig = field(default_factory=AdvancedConfig)
+    _rate_limited: bool = False
 
     @staticmethod
     async def from_request(request: "Request") -> "ProxyRequest":
@@ -74,9 +58,14 @@ class ProxyRequest:
 
         return ProxyRequest(
             method=request.method,
+            priority=3,
             _url=request.url,
-            headers=dict(request.headers),
+            headers=Headers(request.headers),
             content=await request.body(),
-            _raw=request,
-            _added_at=time.time(),
         )
+
+    def __lt__(self, other):
+        """Compare for heap ordering (priority first, then timestamp)."""
+        if self.priority != other.priority:
+            return self.priority < other.priority
+        return self.added_at < other.added_at

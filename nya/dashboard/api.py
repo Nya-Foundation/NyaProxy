@@ -15,11 +15,11 @@ from fastapi.templating import Jinja2Templates
 from loguru import logger
 
 from .._version import __version__
-from ..services.metrics import MetricsCollector
 
 if TYPE_CHECKING:
     from ..config.manager import ConfigManager
-    from ..services.queue import RequestQueue
+    from ..core.queue import RequestQueue
+    from ..services.metrics import MetricsCollector
 
 
 class DashboardAPI:
@@ -59,7 +59,7 @@ class DashboardAPI:
         os.makedirs(js_dir, exist_ok=True)
 
         # Dependencies
-        self.metrics_collector: Optional[MetricsCollector] = None
+        self.metrics_collector: Optional["MetricsCollector"] = None
         self.request_queue = None
         self.config_manager = None
 
@@ -100,7 +100,7 @@ class DashboardAPI:
             package_dir = Path(__file__).parent
             return package_dir / "html"
 
-    def set_metrics_collector(self, metrics_collector: MetricsCollector):
+    def set_metrics_collector(self, metrics_collector: "MetricsCollector"):
         """Set the metrics collector."""
         self.metrics_collector = metrics_collector
 
@@ -575,7 +575,7 @@ class DashboardAPI:
                 )
 
             try:
-                cleared_count = self.request_queue.clear_queue(api_name)
+                cleared_count = await self.request_queue.clear_queue(api_name)
                 return {"cleared_count": cleared_count}
             except Exception as e:
                 logger.error(f"Error clearing queue: {str(e)}")
@@ -619,38 +619,6 @@ class DashboardAPI:
                 return JSONResponse(
                     status_code=500,
                     content={"error": f"Error resetting metrics: {str(e)}"},
-                )
-
-        @self.app.post("/api/metrics/reset/{api_name}")
-        async def reset_api_metrics(api_name: str):
-            """Reset metrics for a specific API."""
-            if not self.metrics_collector:
-                return JSONResponse(
-                    status_code=503,
-                    content={"error": "Metrics collector not available"},
-                )
-
-            try:
-                # Check if the API exists in metrics
-                metrics = self.metrics_collector.get_api_metrics(api_name)
-                if not metrics or metrics.get("total_requests", 0) == 0:
-                    return JSONResponse(
-                        status_code=404,
-                        content={"error": f"No metrics found for API: {api_name}"},
-                    )
-
-                # Currently reset all metrics as we don't have a per-API reset
-                # TODO: Implement per-API reset in MetricsCollector
-                self.metrics_collector.reset()
-                return {
-                    "status": "ok",
-                    "message": f"Metrics for {api_name} reset successfully",
-                }
-            except Exception as e:
-                logger.error(f"Error resetting API metrics: {str(e)}")
-                return JSONResponse(
-                    status_code=500,
-                    content={"error": f"Error resetting API metrics: {str(e)}"},
                 )
 
     async def start_background(self, host: str = "0.0.0.0"):

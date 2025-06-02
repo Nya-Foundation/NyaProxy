@@ -122,15 +122,14 @@
                 "rate_limit": {
                     "type": "object",
                     "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "description": "Enable rate limiting"
+                        },
                         "endpoint_rate_limit": {
                             "type": "string",
                             "pattern": "^(\\d+)/((\\d+[smhd])|[smhd])$",
                             "description": "Endpoint rate limit"
-                        },
-                        "ip_rate_limit": {
-                            "type": "string",
-                            "pattern": "^(\\d+)/((\\d+[smhd])|[smhd])$",
-                            "description": "Per IP rate limit"
                         },
                         "key_rate_limit": {
                             "type": "string",
@@ -168,7 +167,7 @@
                             "minimum": 0
                         },
                         "retry_after_seconds": {
-                            "type": "integer",
+                            "type": "number",
                             "description": "Delay between retries",
                             "minimum": 0
                         },
@@ -336,10 +335,6 @@
                 "queue": {
                     "type": "object",
                     "properties": {
-                        "enabled": {
-                            "type": "boolean",
-                            "description": "Enable request queuing when rate limits are hit"
-                        },
                         "max_size": {
                             "type": "integer",
                             "description": "Maximum queue size per API",
