@@ -3,6 +3,7 @@ Request handler for intercepting and forwarding HTTP requests with token rotatio
 """
 
 import random
+import orjson
 from typing import Any, Dict, Optional, Tuple
 from urllib.parse import urlparse
 
@@ -164,8 +165,14 @@ class RequestHandler:
 
         This method can be overridden to implement custom request body modifications.
         """
-        content_type = request.headers.get("content-type", "").lower()
+        body_subst_enabled = self.config.get_api_request_body_substitution_enabled(
+            request.api_name
+        )
 
+        if not body_subst_enabled:
+            return
+
+        content_type = request.headers.get("content-type", "").lower()
         if "application/json" not in content_type:
             return
 
@@ -173,7 +180,10 @@ class RequestHandler:
         if not rules:
             return
 
-        apply_body_substitutions(request.content, rules)
+        modified_content = apply_body_substitutions(request.content, rules)
+        request.content = orjson.dumps(modified_content)
+
+        logger.debug("Request body substitutions applied successfully")
 
     async def process_request_headers(self, request: ProxyRequest) -> None:
         """
