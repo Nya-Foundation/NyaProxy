@@ -78,9 +78,7 @@ class NyaProxyCore:
             # Validate and prepare request
             self.handler.prepare_request(request)
             if not request.api_name:
-                return self._error_response(
-                    request, "NyaProxy: Unknown API endpoint", 404
-                )
+                return self._error_response("NyaProxy: Unknown API endpoint", 404)
 
             # If rate limit does not apply, get a random key and process immediately
             if not request._rate_limited:

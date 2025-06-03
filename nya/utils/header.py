@@ -128,8 +128,7 @@ class HeaderUtils:
             final_headers[header_name] = header_value
 
             # patch accept-encoding header to avoid issues with httpx
-            if header_name.lower() == "accept-encoding":
-                final_headers[header_name] = "identity"
+            final_headers["accept-encoding"] = "identity"
 
         return final_headers
 
