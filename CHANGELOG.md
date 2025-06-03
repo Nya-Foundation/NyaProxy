@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.3.3 (2025-06-03)
+
+### Bug Fixes
+
+- Fix content-encoding/accept encoding issue when dealing with streamed request
+  ([`817e9b6`](https://github.com/Nya-Foundation/NyaProxy/commit/817e9b6d3f39e6cdf2566da65336fd534e4e2bca))
+
+
 ## v0.3.2 (2025-06-02)
 
 ### Bug Fixes
