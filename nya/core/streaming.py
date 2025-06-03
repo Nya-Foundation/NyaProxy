@@ -74,6 +74,10 @@ class StreamingHandler:
             Processed headers for streaming
         """
 
+        for header in ["content-encoding", "content-length", "accept-encoding"]:
+            if header in headers:
+                del headers[header]
+
         # Set SSE-specific headers according to standards
         headers["cache-control"] = "no-cache, no-transform"
         headers["connection"] = "keep-alive"
