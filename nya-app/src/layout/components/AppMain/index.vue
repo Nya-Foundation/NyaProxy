@@ -17,11 +17,8 @@
 <style lang="scss">
 .app-main {
   position: relative;
-  // height: calc(100vh - #{$nav-bar-height+$tabs-page-height});
-  // min-height: calc(100vh - #{$nav-bar-height+$tabs-page-height});
   flex: 1;
   width: auto;
-  padding: 16px;
   overflow: auto;
   background-color: #{$app-main-bg-color};
 }

@@ -1,4 +1,4 @@
-import { get } from '@/utils/methods';
+import { get, post } from '@/utils/methods';
 
 export async function getAuth(): Promise<any> {
   const res = await get<any>('/dashboard/api/history');
@@ -27,5 +27,10 @@ export async function getQuene(): Promise<any> {
 
 export async function getKeyUsage(): Promise<any> {
   const res = await get<any>('/dashboard/api/key-usage');
+  return res;
+}
+
+export async function clearQueue(api_name: string): Promise<any> {
+  const res = await post<any>(`/dashboard/api/queue/clear/${api_name}`);
   return res;
 }

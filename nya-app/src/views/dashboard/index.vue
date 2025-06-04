@@ -142,6 +142,10 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.dashboard-page {
+  padding: 1rem;
+}
+
 .fixed-tool-wrapper {
   z-index: 100;
 }
