@@ -1,10 +1,10 @@
 // echarts
 import { BarChart, LineChart, PieChart } from 'echarts/charts';
 import {
-    GridComponent,
-    LegendComponent,
-    TitleComponent,
-    TooltipComponent
+  GridComponent,
+  LegendComponent,
+  TitleComponent,
+  TooltipComponent
 } from 'echarts/components';
 import * as echarts from 'echarts/core';
 import { LabelLayout, UniversalTransition } from 'echarts/features';
@@ -70,7 +70,7 @@ export function useECharts(elRef: Ref<HTMLDivElement>) {
   // Watch for theme changes and reinitialize chart
   watch(
     () => appConfig.value?.themeMode,
-    (newTheme) => {
+    newTheme => {
       if (chartInstance && newTheme) {
         // Reinitialize with new theme
         initCharts(newTheme);

@@ -20,9 +20,21 @@ watchEffect(() => {
 
   // Generate color palette for different bars
   const colorPalette = [
-    '#5470C6', '#91CC75', '#FAC858', '#EE6666', '#73C0DE',
-    '#3BA272', '#FC8452', '#9A60B4', '#EA7CCC', '#FFC300',
-    '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7'
+    '#5470C6',
+    '#91CC75',
+    '#FAC858',
+    '#EE6666',
+    '#73C0DE',
+    '#3BA272',
+    '#FC8452',
+    '#9A60B4',
+    '#EA7CCC',
+    '#FFC300',
+    '#FF6B6B',
+    '#4ECDC4',
+    '#45B7D1',
+    '#96CEB4',
+    '#FFEAA7'
   ];
 
   // Create data with individual colors for each bar
@@ -33,47 +45,50 @@ watchEffect(() => {
     }
   }));
 
-  setOptions({
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: {
-        type: 'shadow'
-      }
-    },
-    grid: {
-      left: '3%',
-      right: '4%',
-      bottom: '3%',
-      containLabel: true
-    },
-    xAxis: [
-      {
-        type: 'category',
-        boundaryGap: false,
-        data: xData,
-        splitLine: {
-          show: true,
-          lineStyle: {
-            type: 'dashed',
-            color: '#ccc'
+  setOptions(
+    {
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: {
+          type: 'shadow'
+        }
+      },
+      grid: {
+        left: '3%',
+        right: '4%',
+        bottom: '3%',
+        containLabel: true
+      },
+      xAxis: [
+        {
+          type: 'category',
+          boundaryGap: false,
+          data: xData,
+          splitLine: {
+            show: true,
+            lineStyle: {
+              type: 'dashed',
+              color: '#ccc'
+            }
           }
         }
-      }
-    ],
-    yAxis: [
-      {
-        type: 'value'
-      }
-    ],
-    series: [
-      {
-        name: 'API Requests',
-        type: 'bar',
-        barWidth: '60%',
-        data: seriesData
-      }
-    ]
-  }, false);
+      ],
+      yAxis: [
+        {
+          type: 'value'
+        }
+      ],
+      series: [
+        {
+          name: 'API Requests',
+          type: 'bar',
+          barWidth: '60%',
+          data: seriesData
+        }
+      ]
+    },
+    false
+  );
 });
 </script>
 
