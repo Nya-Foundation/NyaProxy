@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.3.4 (2025-06-04)
+
+### Bug Fixes
+
+- Config nekoconf integration issue, add shutdown logging
+  ([`29d7a47`](https://github.com/Nya-Foundation/NyaProxy/commit/29d7a47ea42fc7480f954cc23cf10d8f86aa35eb))
+
+
 ## v0.3.3 (2025-06-03)
 
 ### Bug Fixes
