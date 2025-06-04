@@ -10,6 +10,25 @@ import Components from 'unplugin-vue-components/vite';
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: './',
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Vue 核心库
+          vue: ['vue', 'vue-router', 'pinia'],
+          // UI 组件库
+          'element-plus': ['element-plus', '@element-plus/icons-vue'],
+          // 图表库
+          charts: ['echarts'],
+          // 工具库
+          utils: ['lodash-es', '@vueuse/core', 'dayjs', 'axios'],
+          // 其他小型库
+          libs: ['js-cookie', 'nprogress', '@jsxiaosi/utils']
+        }
+      }
+    }
+  },
   plugins: [
     vue(),
     vueJsx(),
