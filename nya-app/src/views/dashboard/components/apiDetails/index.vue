@@ -209,7 +209,12 @@ const getTableSize = (): 'small' | 'default' | 'large' => {
                 <el-button link type="warning" @click="handleCopyApiLink(row)">
                   Copy API Link
                 </el-button>
-                <el-button style="margin-left: 4px;" link type="primary" @click="handleViewDetails(row)">
+                <el-button
+                  style="margin-left: 4px"
+                  link
+                  type="primary"
+                  @click="handleViewDetails(row)"
+                >
                   View Details
                 </el-button>
               </div>
@@ -281,7 +286,7 @@ const getTableSize = (): 'small' | 'default' | 'large' => {
           <el-col :span="getTableColSpan()" v-if="statusCodeDistribution.length > 0">
             <h4 class="section-title">Status Code Distribution</h4>
             <el-card shadow="never" class="data-card">
-              <el-table :data="statusCodeDistribution":size="getTableSize()" table-layout="auto">
+              <el-table :data="statusCodeDistribution" :size="getTableSize()" table-layout="auto">
                 <el-table-column prop="code" label="Status Code">
                   <template #default="{ row }">
                     <el-tag
@@ -309,7 +314,11 @@ const getTableSize = (): 'small' | 'default' | 'large' => {
           </el-col>
 
           <!-- API Key Usage -->
-          <el-col :span="isMobile ? 24 : 12" v-if="apiKeyUsage.length > 0" :class="isMobile ? 'mt-4' : ''">
+          <el-col
+            :span="isMobile ? 24 : 12"
+            v-if="apiKeyUsage.length > 0"
+            :class="isMobile ? 'mt-4' : ''"
+          >
             <h4 class="section-title">API Key Usage</h4>
             <el-card shadow="never" class="data-card">
               <el-table :data="apiKeyUsage" :size="getTableSize()" table-layout="auto">

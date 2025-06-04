@@ -363,7 +363,7 @@ html.light {
   .analytics-container {
     .title-section {
       .title-icon {
-        color: #409EFF;
+        color: #409eff;
       }
 
       .title-text {
@@ -377,10 +377,10 @@ html.light {
 
     .filters-section {
       .filters-header {
-        border-bottom-color: #E4E7ED;
+        border-bottom-color: #e4e7ed;
 
         .filters-icon {
-          color: #409EFF;
+          color: #409eff;
         }
 
         .filters-title {
@@ -395,16 +395,16 @@ html.light {
 
         .filter-select {
           :deep(.el-select__wrapper) {
-            background: #F5F7FA;
-            border-color: #DCDFE6;
+            background: #f5f7fa;
+            border-color: #dcdfe6;
 
             &:hover {
-              border-color: #C0C4CC;
-              background: #FAFAFA;
+              border-color: #c0c4cc;
+              background: #fafafa;
             }
 
             &.is-focused {
-              background: #FFFFFF;
+              background: #ffffff;
             }
           }
         }
@@ -413,10 +413,10 @@ html.light {
 
     .charts-section {
       .charts-header {
-        border-bottom-color: #E4E7ED;
+        border-bottom-color: #e4e7ed;
 
         .charts-icon {
-          color: #409EFF;
+          color: #409eff;
         }
 
         .charts-title {
@@ -427,23 +427,19 @@ html.light {
   }
 
   .box-card {
-    background: #FFFFFF;
-    border-color: #EBEEF5;
+    background: #ffffff;
+    border-color: #ebeef5;
 
     &:hover {
-      border-color: #C0C4CC;
+      border-color: #c0c4cc;
       box-shadow:
         0 12px 20px -4px rgba(0, 0, 0, 0.08),
         0 6px 8px -2px rgba(0, 0, 0, 0.04);
     }
 
     :deep(.el-card__header) {
-      background: linear-gradient(
-        135deg,
-        #F5F7FA 0%,
-        #FAFBFC 100%
-      );
-      border-bottom: 1px solid #EBEEF5;
+      background: linear-gradient(135deg, #f5f7fa 0%, #fafbfc 100%);
+      border-bottom: 1px solid #ebeef5;
     }
 
     .card-header {

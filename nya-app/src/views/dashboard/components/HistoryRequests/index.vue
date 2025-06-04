@@ -78,12 +78,11 @@ const filterByApiName = (value: string, row: any) => {
               <span
                 class="status-badge"
                 :style="{
-                  backgroundColor: row.status === 200
-                    ? 'var(--el-color-success-light-8)'
-                    : 'var(--el-color-warning-light-8)',
-                  color: row.status === 200
-                    ? 'var(--el-color-success)'
-                    : 'var(--el-color-warning)'
+                  backgroundColor:
+                    row.status === 200
+                      ? 'var(--el-color-success-light-8)'
+                      : 'var(--el-color-warning-light-8)',
+                  color: row.status === 200 ? 'var(--el-color-success)' : 'var(--el-color-warning)'
                 }"
               >
                 {{ row.status }}

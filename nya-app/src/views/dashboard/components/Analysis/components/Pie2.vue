@@ -41,7 +41,7 @@ watchEffect(() => {
       '301': '#3742FA', // Moved Permanently - Blue
       '302': '#5352ED', // Found - Purple Blue
       '307': '#2E86AB', // Temporary Redirect - Dark Blue
-      '308': '#1B4F72'  // Permanent Redirect - Navy Blue
+      '308': '#1B4F72' // Permanent Redirect - Navy Blue
     };
     return colorMap[statusCode] || '#70A1FF'; // Default blue for unknown status codes
   };
@@ -57,34 +57,37 @@ watchEffect(() => {
     }
   }));
 
-  setOptions({
-    tooltip: {
-      trigger: 'item'
-    },
-    legend: {
-      orient: 'vertical',
-      left: 'right'
-    },
-    series: [
-      {
-        type: 'pie',
-        radius: ['45%', '70%'],
-        avoidLabelOverlap: false,
-        data: pieData,
-        label: {
-          show: true,
-          position: 'outside',
-        },
-        emphasis: {
-          itemStyle: {
-            shadowBlur: 10,
-            shadowOffsetX: 0,
-            shadowColor: 'rgba(0, 0, 0, 0.5)'
+  setOptions(
+    {
+      tooltip: {
+        trigger: 'item'
+      },
+      legend: {
+        orient: 'vertical',
+        left: 'right'
+      },
+      series: [
+        {
+          type: 'pie',
+          radius: ['45%', '70%'],
+          avoidLabelOverlap: false,
+          data: pieData,
+          label: {
+            show: true,
+            position: 'outside'
+          },
+          emphasis: {
+            itemStyle: {
+              shadowBlur: 10,
+              shadowOffsetX: 0,
+              shadowColor: 'rgba(0, 0, 0, 0.5)'
+            }
           }
         }
-      }
-    ]
-  }, false);
+      ]
+    },
+    false
+  );
 });
 </script>
 

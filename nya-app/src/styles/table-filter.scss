@@ -36,7 +36,7 @@
 
 /* Replace default icon with Excel-like dropdown arrow */
 .el-table .el-table__column-filter-trigger::after {
-  content: "▼" !important;
+  content: '▼' !important;
   font-size: 8px !important;
   line-height: 1 !important;
   color: inherit !important;

@@ -107,7 +107,12 @@ onMounted(async () => {
           <div class="login-card-footer">
             <span>
               Powered by
-              <el-link type="primary" href="https://github.com/Nya-Foundation/NyaProxy" target="_blank">NyaProxy</el-link>
+              <el-link
+                type="primary"
+                href="https://github.com/Nya-Foundation/NyaProxy"
+                target="_blank"
+                >NyaProxy</el-link
+              >
             </span>
           </div>
         </div>

@@ -117,8 +117,6 @@ onMounted(() => {
   initRealTimeUpdates();
 });
 
-
-
 onUnmounted(() => {
   // Cleanup all timers
   cleanupTimers();

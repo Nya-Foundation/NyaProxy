@@ -59,24 +59,26 @@ export const useMetricsStore = defineStore('metrics', () => {
     timer && clearInterval(timer);
   };
 
-  const dataList = computed((): Array<{title: string, value: number}> => [
-    {
-      title: 'Total Requests',
-      value: metricsData.value?.global?.total_requests ?? 0
-    },
-    {
-      title: 'Total Errors',
-      value: metricsData.value?.global?.total_errors ?? 0
-    },
-    {
-      title: 'Rate Limit Hits',
-      value: metricsData.value?.global?.total_rate_limit_hits ?? 0
-    },
-    {
-      title: 'Queue Hits',
-      value: metricsData.value?.global?.total_queue_hits ?? 0
-    }
-  ]);
+  const dataList = computed(
+    (): Array<{ title: string; value: number }> => [
+      {
+        title: 'Total Requests',
+        value: metricsData.value?.global?.total_requests ?? 0
+      },
+      {
+        title: 'Total Errors',
+        value: metricsData.value?.global?.total_errors ?? 0
+      },
+      {
+        title: 'Rate Limit Hits',
+        value: metricsData.value?.global?.total_rate_limit_hits ?? 0
+      },
+      {
+        title: 'Queue Hits',
+        value: metricsData.value?.global?.total_queue_hits ?? 0
+      }
+    ]
+  );
 
   return {
     nowTime,
