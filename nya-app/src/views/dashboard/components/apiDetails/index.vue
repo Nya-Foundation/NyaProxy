@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { useDevice } from '@/hooks/useDevice';
+import { useServerConfig } from '@/hooks/useServerConfig';
 import { useMetricsStore } from '@/stores/modules/metrics';
+import { ElMessage } from 'element-plus';
 import { computed, ref } from 'vue';
 
 const metricsStore = useMetricsStore();
+const { getApiEndpointUrl } = useServerConfig();
 
 const searchQuery = ref('');
 
@@ -49,6 +52,31 @@ const formatLastRequestTime = (timestamp: number): string => {
 const handleViewDetails = (row: any) => {
   selectedApi.value = row;
   dialogVisible.value = true;
+};
+
+// Handle copy API link action
+const handleCopyApiLink = async (row: any) => {
+  const apiLink = getApiEndpointUrl(row.name);
+
+  try {
+    await navigator.clipboard.writeText(apiLink);
+
+    // Show success message
+    ElMessage({
+      message: `API链接已复制到剪贴板: ${apiLink}`,
+      type: 'success',
+      duration: 3000
+    });
+  } catch (error) {
+    console.error('Failed to copy to clipboard:', error);
+
+    // Show error message if clipboard API is not available
+    ElMessage({
+      message: '复制失败，请手动复制链接',
+      type: 'error',
+      duration: 3000
+    });
+  }
 };
 
 // Computed properties for dialog data
@@ -177,9 +205,14 @@ const getTableSize = (): 'small' | 'default' | 'large' => {
 
           <el-table-column label="ACTIONS" min-width="120" align="center">
             <template #default="{ row }">
-              <ElButton link type="primary" @click="handleViewDetails(row)">
-                View Details
-              </ElButton>
+              <div class="action-buttons">
+                <el-button link type="warning" @click="handleCopyApiLink(row)">
+                  Copy API Link
+                </el-button>
+                <el-button style="margin-left: 4px;" link type="primary" @click="handleViewDetails(row)">
+                  View Details
+                </el-button>
+              </div>
             </template>
           </el-table-column>
         </el-table>
@@ -333,6 +366,19 @@ const getTableSize = (): 'small' | 'default' | 'large' => {
 
     .error-text {
       color: var(--el-color-danger);
+    }
+
+    .action-buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      align-items: flex-start;
+
+      @media (min-width: 768px) {
+        flex-direction: row;
+        gap: 8px;
+        justify-content: center;
+      }
     }
   }
 }
