@@ -12,18 +12,20 @@ import Components from 'unplugin-vue-components/vite';
 export default defineConfig({
   base: './',
   build: {
+    outDir: '../nya/static', // Build frontend to backend static folder
+    emptyOutDir: true,
     rollupOptions: {
       output: {
         manualChunks: {
-          // Vue 核心库
+          // Vue core libraries
           vue: ['vue', 'vue-router', 'pinia'],
-          // UI 组件库
+          // UI component library
           'element-plus': ['element-plus', '@element-plus/icons-vue'],
-          // 图表库
+          // Chart library
           charts: ['echarts'],
-          // 工具库
+          // Utility libraries
           utils: ['lodash-es', '@vueuse/core', 'dayjs', 'axios'],
-          // 其他小型库
+          // Other small libraries
           libs: ['js-cookie', 'nprogress', '@jsxiaosi/utils']
         }
       }
