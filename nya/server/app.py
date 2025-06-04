@@ -2,18 +2,22 @@
 """
 NyaProxy - A simple low-level API proxy with dynamic token rotation.
 """
-import argparse
-import contextlib
-import logging
+
+
 import os
 import sys
 
+import logging
 import uvicorn
-from fastapi import FastAPI, Request, Response
+import argparse
+import traceback
+import contextlib
+
 from loguru import logger
+from fastapi import FastAPI, Request, Response
+from starlette.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
-from starlette.responses import JSONResponse
 
 from .. import __version__
 from ..common.constants import (
@@ -146,7 +150,12 @@ class NyaProxyApp:
         logger.info("Starting NyaProxy...")
         await self.init_nya_services()
         yield
-        await self.shutdown()
+        try:
+            await self.shutdown()
+        except Exception as e:
+            logger.error(
+                f"Error during shutdown: {e} traceback: {traceback.format_exc()}"
+            )
 
     def setup_routes(self, app):
         """
@@ -396,11 +405,17 @@ class NyaProxyApp:
         """
         Clean up resources on shutdown.
         """
+
         logger.info("Shutting down NyaProxy")
+        logger.info(f"Shutdown stack trace: {''.join(traceback.format_stack())}")
 
         # Close proxy handler client
         if self.core and hasattr(self.core, "request_executor"):
-            await self.core.request_executor.close()
+            try:
+                await self.core.request_executor.close()
+                logger.info("Request executor closed successfully")
+            except Exception as e:
+                logger.error(f"Error closing request executor: {e}")
 
 
 def parse_args():

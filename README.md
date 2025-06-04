@@ -23,6 +23,9 @@
 
 ## 🌈 Introduction
 
+> [!WARNING]
+> This project is currently under active development. Documentation may not reflect the latest changes. If you encounter unexpected behavior, please consider using a previous stable version or report issues on our GitHub repository.
+
 NyaProxy acts like a smart, central manager for accessing various online services (APIs) – think AI tools (like OpenAI, Gemini, Anthropic), image generators, or almost any web service that uses access keys. It helps you use these services more reliably, efficiently, and securely.
 
 Here's how NyaProxy can help:

@@ -100,14 +100,15 @@ class ConfigManager:
         storage: Union[FileStorageBackend, RemoteStorageBackend, None] = None
 
         if self.remote_url:
+            logger.info(f"Using remote configuration server: {self.remote_url}")
             storage = RemoteStorageBackend(
                 remote_url=self.remote_url,
                 api_key=self.remote_api_key,
                 app_name=self.remote_app_name or "default",
                 logger=logger,
             )
-
         else:
+            logger.info(f"Using local configuration file: {self.config_path}")
             storage = FileStorageBackend(config_path=self.config_path, logger=logger)
 
         storage.set_change_callback(self.callback)
@@ -122,6 +123,7 @@ class ConfigManager:
             schema_path=self.schema_path,
             logger=logger,
             env_override_enabled=True,
+            event_emission_enabled=True,
             env_prefix="NYA",
         )
 
