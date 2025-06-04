@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import SideBarDisplay from './SideBarDisplay.vue';
 import { useAppSettings } from '@/hooks/useAppSetting';
+import type { AppConfig } from '@/types/appConfig';
 import { useDebounceFn, useEventListener, useMediaQuery } from '@vueuse/core';
 import { ref, watch } from 'vue';
+import SideBarDisplay from './SideBarDisplay.vue';
 
 const { appConfig, setAppConfigMode } = useAppSettings();
 

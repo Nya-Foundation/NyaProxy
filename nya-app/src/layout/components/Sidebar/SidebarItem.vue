@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import type { AppRouteRecordRaw } from '@/types/router';
 import { isUrl } from '@jsxiaosi/utils';
 import { ref } from 'vue';
-import type { AppRouteRecordRaw } from '@/types/router';
 import Item from './Item.vue';
 
 type Props = {
@@ -25,7 +25,6 @@ const hasOneShowingChild = (parent: AppRouteRecordRaw) => {
   const showingChildren =
     parent.children?.filter((item: AppRouteRecordRaw) => {
       // Filter out hidden routes or routes without title
-      if (item.meta?.hidden) return false;
       if (!item.meta?.title) return false;
 
       // Temp set(will be used if only has one showing child)
