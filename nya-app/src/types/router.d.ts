@@ -5,6 +5,7 @@ interface AppRouteRecordRaw extends Omit<RouteRecordRaw, 'children'> {
     title?: string;
     icon?: string;
     alwaysShow?: boolean;
+    activeMenu?: string;
   };
   children?: AppRouteRecordRaw[];
 }

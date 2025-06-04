@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import SidebarItem from './SidebarItem.vue';
-import { useRoute, useRouter } from 'vue-router';
-import type { AppRouteRecordRaw } from '@/types/router';
 import { useAppSettings } from '@/hooks/useAppSetting';
-import { watch, computed, ref } from 'vue';
 import { routes } from '@/router';
+import type { AppRouteRecordRaw } from '@/types/router';
+import { computed, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import SidebarItem from './SidebarItem.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -45,9 +45,9 @@ watch(
   { immediate: true }
 );
 
-const activeMenu = computed(() => {
+const activeMenu = computed<string>(() => {
   const { meta, path } = route;
-  return meta?.activeMenu || path;
+  return (meta?.activeMenu || path) as string;
 });
 
 // Collapse state
