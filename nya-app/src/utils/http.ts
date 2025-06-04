@@ -1,11 +1,11 @@
 import router from '@/router';
+import { getToken, removeToken } from '@/utils/auth';
 import type { AxiosError, AxiosRequestConfig, AxiosResponse } from 'axios';
 import axios from 'axios';
-import { getToken, removeToken } from '../utils/auth';
 
 // 创建axios实例
 const instance = axios.create({
-  baseURL: '/api' // 设置API的基础URL
+  baseURL: import.meta.env.VITE_API_BASE_URL ?? '/api' // 使用环境变量或开发环境默认值
 });
 
 // 请求拦截器
