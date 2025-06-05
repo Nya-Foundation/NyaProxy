@@ -552,9 +552,6 @@ def main():
         reload=True,
         reload_includes=[WATCH_FILE],
         timeout_keep_alive=30,
-        limit_concurrency=1000,
-        limit_max_requests=5000,
-        backlog=2048,
         server_header=False,
     )
 
