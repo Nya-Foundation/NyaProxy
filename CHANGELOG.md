@@ -1,6 +1,22 @@
 # CHANGELOG
 
 
+## v0.3.5 (2025-06-06)
+
+### Bug Fixes
+
+- Remove uvicorn 'optimition'
+  ([`df112b8`](https://github.com/Nya-Foundation/NyaProxy/commit/df112b813cd7342c253f9afea4f92eff500ff83b))
+
+### Chores
+
+- **format**: Apply automatic formatting [skip ci]
+  ([`7088dd6`](https://github.com/Nya-Foundation/NyaProxy/commit/7088dd6c5c1917c4064bd27f038f55055aae6fb5))
+
+- **format**: Apply automatic formatting [skip ci]
+  ([`47d7af7`](https://github.com/Nya-Foundation/NyaProxy/commit/47d7af703d0ead7627413253ef94afd161314d87))
+
+
 ## v0.3.4 (2025-06-04)
 
 ### Bug Fixes
