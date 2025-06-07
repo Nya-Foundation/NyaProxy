@@ -491,6 +491,7 @@ def main():
     schema_path = None
 
     import importlib.resources as pkg_resources
+
     import nya
 
     with pkg_resources.path(nya, DEFAULT_SCHEMA_NAME) as default_schema:

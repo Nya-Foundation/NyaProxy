@@ -3,8 +3,8 @@ The NyaProxyCore class handles the main proxy logic with queue-first architectur
 """
 
 import asyncio
-import traceback
 import random
+import traceback
 from typing import TYPE_CHECKING, Optional, Union
 
 from loguru import logger
@@ -13,8 +13,8 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 from ..common.exceptions import (
     APIKeyNotConfiguredError,
     QueueFullError,
-    ReachedMaxRetriesError,
     ReachedDailyQuotaError,
+    ReachedMaxRetriesError,
 )
 from ..common.models import ProxyRequest
 from ..config.manager import ConfigManager
