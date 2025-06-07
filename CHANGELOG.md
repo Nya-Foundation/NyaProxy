@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.3.6 (2025-06-07)
+
+### Bug Fixes
+
+- Fix security issues by bumping python version, add support for ip_rate_limit, user_rate_limit, and
+  randomness
+  ([`b714a39`](https://github.com/Nya-Foundation/NyaProxy/commit/b714a396fb3a0fd2c73329778a37818d17d69437))
+
+
 ## v0.3.5 (2025-06-06)
 
 ### Bug Fixes
