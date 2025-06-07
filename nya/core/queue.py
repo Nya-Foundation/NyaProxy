@@ -3,8 +3,8 @@ Simple priority queue for handling requests with built-in retry priority.
 """
 
 import asyncio
-import time
 import random
+import time
 import traceback
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional, Tuple
 
@@ -12,9 +12,9 @@ from loguru import logger
 
 from ..common.exceptions import (
     QueueFullError,
+    ReachedDailyQuotaError,
     ReachedMaxRetriesError,
     RequestExpiredError,
-    ReachedDailyQuotaError,
 )
 from ..common.models import ProxyRequest
 
@@ -22,8 +22,8 @@ if TYPE_CHECKING:
     from starlette.responses import Response
 
     from ..config import ConfigManager
-    from .control import TrafficManager
     from ..services.metrics import MetricsCollector
+    from .control import TrafficManager
 
 
 class RequestQueue:

@@ -78,7 +78,7 @@ Pick your favorite platform and let's go!
 ### Local Deployment (For the DIY Enthusiasts!)
 
 #### Prerequisites
-- Python 3.11 or higher
+- Python 3.10 or higher
 - Docker (optional, for containerized deployment)
 
 #### Installation
@@ -147,9 +147,10 @@ Configuration reference can be found under [Configs folder](configs/) folder
 
 ```yaml
 # Basic config.yaml example for OpenAI API Compatible Endpoints
+# NyaProxy Configuration File
+# This file contains server settings and API endpoint configurations
+
 server:
-  host: 0.0.0.0
-  port: 8080
   api_key: 
   logging:
     enabled: true
@@ -160,23 +161,28 @@ server:
     address: socks5://username:password@proxy.example.com:1080
   dashboard:
     enabled: true
-  queue:
-    max_size: 200
-    expiry_seconds: 300
   cors:
-    allow_origins: ["*"] # Set to "*" to allow all origins, however, when allow_credentials is true, this must be set to a specific origin
+    # Allow all origins with "*", but specify exact origins when allow_credentials is true for security
+    allow_origins: ["*"]
     allow_credentials: true
     allow_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     allow_headers: ["*"]
 
-# Default settings for the all apis if not specified
+# Default configuration applied to all API endpoints unless overridden
 default_settings:
   key_variable: keys
+  key_concurrency: true # Enable concurrent requests per API key for better performance
+  randomness: 0.0 # Random delay of (0.0-x)s to introduce variability in request timing and avoid detection
   load_balancing_strategy: round_robin
+  queue:
+    max_size: 200
+    expiry_seconds: 300
   rate_limit:
     enabled: true
-    endpoint_rate_limit: 10/s # Default endpoint rate limit, can be overridden by each API
-    key_rate_limit: 10/m # Default key rate limit, can be overridden by each API
+    endpoint_rate_limit: 10/s # Default endpoint rate limit - can be overridden per API
+    key_rate_limit: 10/m # Default key rate limit - can be overridden per API
+    ip_rate_limit: 1000/d # IP-based rate limit to protect against abuse and key redistribution
+    user_rate_limit: 1000/d # User-based rate limit per proxy API key defined in server section
     rate_limit_paths: 
       - "*"
   retry:
@@ -206,11 +212,11 @@ default_settings:
         conditions:
           - field: "presence_penalty"
             operator: "exists"
-  
 apis:
   gemini:
-    # Any OpenAI-Compatible API
+    # OpenAI-compatible API endpoint
     name: Google Gemini API
+    # Supported endpoints:
     # Gemini: https://generativelanguage.googleapis.com/v1beta/openai
     # OpenAI: https://api.openai.com/v1
     # Anthropic: https://api.anthropic.com/v1
@@ -232,11 +238,11 @@ apis:
     load_balancing_strategy: least_requests
     rate_limit:
       enabled: true
-      # For Gemini, the rate limits (gemini-2.5-pro-exp-03-25) for each key are 5 RPM and 25 RPD
-      # Ideally, the endpoint rate limit should be n x Per-Key-RPD, where n is the number of keys
+      # For Gemini-2.5-pro-exp-03-25, rate limits per key are 5 RPM and 25 RPD
+      # Endpoint rate limit should be n × Per-Key-RPD, where n is the number of keys
       endpoint_rate_limit: 75/d
       key_rate_limit: 5/m
-      # Rate limit paths are optional, but you can configure which paths to apply the rate limits to (regex supported), default is all paths "*"
+      # Paths to apply rate limits (regex supported) - defaults to all paths "*"
       rate_limit_paths:
         - "/chat/*"
         - "/images/*"
@@ -245,6 +251,7 @@ apis:
     name: Test API
     endpoint: http://127.0.0.1:8082
     key_variable: keys
+    randomness: 5
     headers:
       Authorization: 'Bearer ${{keys}}'
       User-Agent: ${{agents}}
@@ -261,7 +268,9 @@ apis:
     rate_limit:
       enabled: true
       endpoint_rate_limit: 20/m
-      key_rate_limit: 1/10s
+      key_rate_limit: 5/m
+      ip_rate_limit: 1000/d
+      user_rate_limit: 1000/d
       rate_limit_paths:
         - "/v1/*"
 

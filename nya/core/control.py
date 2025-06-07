@@ -3,15 +3,13 @@ Simplified key manager that focuses on key availability and rate limiting.
 """
 
 import asyncio
-import random
-from loguru import logger
+
 from typing import Dict, Optional, Tuple, Union
 
 from ..common.exceptions import APIKeyNotConfiguredError
-
+from ..config.manager import ConfigManager
 from ..services.lb import LoadBalancer
 from ..services.limit import RateLimiter
-from ..config.manager import ConfigManager
 
 
 class TrafficManager:

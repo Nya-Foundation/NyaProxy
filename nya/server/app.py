@@ -6,13 +6,11 @@ NyaProxy - A simple low-level API proxy with dynamic token rotation.
 
 import argparse
 import contextlib
-import logging
 import os
 import sys
-import traceback
 
 import uvicorn
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request
 from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
@@ -118,6 +116,10 @@ class NyaProxyApp:
         allow_methods = self.config.get_cors_allow_methods()
         allow_headers = self.config.get_cors_allow_headers()
         allow_credentials = self.config.get_cors_allow_credentials()
+
+        logger.info(
+            f"CORS settings: origins={allow_origins}, methods={allow_methods}, headers={allow_headers}, credentials={allow_credentials}"
+        )
 
         # Add CORS middleware
         app.add_middleware(
@@ -252,11 +254,6 @@ class NyaProxyApp:
                 "Config manager must be initialized before proxy handler"
             )
 
-        if not logger:
-            logging.warning(
-                "Logger not initialized, proxy handler will use default logging"
-            )
-
         # Use the service factory to create the core
         core = NyaProxyCore(
             config=self.config,
@@ -373,29 +370,6 @@ class NyaProxyApp:
         async def proxy_head_request(request: Request):
             return await self.generic_proxy_request(request)
 
-        @self.app.options("/api/{path:path}", name="proxy_options")
-        async def proxy_options_request(request: Request):
-            #  hijack the options request to handle CORS preflight requests
-            origin = request.headers.get("origin", "*")
-            acr_headers = request.headers.get(
-                "access-control-request-headers", "Content-Type, Authorization"
-            )
-
-            logger.debug(
-                f"Handling CORS preflight request from {origin} with headers {request.headers}"
-            )
-
-            return Response(
-                content="",
-                status_code=204,
-                headers={
-                    "Access-Control-Allow-Origin": origin,
-                    "Access-Control-Allow-Headers": acr_headers,
-                    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS",
-                    "Access-Control-Max-Age": "86400",
-                },
-            )
-
     async def shutdown(self):
         """
         Clean up resources on shutdown.
@@ -491,6 +465,7 @@ def main():
     schema_path = None
 
     import importlib.resources as pkg_resources
+
     import nya
 
     with pkg_resources.path(nya, DEFAULT_SCHEMA_NAME) as default_schema:
