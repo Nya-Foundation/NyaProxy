@@ -12,11 +12,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 # Install Python and build dependencies
 RUN apk add --no-cache \
-    python3 \
+    python3=3.12.11-r0 \
     py3-pip \
     gcc \
     musl-dev \
-    python3-dev
+    python3-dev=3.12.11-r0
 
 # Create and use a virtual environment
 RUN python3 -m venv /opt/venv
@@ -55,7 +55,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:$PATH"
 
 # Install Python runtime only (no build tools)
-RUN apk add --no-cache python3
+RUN apk add --no-cache python3=3.12.11-r0
 
 # Create the same user in the runtime image
 RUN addgroup -S nya && \

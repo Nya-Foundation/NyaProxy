@@ -9,7 +9,6 @@ import httpx
 from loguru import logger
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
-from ..common.exceptions import EncounterRetryStatusCodeError
 from ..common.models import ProxyRequest
 from ..config.manager import ConfigManager
 from ..services.metrics import MetricsCollector
@@ -33,7 +32,7 @@ class RequestExecutor:
         """
         Initialize the simple request executor.
         """
-        self.config = config
+        self.config = config or ConfigManager.get_instance()
         self.client = self._create_client()
         self.metrics_collector = metrics_collector
 

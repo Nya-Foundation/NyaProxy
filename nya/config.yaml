@@ -1,6 +1,7 @@
+# NyaProxy Configuration File
+# This file contains server settings and API endpoint configurations
+
 server:
-  host: 0.0.0.0
-  port: 8080
   api_key: 
   logging:
     enabled: true
@@ -12,24 +13,27 @@ server:
   dashboard:
     enabled: true
   cors:
-    allow_origins: ["*"] # Set to "*" to allow all origins, however, when allow_credentials is true, this must be set to a specific origin
+    # Allow all origins with "*", but specify exact origins when allow_credentials is true for security
+    allow_origins: ["*"]
     allow_credentials: true
     allow_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     allow_headers: ["*"]
 
-# Default settings for the all apis if not specified
+# Default configuration applied to all API endpoints unless overridden
 default_settings:
   key_variable: keys
-  key_concurrency: true # Whether or not each key can handle concurrent requests
+  key_concurrency: true # Enable concurrent requests per API key for better performance
+  randomness: 0.0 # Random delay of (0.0-x)s to introduce variability in request timing and avoid detection
   load_balancing_strategy: round_robin
   queue:
     max_size: 200
     expiry_seconds: 300
   rate_limit:
     enabled: true
-    endpoint_rate_limit: 10/s # Default endpoint rate limit, can be overridden by each API
-    key_rate_limit: 10/m # Default key rate limit, can be overridden by each API
-    ip_rate_limit: 200/d # You can also set a global IP rate limit, this is useful for protecting against abuse
+    endpoint_rate_limit: 10/s # Default endpoint rate limit - can be overridden per API
+    key_rate_limit: 10/m # Default key rate limit - can be overridden per API
+    ip_rate_limit: 1000/d # IP-based rate limit to protect against abuse and key redistribution
+    user_rate_limit: 1000/d # User-based rate limit per proxy API key defined in server section
     rate_limit_paths: 
       - "*"
   retry:
@@ -61,8 +65,9 @@ default_settings:
             operator: "exists"
 apis:
   gemini:
-    # Any OpenAI-Compatible API
+    # OpenAI-compatible API endpoint
     name: Google Gemini API
+    # Supported endpoints:
     # Gemini: https://generativelanguage.googleapis.com/v1beta/openai
     # OpenAI: https://api.openai.com/v1
     # Anthropic: https://api.anthropic.com/v1
@@ -84,11 +89,11 @@ apis:
     load_balancing_strategy: least_requests
     rate_limit:
       enabled: true
-      # For Gemini, the rate limits (gemini-2.5-pro-exp-03-25) for each key are 5 RPM and 25 RPD
-      # Ideally, the endpoint rate limit should be n x Per-Key-RPD, where n is the number of keys
+      # For Gemini-2.5-pro-exp-03-25, rate limits per key are 5 RPM and 25 RPD
+      # Endpoint rate limit should be n × Per-Key-RPD, where n is the number of keys
       endpoint_rate_limit: 75/d
       key_rate_limit: 5/m
-      # Rate limit paths are optional, but you can configure which paths to apply the rate limits to (regex supported), default is all paths "*"
+      # Paths to apply rate limits (regex supported) - defaults to all paths "*"
       rate_limit_paths:
         - "/chat/*"
         - "/images/*"
@@ -97,6 +102,7 @@ apis:
     name: Test API
     endpoint: http://127.0.0.1:8082
     key_variable: keys
+    randomness: 5
     headers:
       Authorization: 'Bearer ${{keys}}'
       User-Agent: ${{agents}}
@@ -114,5 +120,7 @@ apis:
       enabled: true
       endpoint_rate_limit: 20/m
       key_rate_limit: 5/m
+      ip_rate_limit: 1000/d
+      user_rate_limit: 1000/d
       rate_limit_paths:
         - "/v1/*"

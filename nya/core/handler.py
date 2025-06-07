@@ -23,16 +23,14 @@ class RequestHandler:
     validation, and key management.
     """
 
-    def __init__(
-        self,
-    ):
+    def __init__(self, config: Optional[ConfigManager] = None):
         """
         Initialize the request handler.
 
         Args:
             key_manager: Key manager instance
         """
-        self.config = ConfigManager.get_instance()
+        self.config = config or ConfigManager.get_instance()
 
         if not self.config:
             raise ValueError("ConfigManager instance is not initialized.")
@@ -47,12 +45,12 @@ class RequestHandler:
         # Identify target API based on path
         api_name, trail_path = self.parse_request(request)
 
+        request.api_name = api_name
+
         # Construct target api endpoint URL
         target_endpoint: str = self.config.get_api_endpoint(api_name)
         target_url = f"{target_endpoint}{trail_path}"
-
         request.url = target_url
-        request.api_name = api_name
 
         request._rate_limited = self.should_enforce_rate_limit(api_name, trail_path)
 
@@ -60,8 +58,10 @@ class RequestHandler:
         proxy_ip = HeaderUtils.parse_source_ip_address(request.headers)
         request.ip = proxy_ip if proxy_ip else request.ip
 
+        request.user = self.get_proxy_api_key(request)
+
         # Set request priority based on Master API key presence
-        self.check_priority_request(request)
+        self.set_request_priority(request)
 
     def parse_request(
         self, request: ProxyRequest
@@ -108,29 +108,41 @@ class RequestHandler:
         logger.warning(f"No API configuration found for endpoint: {api_name}")
         return None, None
 
-    def check_priority_request(self, request: ProxyRequest) -> None:
+    def set_request_priority(self, request: ProxyRequest) -> None:
         """
-        Handle priority requests that require immediate processing.
+        Set request priority based on the presence of a Master API key.
 
         Args:
             request: ProxyRequest object to process
         """
-        authorization_header = request.headers.get("Authorization")
-
-        token = (
-            authorization_header.split("Bearer ")[-1] if authorization_header else None
-        )
-        if not token:
+        key = request.user
+        if not key:
             return
 
         keys = self.config.get_api_key()
         if not keys:
             return
 
-        if (isinstance(keys, str) and token == keys) or (
-            isinstance(keys, list) and token == keys[0]
+        if (isinstance(keys, str) and key == keys) or (
+            isinstance(keys, list) and key == keys[0]
         ):
             request.priority = 2
+
+    def get_proxy_api_key(self, request: ProxyRequest) -> Optional[str]:
+        """
+        Retrieve the API key for the request based on the API configuration.
+
+        Args:
+            request: ProxyRequest object
+
+        Returns:
+            str: API key for the request or None if not found
+        """
+        authorization_header = request.headers.get("Authorization")
+
+        return (
+            authorization_header.split("Bearer ")[-1] if authorization_header else None
+        )
 
     def should_enforce_rate_limit(self, api_name: str, path: str) -> bool:
         """
@@ -218,16 +230,14 @@ class RequestHandler:
         var_values: Dict[str, Any] = {key_variable: request.api_key}
 
         # Ensure host header set to the target URL's host
-        parsed_url = urlparse(request.url)
-        request.headers["host"] = parsed_url.netloc
+        request.headers["host"] = urlparse(request.url).netloc
 
         try:
             # Get values for other variables from load_balancers
             for var in required_vars:
                 # randomly select a value for the variable from the configured values
                 variables = self.config.get_api_variable_values(api_name, var)
-                value = random.choice(variables) if variables else None
-                var_values[var] = value
+                var_values[var] = random.choice(variables) if variables else None
 
             # Process headers with variable substitution
             processed_headers = HeaderUtils.process_headers(

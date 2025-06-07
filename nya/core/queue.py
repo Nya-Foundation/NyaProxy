@@ -4,18 +4,17 @@ Simple priority queue for handling requests with built-in retry priority.
 
 import asyncio
 import time
+import random
+import traceback
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional, Tuple
 
 from loguru import logger
 
 from ..common.exceptions import (
-    EncounterRetryStatusCodeError,
-    NoAvailableAPIKeyError,
-    NyaProxyError,
     QueueFullError,
     ReachedMaxRetriesError,
     RequestExpiredError,
-    RequestRateLimited,
+    ReachedDailyQuotaError,
 )
 from ..common.models import ProxyRequest
 
@@ -23,7 +22,7 @@ if TYPE_CHECKING:
     from starlette.responses import Response
 
     from ..config import ConfigManager
-    from ..services.control import TrafficManager
+    from .control import TrafficManager
     from ..services.metrics import MetricsCollector
 
 
@@ -41,7 +40,7 @@ class RequestQueue:
         """
         Initialize the simple queue.
         """
-        self.config = config
+        self.config = config or ConfigManager.get_instance()
         self.control = traffic_manager
         self.metrics_collector = metrics_collector
 
@@ -71,7 +70,7 @@ class RequestQueue:
             priority = request.priority
 
         # Initialize queue and workers if needed
-        await self._ensure_api_initialized(api_name)
+        await self._setup_endpoint_processor(api_name)
 
         # Check queue size
         if self._queues[api_name].qsize() >= self.config.get_api_queue_size(api_name):
@@ -80,7 +79,6 @@ class RequestQueue:
         # Create future and attach to request
         future = asyncio.Future()
         request.future = future
-        request.added_at = time.time()
 
         # Add to queue
         await self._queues[api_name].put(request)
@@ -95,8 +93,10 @@ class RequestQueue:
 
         return future
 
-    async def _ensure_api_initialized(self, api_name: str) -> None:
-        """Ensure API queue and workers are initialized."""
+    async def _setup_endpoint_processor(self, api_name: str) -> None:
+        """
+        Ensure API queue and workers are initialized.
+        """
         if api_name not in self._queues:
             # Use queue max size as a reasonable concurrency limit
             max_concurrent = min(self.config.get_api_queue_size(api_name) // 2, 10)
@@ -110,17 +110,23 @@ class RequestQueue:
             )
 
     async def _process_api_queue(self, api_name: str) -> None:
-        """Process requests for a specific API using worker pool."""
+        """
+        Process requests for a specific API using worker pool.
+        """
         if not self._processor:
             logger.warning(f"No processor registered for {api_name}")
             return
 
-        logger.debug(f"Starting queue processor for {api_name}")
-
         while True:
             try:
+                key, wait_time = await self._check_for_resource_limit(api_name)
+                if wait_time > 0 or key is None:
+                    await asyncio.sleep(wait_time / 2)
+                    continue
+
                 # Get next request (blocks until available)
-                request = await self._queues[api_name].get()
+                request: ProxyRequest = await self._queues[api_name].get()
+                request.api_key = key
 
                 # Check if request expired
                 if self._is_request_expired(request):
@@ -133,41 +139,32 @@ class RequestQueue:
                 asyncio.create_task(self._process_with_worker(api_name, request))
 
             except Exception as e:
-                logger.error(f"Error in queue processor for {api_name}: {e}")
+                logger.error(
+                    f"Error in queue processor for {api_name}: {e}, traceback: {traceback.format_exc()}    "
+                )
                 await asyncio.sleep(1)
 
     async def _process_with_worker(self, api_name: str, request: ProxyRequest) -> None:
-        """Process a single request with worker pool limiting."""
+        """
+        Process a single request with worker pool limiting.
+        """
         async with self._workers[api_name]:
             try:
                 # Check resource availability
-                available, wait_time = await self._wait_for_resources(api_name, request)
-                if not available:
-                    if self.metrics_collector:
-                        self.metrics_collector.record_rate_limit_hit(api_name)
-
-                    await self._handle_retry(
-                        request, RequestRateLimited(api_name, wait_time)
-                    )
+                wait_time = await self._handle_proxy_limit(api_name, request)
+                if wait_time > 0:
                     return
 
-                # Acquire key
-                key, _ = await self.control.acquire_key(api_name)
-                if not key:
-                    await self._handle_retry(request, NoAvailableAPIKeyError(api_name))
-                    return
-
-                request.api_key = key
                 request.attempts += 1
-
-                # Record usage
                 self.control.record_ip_request(api_name, request.ip)
-                self.control.record_endpoint_request(api_name)
+                self.control.record_user_request(api_name, request.user)
 
                 # Process the request
                 response = await self._processor(request)
 
-                self.release_resources(request, response.status_code)
+                # unlock the key after processing
+                self.control.unlock_key(request.api_name, request.api_key)
+                self._free_resources_on_failure(request, response.status_code)
 
                 # If status code requires retry, handle it
                 if await self._handle_user_defined_retry(request, response.status_code):
@@ -177,22 +174,27 @@ class RequestQueue:
                     request.future.set_result(response)
 
             except Exception as e:
+                # unlock the key if processing failed to avoid deadlocks
+                self.control.unlock_key(request.api_name, request.api_key)
+
                 if not request.future.done():
                     request.future.set_exception(e)
 
-    def release_resources(self, request: ProxyRequest, status_code: int) -> None:
+    def _free_resources_on_failure(
+        self, request: ProxyRequest, status_code: int
+    ) -> None:
         """
-        Release resources after processing a request.
+        Release resources if request is failed.
         """
         if status_code < 400:
             return
 
         api_name = request.api_name
-        self.control.release_ip(api_name, request.ip)
-        self.control.release_endpoint(api_name)
 
-        if self.config.get_api_key_concurrency(api_name):
-            self.control.release_key(api_name, request.api_key)
+        self.control.release_ip(api_name, request.ip)
+        self.control.release_user(api_name, request.user)
+        self.control.release_endpoint(api_name)
+        self.control.release_key(api_name, request.api_key)
 
         logger.debug(
             f"Released resources for {api_name} after status code {status_code}"
@@ -205,110 +207,135 @@ class RequestQueue:
         Handle user-defined retry logic.
         """
         api_name = request.api_name
+
+        # check whether retry is enabled for this API
         retry_enabled = self.config.get_api_retry_enabled(api_name)
 
         if not retry_enabled:
             return False
 
+        # check if request method is in retry list
+        retry_methods = self.config.get_api_retry_request_methods(api_name)
+        if request.method not in retry_methods:
+            return False
+
+        # check if response status code is in retry list
         retry_status_codes = self.config.get_api_retry_status_codes(api_name)
         if status_code not in retry_status_codes:
             return False
 
-        await self._handle_retry(
-            request,
-            EncounterRetryStatusCodeError(api_name, status_code),
+        retry_delay = self.config.get_api_retry_after_seconds(api_name)
+        self.control.block_key(api_name, request.api_key, retry_delay)
+
+        logger.debug(
+            f"[Rate Limit] Marked key {request.api_key}... as exhausted for {retry_delay}s"
         )
 
+        await self._handle_retry(request, retry_delay)
         return True
 
-    async def _wait_for_resources(
-        self, api_name: str, request: ProxyRequest
-    ) -> Tuple[bool, float]:
-        """Wait for resources to become available."""
-        max_wait = self.config.get_api_default_timeout(api_name)
-        start_time = time.time()
+    async def _handle_proxy_limit(self, api_name: str, request: ProxyRequest):
+        """
+        Wait for proxy resources to become available before processing.
+        """
+        # Check IP and user rate limit
+        ip_wait = self.control.time_to_ip_ready(api_name, request.ip)
+        user_wait = self.control.time_to_user_ready(api_name, request.user)
+        logger.debug(
+            f"IP wait: {ip_wait:.2f}s, User wait: {user_wait:.2f}s for {api_name} (IP: {request.ip}, User: {request.user})"
+        )
+        total_wait = max(ip_wait, user_wait)
 
-        while time.time() - start_time < max_wait:
-            # Check endpoint availability
-            endpoint_wait = self.control.time_to_endpoint_ready(api_name)
-            if endpoint_wait > 0:
-                await asyncio.sleep(min(endpoint_wait, 1.0))
-                continue
+        if total_wait == 0:
+            return 0.0  # resources available
 
-            # Check key availability
-            key_wait = self.control.time_to_key_ready(api_name)
-            if key_wait > 0:
-                await asyncio.sleep(min(key_wait, 1.0))
-                continue
+        # free the current key if user/ip rate limit is hit
+        self.control.release_key(api_name, request.api_key)
+        self.control.release_endpoint(api_name)
 
-            # Check IP rate limit
-            ip_rate_limit = self.config.get_api_ip_rate_limit(api_name)
-            ip_wait = self.control.time_to_ip_ready(api_name, request.ip, ip_rate_limit)
-            if ip_wait > 0:
-                await asyncio.sleep(min(ip_wait, 1.0))
-                continue
+        # reset key for retry
+        request.api_key = None
 
-            return True, 0.0  # Resources available
+        if total_wait > self.config.get_api_queue_expiry(api_name):
+            request.future.set_exception(ReachedDailyQuotaError(api_name, total_wait))
+            return total_wait
 
-        return False, max_wait
+        await self._handle_retry(request, total_wait)
 
-    async def _handle_retry(self, request: ProxyRequest, error: NyaProxyError) -> None:
-        """Handle retry logic for any type of failure."""
+        return total_wait
+
+    async def _check_for_resource_limit(
+        self, api_name: str
+    ) -> Tuple[Optional[str], float]:
+        """
+        Wait for resources to become available before processing the request.
+        """
+        # Check endpoint availability
+        endpoint_wait = self.control.time_to_endpoint_ready(api_name)
+        if endpoint_wait > 0:
+            return None, endpoint_wait  # Endpoint not ready
+
+        # Check key availability
+        key, key_wait = await self.control.acquire_key(api_name)
+        if key_wait > 0:
+            return None, key_wait  # Key not available
+
+        return key, 0.0  # Resources available
+
+    async def _handle_retry(self, request: ProxyRequest, retry_delay: float) -> None:
+        """
+        Handle retry logic for any type of failure.
+        """
         api_name = request.api_name
         max_retries = self.config.get_api_retry_attempts(api_name)
-        retry_delay = self.config.get_api_retry_after_seconds(api_name)
+        retry_delay = max(
+            retry_delay, self.config.get_api_retry_after_seconds(api_name)
+        )
 
         if request.future.done():
             return
 
-        if not isinstance(error, NoAvailableAPIKeyError):
-            self.control.block_key(api_name, request.api_key, retry_delay)
-
         if request.attempts < max_retries:
             logger.debug(
-                f"[Retry] for {api_name} due to: [Reason]: {error.message}, [Attempt]: {request.attempts}/{max_retries}"
+                f"[Retry] for {api_name} after {retry_delay}s, [Attempt]: {request.attempts}/{max_retries}"
             )
-            # Schedule retry with delay by creating a delayed task
-            asyncio.create_task(self._delayed_retry(request, retry_delay))
+            await asyncio.sleep(random.uniform(0.8 * retry_delay, 1.6 * retry_delay))
+
+            # Re-enqueue with high priority (1 = retry priority)
+            request.priority = 1
+            await self._queues[request.api_name].put(request)
         else:
             # Max retries reached, fail the request
             request.future.set_exception(ReachedMaxRetriesError(api_name, max_retries))
 
-    async def _delayed_retry(self, request: ProxyRequest, delay: float) -> None:
-        """Schedule a delayed retry by waiting and then re-enqueuing with high priority."""
-        await asyncio.sleep(delay)
-
-        # Check if request is still valid
-        if request.future.done():
-            return
-
-        # Re-enqueue with high priority (1 = retry priority)
-        request.priority = 1
-        api_name = request.api_name
-
-        await self._queues[api_name].put(request)
-
     def _is_request_expired(self, request: ProxyRequest) -> bool:
-        """Check if request has expired."""
-        api_name = request.api_name
-        expiry_seconds = self.config.get_api_queue_expiry(api_name)
+        """
+        Check if request has expired.
+        """
+        expiry_seconds = self.config.get_api_queue_expiry(request.api_name)
         return time.time() - request.added_at > expiry_seconds
 
     def get_queue_size(self, api_name: str) -> int:
-        """Get current queue size for an API."""
+        """
+        Get current queue size for an API.
+        """
         if api_name in self._queues:
             return self._queues[api_name].qsize()
         return 0
 
     async def get_estimated_wait_time(self, api_name: str) -> float:
-        """Get estimated wait time for new requests."""
+        """
+        Get estimated wait time for new requests.
+        """
         queue_size = self.get_queue_size(api_name)
         if queue_size == 0:
             return 0.0
         return queue_size * 1.0
 
     async def clear_queue(self, api_name: str) -> int:
-        """Clear queue for an API."""
+        """
+        Clear queue for an API.
+        """
         count = 0
         if api_name in self._queues:
             queue = self._queues[api_name]
@@ -337,12 +364,16 @@ class RequestQueue:
         return count
 
     def get_all_queue_sizes(self) -> Dict[str, int]:
-        """Get queue sizes for all APIs."""
+        """
+        Get queue sizes for all APIs.
+        """
         return {api_name: queue.qsize() for api_name, queue in self._queues.items()}
 
     def register_processor(
         self, processor: Callable[[ProxyRequest], Awaitable[Any]]
     ) -> None:
-        """Register the request processor."""
+        """
+        Register the request processor.
+        """
         self._processor = processor
         logger.debug("Queue processor registered")

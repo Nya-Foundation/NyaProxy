@@ -111,7 +111,8 @@ class ConfigManager:
             logger.info(f"Using local configuration file: {self.config_path}")
             storage = FileStorageBackend(config_path=self.config_path, logger=logger)
 
-        storage.set_change_callback(self.callback)
+        if self.callback:
+            storage.set_change_callback(self.callback)
 
         if not storage:
             raise ConfigurationError(
@@ -156,18 +157,6 @@ class ConfigManager:
             raise ConfigurationError(error_msg)
 
         return server
-
-    def get_port(self) -> int:
-        """
-        Get the port for the proxy server.
-        """
-        return self.config.get_int("server.port", 8080)
-
-    def get_host(self) -> str:
-        """
-        Get the host for the proxy server.
-        """
-        return self.config.get_str("server.host", "0.0.0.0")
 
     def get_debug_level(self) -> str:
         """
@@ -366,6 +355,12 @@ class ConfigManager:
         """
         return self.get_api_setting(api_name, "key_concurrency", "bool")
 
+    def get_api_random_delay(self, api_name: str) -> float:
+        """
+        Get randomness setting for API key selection.
+        """
+        return self.get_api_setting(api_name, "randomness", "float")
+
     def get_api_custom_headers(self, api_name: str) -> Dict[str, Any]:
         """
         Get custom headers.
@@ -419,6 +414,12 @@ class ConfigManager:
         Get IP rate limit.
         """
         return self.get_api_setting(api_name, "rate_limit.ip_rate_limit", "str")
+
+    def get_api_user_rate_limit(self, api_name: str) -> str:
+        """
+        Get user rate limit.
+        """
+        return self.get_api_setting(api_name, "rate_limit.user_rate_limit", "str")
 
     def get_api_retry_enabled(self, api_name: str) -> bool:
         """
