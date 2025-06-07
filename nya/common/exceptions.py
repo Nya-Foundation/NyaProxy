@@ -3,25 +3,25 @@ Improved custom exceptions for NyaProxy.
 """
 
 
-class NyaProxyError(Exception):
+class NyaProxyStatus(Exception):
     """
-    Base exception class for all NyaProxy errors.
+    Base exception class for all NyaProxy status.
     """
 
     def __init__(self, message: str = None):
         """
-        Initialize NyaProxy error.
+        Initialize NyaProxy status.
 
         Args:
-            message: Error message
+            message: Status message
         """
         super().__init__()
-        self.message = message or "An error occurred in NyaProxy"
+        self.message = message or "An event occurred in NyaProxy"
 
     pass
 
 
-class ConfigurationError(NyaProxyError):
+class ConfigurationError(NyaProxyStatus):
     """
     Exception raised for configuration errors.
     """
@@ -55,7 +55,7 @@ class VariablesConfigurationError(ConfigurationError):
         self.message = message
 
 
-class EndpointRateLimitExceededError(NyaProxyError):
+class EndpointRateLimitExceededError(NyaProxyStatus):
     """
     Exception raised when rate limits are exceeded.
     """
@@ -78,7 +78,7 @@ class EndpointRateLimitExceededError(NyaProxyError):
         )
 
 
-class QueueFullError(NyaProxyError):
+class QueueFullError(NyaProxyStatus):
     """
     Exception raised when a request queue is full.
     """
@@ -98,7 +98,7 @@ class QueueFullError(NyaProxyError):
         )
 
 
-class RequestExpiredError(NyaProxyError):
+class RequestExpiredError(NyaProxyStatus):
     """
     Exception raised when a queued request expires.
     """
@@ -118,7 +118,7 @@ class RequestExpiredError(NyaProxyError):
         )
 
 
-class NoAvailableAPIKeyError(NyaProxyError):
+class NoAvailableAPIKeyError(NyaProxyStatus):
     """
     Exception raised when no API keys are available (all key are rate limited).
     """
@@ -137,7 +137,7 @@ class NoAvailableAPIKeyError(NyaProxyError):
         )
 
 
-class APIKeyNotConfiguredError(NyaProxyError):
+class APIKeyNotConfiguredError(NyaProxyStatus):
     """
     Exception raised when there is no API key found in the configuration.
     """
@@ -153,7 +153,7 @@ class APIKeyNotConfiguredError(NyaProxyError):
         super().__init__(f"NyaProxy: No API key found for {api_name}")
 
 
-class MissingAPIKeyError(NyaProxyError):
+class MissingAPIKeyError(NyaProxyStatus):
     """
     Exception raised when an API key is missing in the configuration.
     """
@@ -169,7 +169,7 @@ class MissingAPIKeyError(NyaProxyError):
         super().__init__(f"NyaProxy: Missing API key for {api_name}")
 
 
-class APIConfigError(NyaProxyError):
+class APIConfigError(NyaProxyStatus):
     """
     Exception raised for API configuration errors.
     """
@@ -177,7 +177,7 @@ class APIConfigError(NyaProxyError):
     pass
 
 
-class UnknownAPIError(NyaProxyError):
+class UnknownAPIError(NyaProxyStatus):
     """
     Exception raised when requesting an unknown API.
     """
@@ -193,7 +193,7 @@ class UnknownAPIError(NyaProxyError):
         super().__init__(f"NyaProxy: Unknown API endpoint for path: {path}")
 
 
-class ConnectionError(NyaProxyError):
+class ConnectionError(NyaProxyStatus):
     """
     Exception raised for connection errors to target APIs.
     """
@@ -214,7 +214,7 @@ class ConnectionError(NyaProxyError):
         )
 
 
-class TimeoutError(NyaProxyError):
+class TimeoutError(NyaProxyStatus):
     """
     Exception raised for request timeouts.
     """
@@ -234,7 +234,7 @@ class TimeoutError(NyaProxyError):
         )
 
 
-class RequestRateLimited(NyaProxyError):
+class RequestRateLimited(NyaProxyStatus):
     """
     Exception raised when a request is rate limited.
     """
@@ -254,7 +254,7 @@ class RequestRateLimited(NyaProxyError):
         )
 
 
-class EncounterRetryStatusCodeError(NyaProxyError):
+class EncounterUserDefinedRetry(NyaProxyStatus):
     """
     Exception raised when encountering a retry status code defined in the configuration.
     """
@@ -274,7 +274,7 @@ class EncounterRetryStatusCodeError(NyaProxyError):
         )
 
 
-class ReachedMaxRetriesError(NyaProxyError):
+class ReachedMaxRetriesError(NyaProxyStatus):
     """
     Exception raised when the maximum number of retries is reached.
     """
@@ -291,4 +291,26 @@ class ReachedMaxRetriesError(NyaProxyError):
         self.max_retries = max_retries
         super().__init__(
             f"NyaProxy: Reached maximum retries ({max_retries}) for {api_name}"
+        )
+
+
+class ReachedDailyQuotaError(NyaProxyStatus):
+    """
+    Exception raised when the daily quota for an API is reached.
+    """
+
+    def __init__(self, api_name: str, wait_time: float = None):
+        """
+        Initialize reached daily quota error.
+
+        Args:
+            api_name: Name of the API
+            wait_time: Optional time to wait before retrying (in seconds)
+        """
+        self.api_name = api_name
+        self.wait_time = wait_time
+        super().__init__(
+            f"NyaProxy: Max quota is reached for {api_name}, please try again in {wait_time:.1f}s"
+            if wait_time
+            else f"NyaProxy: Max quota is reached for {api_name}"
         )

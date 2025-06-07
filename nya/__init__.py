@@ -9,7 +9,7 @@ from .common.exceptions import (
     ConnectionError,
     EndpointRateLimitExceededError,
     NoAvailableAPIKeyError,
-    NyaProxyError,
+    NyaProxyStatus,
     QueueFullError,
     RequestExpiredError,
     TimeoutError,
@@ -42,7 +42,7 @@ __all__ = [
     # Utilities
     "format_elapsed_time",
     # Exceptions
-    "NyaProxyError",
+    "NyaProxyStatus",
     "ConfigurationError",
     "VariablesConfigurationError",
     "EndpointRateLimitExceededError",

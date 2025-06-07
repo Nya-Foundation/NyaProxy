@@ -33,6 +33,8 @@ class RateLimiter:
         self.requests_limit, self.window_seconds = self._parse_rate_limit(rate_limit)
         self.request_timestamps: Deque[float] = deque()
 
+        self.locked = False
+
     def __repr__(self):
         return f"<RateLimiter rate_limit={self.rate_limit}>"
 
@@ -69,6 +71,10 @@ class RateLimiter:
         """
         Check if currently at rate limit.
         """
+
+        if self.locked:
+            return True
+
         if self.requests_limit == 0:
             return False
 
@@ -99,6 +105,18 @@ class RateLimiter:
             return
         # Remove the most recent timestamp
         self.request_timestamps.pop()
+
+    def lock(self) -> None:
+        """
+        Lock the rate limiter to prevent any further requests.
+        """
+        self.locked = True
+
+    def unlock(self) -> None:
+        """
+        Unlock the rate limiter to allow requests again.
+        """
+        self.locked = False
 
     def block_for(self, duration: float) -> None:
         """

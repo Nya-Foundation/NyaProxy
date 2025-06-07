@@ -112,6 +112,10 @@
                     "type": "boolean",
                     "description": "Whether or not each key can handle concurrent requests"
                 },
+                "randomness": {
+                    "type": "number",
+                    "description": "Random delay of (0.0-x)s to introduce variability in request timing and avoid detection"
+                },
                 "load_balancing_strategy": {
                     "type": "string",
                     "enum": [
@@ -159,6 +163,11 @@
                             "type": "string",
                             "pattern": "^(\\d+)/((\\d+[smhd])|[smhd])$",
                             "description": "Per IP rate limit"
+                        },
+                        "user_rate_limit": {
+                            "type": "string",
+                            "pattern": "^(\\d+)/((\\d+[smhd])|[smhd])$",
+                            "description": "Per User rate limit"
                         },
                         "rate_limit_paths": {
                             "type": "array",
@@ -240,21 +249,7 @@
     "properties": {
         "server": {
             "type": "object",
-            "required": [
-                "host",
-                "port"
-            ],
             "properties": {
-                "host": {
-                    "type": "string",
-                    "description": "Host for NyaProxy to bind to"
-                },
-                "port": {
-                    "type": "integer",
-                    "description": "Port for NyaProxy to listen on",
-                    "minimum": 1,
-                    "maximum": 65535
-                },
                 "cors": {
                     "type": "object",
                     "properties": {
@@ -396,6 +391,9 @@
                         },
                         "key_concurrency": {
                             "$ref": "#/$defs/default_settings/properties/key_concurrency"
+                        },
+                        "randomness": {
+                            "$ref": "#/$defs/default_settings/properties/randomness"
                         },
                         "headers": {
                             "type": "object",
