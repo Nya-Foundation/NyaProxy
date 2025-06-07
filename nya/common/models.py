@@ -4,7 +4,7 @@ Data models for request handling in NyaProxy.
 
 import asyncio
 import time
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Self
 
 from httpx import Headers
 
@@ -46,6 +46,8 @@ class ProxyRequest:
         # API Related metadata
         self.api_name: str = "unknow"
         self.api_key: Optional[str] = None
+
+        self.user: Optional[str] = None
         self.ip = ip
 
         # Number of attempts made for this request
@@ -56,7 +58,6 @@ class ProxyRequest:
         self._rate_limited = False
 
         self.future: Optional[asyncio.Future] = None
-        self._original_future: Optional[asyncio.Future] = None
 
     @classmethod
     async def from_request(cls, request: "Request") -> "ProxyRequest":
@@ -72,7 +73,7 @@ class ProxyRequest:
             ip=request.client.host,
         )
 
-    def __lt__(self, other):
+    def __lt__(self, other: Self):
         """
         Compare for heap ordering (priority first, then timestamp).
         """

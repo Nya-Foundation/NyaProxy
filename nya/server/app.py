@@ -76,9 +76,9 @@ class NyaProxyApp:
 
         config_path = config_path or os.environ.get("CONFIG_PATH")
         schema_path = schema_path or os.environ.get("SCHEMA_PATH")
-        remote_url = os.environ.get("CONFIG_REMOTE_URL")
-        remote_api_key = os.environ.get("CONFIG_REMOTE_API_KEY")
-        remote_app_name = os.environ.get("CONFIG_REMOTE_APP_NAME")
+        remote_url = os.environ.get("REMOTE_CONFIG_URL")
+        remote_api_key = os.environ.get("REMOTE_CONFIG_API_KEY")
+        remote_app_name = os.environ.get("REMOTE_CONFIG_APP_NAME")
 
         config = ConfigManager(
             config_path=config_path,
@@ -149,12 +149,8 @@ class NyaProxyApp:
         logger.info("Starting NyaProxy...")
         await self.init_nya_services()
         yield
-        try:
-            await self.shutdown()
-        except Exception as e:
-            logger.error(
-                f"Error during shutdown: {e} traceback: {traceback.format_exc()}"
-            )
+        logger.info("NyaProxy is shutting down...")
+        await self.shutdown()
 
     def setup_routes(self, app):
         """
@@ -283,7 +279,7 @@ class NyaProxyApp:
 
         host = os.environ.get("SERVER_HOST") or self.config.get_host()
         port = os.environ.get("SERVER_PORT") or self.config.get_port()
-        remote_url = os.environ.get("CONFIG_REMOTE_URL")
+        remote_url = os.environ.get("REMOTE_CONFIG_URL")
 
         if remote_url:
             logger.info(
@@ -406,7 +402,6 @@ class NyaProxyApp:
         """
 
         logger.info("Shutting down NyaProxy")
-        logger.info(f"Shutdown stack trace: {''.join(traceback.format_stack())}")
 
         # Close proxy handler client
         if self.core and hasattr(self.core, "request_executor"):
@@ -488,15 +483,14 @@ def main():
     # 4. Default values (DEFAULT_HOST, DEFAULT_PORT)
 
     config_path = args.config or os.environ.get("CONFIG_PATH")
-    host = args.host or os.environ.get("SERVER_HOST")
-    port = args.port or os.environ.get("SERVER_PORT")
-    remote_url = args.remote_url or os.environ.get("CONFIG_REMOTE_URL")
-    remote_api_key = args.remote_api_key or os.environ.get("CONFIG_REMOTE_API_KEY")
-    remote_app_name = args.remote_app_name or os.environ.get("CONFIG_REMOTE_APP_NAME")
+    host = args.host or os.environ.get("SERVER_HOST") or DEFAULT_HOST
+    port = args.port or os.environ.get("SERVER_PORT") or DEFAULT_PORT
+    remote_url = args.remote_url or os.environ.get("REMOTE_CONFIG_URL")
+    remote_api_key = args.remote_api_key or os.environ.get("REMOTE_CONFIG_API_KEY")
+    remote_app_name = args.remote_app_name or os.environ.get("REMOTE_CONFIG_APP_NAME")
     schema_path = None
 
     import importlib.resources as pkg_resources
-
     import nya
 
     with pkg_resources.path(nya, DEFAULT_SCHEMA_NAME) as default_schema:
@@ -518,20 +512,6 @@ def main():
                 f"No config file provided, create default configuration at {config_path}"
             )
 
-    # load the port and host from local config if not provided
-    if (port is None or host is None) and not remote_url:
-        config = ConfigManager(
-            config_path=config_path,
-            schema_path=schema_path,
-        )
-        host = config.get_host() or DEFAULT_HOST
-        port = config.get_port() or DEFAULT_PORT
-
-    if not host:
-        host = DEFAULT_HOST
-    if not port:
-        port = DEFAULT_PORT
-
     os.environ["SCHEMA_PATH"] = schema_path
     os.environ["SERVER_HOST"] = host
     os.environ["SERVER_PORT"] = str(port)
@@ -539,11 +519,11 @@ def main():
     if config_path:
         os.environ["CONFIG_PATH"] = config_path
     if remote_url:
-        os.environ["CONFIG_REMOTE_URL"] = remote_url
+        os.environ["REMOTE_CONFIG_URL"] = remote_url
     if remote_api_key:
-        os.environ["CONFIG_REMOTE_API_KEY"] = remote_api_key
+        os.environ["REMOTE_CONFIG_API_KEY"] = remote_api_key
     if remote_app_name:
-        os.environ["CONFIG_REMOTE_APP_NAME"] = remote_app_name
+        os.environ["REMOTE_CONFIG_APP_NAME"] = remote_app_name
 
     uvicorn.run(
         "nya.server.app:create_app",
