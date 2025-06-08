@@ -5,7 +5,7 @@ import axios from 'axios';
 
 // 创建axios实例
 const instance = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL ?? '/api' // 使用环境变量或开发环境默认值
+  baseURL: import.meta.env.VITE_API_BASE_URL ?? '/api'
 });
 
 // 请求拦截器

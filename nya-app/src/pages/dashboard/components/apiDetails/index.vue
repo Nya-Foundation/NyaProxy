@@ -1,12 +1,10 @@
 <script setup lang="ts">
 import { useDevice } from '@/hooks/useDevice';
-import { useServerConfig } from '@/hooks/useServerConfig';
 import { useMetricsStore } from '@/stores/modules/metrics';
 import { ElMessage } from 'element-plus';
 import { computed, ref } from 'vue';
 
 const metricsStore = useMetricsStore();
-const { getApiEndpointUrl } = useServerConfig();
 
 const searchQuery = ref('');
 
@@ -56,7 +54,7 @@ const handleViewDetails = (row: any) => {
 
 // Handle copy API link action
 const handleCopyApiLink = async (row: any) => {
-  const apiLink = getApiEndpointUrl(row.name);
+  const apiLink = window.location.origin + '/api/' + encodeURIComponent(row.name);
 
   try {
     await navigator.clipboard.writeText(apiLink);

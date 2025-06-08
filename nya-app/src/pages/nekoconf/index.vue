@@ -1,15 +1,19 @@
 <script setup lang="ts">
-import { useServerConfig } from '@/hooks/useServerConfig';
-import { computed, onMounted, ref } from 'vue';
+import { computed, ref } from 'vue';
 
-const { getBaseUrl, fetchServerConfig, loading, error } = useServerConfig();
-
-// Iframe loading state
+// Page loading state
 const iframeLoading = ref(true);
 const iframeError = ref<string | null>(null);
 
-// Build config page URL
-const configUrl = computed(() => `${getBaseUrl.value}/config`);
+// Build config page URL dynamically based on current location
+const configUrl = computed(() => {
+  // In production, use the same origin as the current page
+  if (import.meta.env.PROD) {
+    return `${window.location.origin}/config/`;
+  }
+  // In development
+  return 'http://localhost:8080/config';
+});
 
 // Handle iframe load events
 const handleIframeLoad = () => {
@@ -21,32 +25,11 @@ const handleIframeError = () => {
   iframeLoading.value = false;
   iframeError.value = 'Configuration panel failed to load';
 };
-
-// Initialize server configuration on component mount
-onMounted(async () => {
-  await fetchServerConfig();
-});
 </script>
 
 <template>
   <div class="config-page">
-    <!-- Loading state -->
-    <div v-if="loading" class="loading-container">
-      <div class="loading-spinner"></div>
-      <p>Loading server configuration...</p>
-    </div>
-
-    <!-- Server config error -->
-    <div v-else-if="error" class="error-container">
-      <div class="error-message">
-        <h3>Server Configuration Failed</h3>
-        <p>{{ error }}</p>
-        <button @click="fetchServerConfig" class="retry-button">Retry</button>
-      </div>
-    </div>
-
-    <!-- Config iframe container -->
-    <div v-else class="iframe-container">
+    <div class="iframe-container">
       <!-- Iframe loading indicator -->
       <div v-if="iframeLoading" class="iframe-loading">
         <div class="loading-spinner"></div>

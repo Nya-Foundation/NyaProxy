@@ -17,18 +17,18 @@ export const routes: RouteRecordRaw[] = [
       {
         path: '/dashboard',
         name: 'Dashboard',
-        component: () => import('@/views/dashboard/index.vue'),
+        component: () => import('@/pages/dashboard/index.vue'),
         meta: {
           title: 'Dashboard',
           icon: 'DataBoard'
         }
       },
       {
-        path: '/config',
-        name: 'Config',
-        component: () => import('@/views/nekoconf/index.vue'),
+        path: '/nekoconf',
+        name: 'NekoConf',
+        component: () => import('@/pages/nekoconf/index.vue'),
         meta: {
-          title: 'Neko Config',
+          title: 'NekoConf',
           icon: 'Tools'
         }
       }
@@ -37,22 +37,54 @@ export const routes: RouteRecordRaw[] = [
   {
     path: '/login',
     name: 'Login',
-    component: () => import('@/views/login/index.vue')
+    component: () => import('@/pages/login/index.vue')
   },
   {
     path: '/:any(.*)',
     name: '404',
-    component: () => import('@/views/404/index.vue')
+    component: () => import('@/pages/404/index.vue')
   }
 ];
+
+const whiteList = ['/login', '/404'];
+
+// Paths that should be handled by backend, not frontend router
+const backendPaths = ['/config', '/dashboard/docs', '/config/docs'];
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes
 });
 
+// Add a global navigation guard to handle backend paths
+if (typeof window !== 'undefined') {
+  const originalPush = router.push;
+  const originalReplace = router.replace;
+
+  // Override push method
+  router.push = function (to: any) {
+    const path = typeof to === 'string' ? to : to.path;
+    if (path && backendPaths.some(bp => path.startsWith(bp))) {
+      window.location.href = path;
+      return Promise.resolve();
+    }
+    return originalPush.call(this, to);
+  };
+
+  // Override replace method
+  router.replace = function (to: any) {
+    const path = typeof to === 'string' ? to : to.path;
+    if (path && backendPaths.some(bp => path.startsWith(bp))) {
+      window.location.replace(path);
+      return Promise.resolve();
+    }
+    return originalReplace.call(this, to);
+  };
+}
+
 router.beforeEach(async (to, from, next) => {
   const store = useAuthStore();
+
   start();
 
   if (to.meta.auth) {
