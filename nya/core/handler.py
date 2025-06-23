@@ -99,10 +99,10 @@ class RequestHandler:
             return api_name, trail_path
 
         # Check for aliases in each API config
-        for api_name in apis_config.keys():
-            aliases = self.config.get_api_aliases(api_name)
-            if aliases and parts[0] in aliases:
-                return api_name, trail_path
+        for endpoint in apis_config.keys():
+            aliases = self.config.get_api_aliases(endpoint)
+            if aliases and api_name in aliases:
+                return endpoint, trail_path
 
         # No match found
         logger.warning(f"No API configuration found for endpoint: {api_name}")

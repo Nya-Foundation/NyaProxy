@@ -19,7 +19,6 @@ API_PATH_PREFIX = "/api/"
 EXCLUDED_REQUEST_HEADERS = {
     "content-length",
     "connection",
-    "transfer-encoding",
     "upgrade-insecure-requests",
     "proxy-connection",
     "x-forwarded-for",

@@ -127,9 +127,6 @@ class HeaderUtils:
             # Set header with original casing preserved
             final_headers[header_name] = header_value
 
-            # patch accept-encoding header to avoid issues with httpx
-            final_headers["accept-encoding"] = "identity"
-
         return final_headers
 
     @staticmethod
