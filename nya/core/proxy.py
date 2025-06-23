@@ -84,12 +84,11 @@ class NyaProxyCore:
             future = await self.request_queue.enqueue_request(request)
             timeout = self.config.get_api_default_timeout(request.api_name)
             return await asyncio.wait_for(future, timeout=timeout)
-        except ReachedDailyQuotaError as e:
-            return self._error_response(e.message, status_code=429)
+
+        except (ReachedMaxRetriesError, ReachedDailyQuotaError) as e:
+            return self._error_response(e.message, 429)
         except APIKeyNotConfiguredError as e:
             return self._error_response(e.message, 500)
-        except ReachedMaxRetriesError as e:
-            return self._error_response(e.message, 429)
         except QueueFullError as e:
             return self._error_response(e.message, 503)
         except asyncio.TimeoutError:
@@ -100,9 +99,7 @@ class NyaProxyCore:
             )
             return self._error_response(str(e), 500)
 
-    async def _process_queued_request(
-        self, request: ProxyRequest
-    ) -> Union[Response, JSONResponse, StreamingResponse]:
+    async def _process_queued_request(self, request: ProxyRequest) -> Response:
         """
         Process a request from the queue.
         """

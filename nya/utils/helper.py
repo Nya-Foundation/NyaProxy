@@ -13,6 +13,7 @@ import brotli
 import jmespath
 import orjson  # Faster JSON library
 from jmespath.exceptions import JMESPathError
+from loguru import logger
 
 __all__ = [
     "mask_secret",
@@ -227,9 +228,10 @@ def apply_body_substitutions(
     # If body is a string, parse it to a dict
     if isinstance(body, str) or isinstance(body, bytes):
         try:
-            body = json.loads(body)
-        except json.JSONDecodeError:
+            body = orjson.loads(body)
+        except orjson.JSONDecodeError:
             # If the body isn't valid JSON, return it unchanged
+            logger.warning("Failed to decode body as JSON, returning unchanged.")
             return body
 
     # If no rules or body isn't a dict/list, return unchanged
@@ -237,7 +239,7 @@ def apply_body_substitutions(
         return body
 
     # Make a deep copy of the body to avoid unexpected side effects
-    result = orjson.loads(orjson.dumps(body))
+    result = body
 
     # Apply each rule in sequence
     for rule in rules:

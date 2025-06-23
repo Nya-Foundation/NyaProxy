@@ -89,9 +89,10 @@ class RequestExecutor:
 
         # Log request/response details on error response
         if response.status_code >= 400:
-            logger.debug(f"[Request] Headers: {json_safe_dumps(request.headers)}")
             logger.debug(f"[Request] Content: {json_safe_dumps(request.content)}")
-            logger.debug(f"[Response] Headers: {json_safe_dumps(response.headers)}")
+
+        logger.debug(f"[Request] Headers: {json_safe_dumps(request.headers)}")
+        logger.debug(f"[Response] Headers: {json_safe_dumps(response.headers)}")
 
         logger.debug(
             f"[Response] URL: {request.url}, Status: {response.status_code} "
@@ -168,7 +169,6 @@ class RequestExecutor:
         """
         Create the response to send back to client.
         """
-        # Check if it's a streaming response
         try:
             content_type = response.headers.get("content-type", "")
             media_type = (
@@ -176,25 +176,15 @@ class RequestExecutor:
                 if content_type
                 else "application/json"
             )
-            # Regular response
-            content_chunks = []
-            async for chunk in response.aiter_bytes():
-                content_chunks.append(chunk)
-            content = b"".join(content_chunks)
-
-            content_encoding = response.headers.get("content-encoding", "").lower()
-            content = decode_content(content, content_encoding)
-
-            # Remove content-encoding header if present
-            for header in ["transfer-encoding", "content-length", "content-encoding"]:
-                if header in response.headers:
-                    del response.headers[header]
 
             logger.debug(
                 f"Handling normal response: {response.status_code} {media_type}"
             )
-            if "application/json" in response.headers.get("content-type", "").lower():
-                logger.debug(f"[Response] Content: {json_safe_dumps(content)}")
+
+            # Read raw bytes without any decoding/processing
+            content = b""
+            async for chunk in response.aiter_raw():
+                content += chunk
 
             return Response(
                 content=content,
