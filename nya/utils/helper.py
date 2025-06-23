@@ -9,11 +9,11 @@ import zlib
 from collections.abc import Mapping
 from typing import Any, Dict, List, Optional, Union
 
-from loguru import logger
 import brotli
 import jmespath
 import orjson  # Faster JSON library
 from jmespath.exceptions import JMESPathError
+from loguru import logger
 
 __all__ = [
     "mask_secret",
