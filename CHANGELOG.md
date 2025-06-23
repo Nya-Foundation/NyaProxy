@@ -1,6 +1,80 @@
 # CHANGELOG
 
 
+## v0.4.0 (2025-06-23)
+
+### Bug Fixes
+
+- Add js-yaml
+  ([`88d5ec1`](https://github.com/Nya-Foundation/NyaProxy/commit/88d5ec15cc1497f386e6fa93421fc14eed096201))
+
+- Adjust backend API url
+  ([`3866e0a`](https://github.com/Nya-Foundation/NyaProxy/commit/3866e0a6ab1518b39f9cddcce873a61f6e4c41dd))
+
+- Improve encode/decode handling logic
+  ([`6ad75a9`](https://github.com/Nya-Foundation/NyaProxy/commit/6ad75a9ee3d521ad54f10450ac547c2a2adf7bb0))
+
+- Type error
+  ([`2afdb2e`](https://github.com/Nya-Foundation/NyaProxy/commit/2afdb2eab73eecd6b66936d0c49066d23cf7c437))
+
+### Chores
+
+- Add manualChunks
+  ([`b11a1e4`](https://github.com/Nya-Foundation/NyaProxy/commit/b11a1e40948ee6663237505edc9642e8d8242db7))
+
+- Black code formating
+  ([`16c3abd`](https://github.com/Nya-Foundation/NyaProxy/commit/16c3abd5950b6bd2b37ea95618a7664bc96ebae8))
+
+- Formatting
+  ([`d95dda6`](https://github.com/Nya-Foundation/NyaProxy/commit/d95dda6072846b940834f3b3c830857f6c94b85e))
+
+- Layout finish
+  ([`745c82f`](https://github.com/Nya-Foundation/NyaProxy/commit/745c82f1e1830284f592521215e932428d346ca8))
+
+- Minor changes on error handling
+  ([`fd880d6`](https://github.com/Nya-Foundation/NyaProxy/commit/fd880d6023d7d95e6f2a407859860e0bdc4be2fd))
+
+- Resolve merge
+  ([`ef0afeb`](https://github.com/Nya-Foundation/NyaProxy/commit/ef0afebc0b307a5d23fb0f09e710858b0671069d))
+
+- Update README.md and images
+  ([`a971753`](https://github.com/Nya-Foundation/NyaProxy/commit/a971753eeed2fe5f5cb58cbbe9c76fecca555a75))
+
+- **format**: Apply automatic formatting [skip ci]
+  ([`0e85be6`](https://github.com/Nya-Foundation/NyaProxy/commit/0e85be62bc73d0893a501a3e9d4bbb60c795e3b1))
+
+- **format**: Apply automatic formatting [skip ci]
+  ([`8d95f6e`](https://github.com/Nya-Foundation/NyaProxy/commit/8d95f6e167eba14547fe9d6a91399f5cf38934f7))
+
+- **format**: Apply automatic formatting [skip ci]
+  ([`6a81c8d`](https://github.com/Nya-Foundation/NyaProxy/commit/6a81c8ddfd6304a0527d98dce3e665939429a402))
+
+- **format**: Apply automatic formatting [skip ci]
+  ([`cf57feb`](https://github.com/Nya-Foundation/NyaProxy/commit/cf57feb899f3a5a58c0f9e67156e7d6b3296ae42))
+
+### Features
+
+- According config.yaml generate .env.production
+  ([`06b4179`](https://github.com/Nya-Foundation/NyaProxy/commit/06b4179dc7cc15e7d04ca0a87c6aeec98eb6ec37))
+
+- Login&404
+  ([`95dd9dc`](https://github.com/Nya-Foundation/NyaProxy/commit/95dd9dccd8970244398f6165023f396de17c1085))
+
+### Refactoring
+
+- Config page layout
+  ([`2643c92`](https://github.com/Nya-Foundation/NyaProxy/commit/2643c92be36cabb747088382503784f02cf733d1))
+
+- Dashboard
+  ([`53ec6b2`](https://github.com/Nya-Foundation/NyaProxy/commit/53ec6b25e0bd6944636a7c78cd4463538b979338))
+
+- Embedded config page
+  ([`87d731c`](https://github.com/Nya-Foundation/NyaProxy/commit/87d731ca2be3a4f764be2a7a6b963c638544fff8))
+
+- Frontend init
+  ([`f6bd416`](https://github.com/Nya-Foundation/NyaProxy/commit/f6bd416487122ffcd044c0e900bd51740ba7c4fd))
+
+
 ## v0.3.6 (2025-06-07)
 
 ### Bug Fixes
