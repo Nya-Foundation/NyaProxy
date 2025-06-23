@@ -42,7 +42,7 @@ class StreamingHandler:
 
         async def event_generator():
             try:
-                async for chunk in response.aiter_bytes():
+                async for chunk in response.aiter_raw():
                     if chunk:
                         logger.debug(f"Forwarding stream chunk: {len(chunk)} bytes")
                         yield chunk
@@ -74,15 +74,18 @@ class StreamingHandler:
             Processed headers for streaming
         """
 
-        for header in ["content-encoding", "content-length", "accept-encoding"]:
-            if header in headers:
-                del headers[header]
+        # Remove content-length as it's not applicable for streaming
+        if "content-length" in headers:
+            del headers["content-length"]
 
-        # Set SSE-specific headers according to standards
-        headers["cache-control"] = "no-cache, no-transform"
+        # Remove date since fastapi will set it automatically
+        if "date" in headers:
+            del headers["date"]
+
         headers["connection"] = "keep-alive"
-        headers["x-accel-buffering"] = "no"
+        headers["cache-control"] = "no-cache"
         headers["transfer-encoding"] = "chunked"
+        headers["x-accel-buffering"] = "no"
 
     @staticmethod
     def detect_streaming_content(headers: httpx.Headers) -> bool:
@@ -102,16 +105,24 @@ class StreamingHandler:
         no_length = cl is None
         supports_range = "bytes" in ar
 
+        exceptions = ("application/json",)
+
         sse_cts = {
             "text/event-stream",
             "application/x-ndjson",
             "multipart/x-mixed-replace",
         }
 
-        media_prefixes = ("video/", "audio/")
+        media_prefixes = (
+            "video/",
+            "audio/",
+        )
         other_media_cts = {
             "application/vnd.apple.mpegurl",  # .m3u8 (HLS)
             "application/dash+xml",  # .mpd (DASH)
+            "application/zip",
+            "application/gzip",
+            "application/pdf",
         }
 
         is_sse = ct in sse_cts
@@ -119,10 +130,16 @@ class StreamingHandler:
             ct in other_media_cts
         )
 
+        if ct in exceptions:
+            return False
+
+        if no_length or uses_chunked:
+            return True
+
         if uses_chunked and is_sse:
             return True
 
-        if is_media and (uses_chunked or supports_range or no_length):
+        if is_media and (uses_chunked or supports_range):
             return True
 
         return False
