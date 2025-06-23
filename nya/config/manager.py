@@ -379,6 +379,30 @@ class ConfigManager:
         """
         return self.get_api_setting(api_name, "load_balancing_strategy", "str")
 
+    def get_api_allowed_paths(self, api_name: str) -> List[str]:
+        """
+        Get the list of allowed paths for the API.
+        """
+        return self.get_api_setting(api_name, "allowed_paths.paths", "list")
+
+    def get_api_allowed_paths_enabled(self, api_name: str) -> bool:
+        """
+        Check if allowed paths are enabled for the API.
+        """
+        return self.get_api_setting(api_name, "allowed_paths.enabled", "bool")
+
+    def get_api_allowed_paths_mode(self, api_name: str) -> str:
+        """
+        Get the mode for allowed paths for the API (whitelist/blacklist).
+        """
+        return self.get_api_setting(api_name, "allowed_paths.mode", "str")
+
+    def get_api_allowed_methods(self, api_name: str) -> List[str]:
+        """
+        Get the list of allowed methods for the API.
+        """
+        return self.get_api_setting(api_name, "allowed_methods", "list")
+
     def get_api_queue_size(self, api_name: str) -> int:
         """
         Get the queue size for the API.

@@ -127,6 +127,49 @@
                     ],
                     "description": "Load balancing strategy"
                 },
+                "allowed_paths": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "description": "Enable path restrictions"
+                        },
+                        "mode": {
+                            "type": "string",
+                            "enum": [
+                                "whitelist",
+                                "blacklist"
+                            ],
+                            "description": "Whitelist or blacklist mode for paths"
+                        },
+                        "paths": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "description": "List of allowed or blocked paths, regex supported"
+                            }
+                        }
+                    },
+                    "required": [
+                        "enabled"
+                    ],
+                    "additionalProperties": false
+                },
+                "allowed_methods": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": [
+                            "GET",
+                            "POST",
+                            "PUT",
+                            "DELETE",
+                            "PATCH",
+                            "OPTIONS"
+                        ],
+                        "description": "HTTP methods to allow or block"
+                    }
+                },
                 "queue": {
                     "type": "object",
                     "properties": {
@@ -429,6 +472,12 @@
                         },
                         "load_balancing_strategy": {
                             "$ref": "#/$defs/default_settings/properties/load_balancing_strategy"
+                        },
+                        "allowed_paths": {
+                            "$ref": "#/$defs/default_settings/properties/allowed_paths"
+                        },
+                        "allowed_methods": {
+                            "$ref": "#/$defs/default_settings/properties/allowed_methods"
                         },
                         "queue": {
                             "$ref": "#/$defs/default_settings/properties/queue"
