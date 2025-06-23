@@ -54,6 +54,9 @@ class ProxyRequest:
         self.attempts = 0
         # Timestamp when added to queue
         self.added_at = time.time()
+
+        # Whether the request is allowed to proceed
+        self._allowed = True
         # Whether to apply rate limiting for this request
         self._rate_limited = False
 

@@ -22,9 +22,16 @@ server:
 # Default configuration applied to all API endpoints unless overridden
 default_settings:
   key_variable: keys
-  key_concurrency: true # Enable concurrent requests per API key for better performance
+  key_concurrency: true # if true, each key can handle multiple concurrent requests
   randomness: 0.0 # Random delay of (0.0-x)s to introduce variability in request timing and avoid detection
   load_balancing_strategy: round_robin
+  # Path and method filtering
+  allowed_paths:
+    enabled: false # Set to true to enable path filtering
+    mode: whitelist # if "whitelist", only allow listed paths; if "blacklist", block listed paths
+    paths:
+      - "*"
+  allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
   queue:
     max_size: 200
     expiry_seconds: 300
