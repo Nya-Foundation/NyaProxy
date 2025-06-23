@@ -52,6 +52,7 @@ class RequestHandler:
         target_url = f"{target_endpoint}{trail_path}"
         request.url = target_url
 
+        request._allowed = self.is_request_allowed(request, trail_path)
         request._rate_limited = self.should_enforce_rate_limit(api_name, trail_path)
 
         # parse the original request ip from proxy headers
@@ -107,6 +108,45 @@ class RequestHandler:
         # No match found
         logger.warning(f"No API configuration found for endpoint: {api_name}")
         return None, None
+
+    def is_request_allowed(self, request: ProxyRequest, path: str) -> bool:
+        """
+        Check if the request is allowed based on API key and rate limiting.
+
+        Args:
+            request: ProxyRequest object to check
+            path: Request path to check
+
+        Returns:
+            bool: True if request is allowed, False otherwise
+        """
+        api_name = request.api_name
+
+        # If no API name, deny the request
+        if not api_name:
+            return False
+
+        allowed_paths_enabled = self.config.get_api_allowed_paths_enabled(api_name)
+        allowed_methods = self.config.get_api_allowed_methods(api_name)
+
+        if request.method.upper() not in allowed_methods:
+            return False
+
+        if not allowed_paths_enabled:
+            return True
+
+        paths = self.config.get_api_allowed_paths(api_name)
+        mode = self.config.get_api_allowed_paths_mode(api_name)
+        action = True if mode == "whitelist" else False
+
+        if "*" in paths:
+            return action
+
+        for pattern in paths:
+            if pattern == path or path.startswith(pattern.rstrip("*")):
+                return action
+
+        return not action
 
     def set_request_priority(self, request: ProxyRequest) -> None:
         """

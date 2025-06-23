@@ -44,7 +44,6 @@ class StreamingHandler:
             try:
                 async for chunk in response.aiter_raw():
                     if chunk:
-                        logger.debug(f"Forwarding stream chunk: {len(chunk)} bytes")
                         yield chunk
             except Exception as e:
                 logger.error(
