@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.4.1 (2025-06-23)
+
+### Bug Fixes
+
+- Add path filtering and method filtering
+  ([`da9a67c`](https://github.com/Nya-Foundation/NyaProxy/commit/da9a67c805edff30693169be32c272c1a321dc75))
+
+
 ## v0.4.0 (2025-06-23)
 
 ### Bug Fixes
