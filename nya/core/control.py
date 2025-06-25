@@ -242,10 +242,6 @@ class TrafficManager:
         key_limiter.release()
         key_limiter.unlock()
 
-        # additional metrics update to support the key selection (least_requests)
-        key_lb = self.get_load_balancer(api_name)
-        key_lb.update_request_count(key, -1)
-
     def release_ip(self, api_name: str, ip: str) -> None:
         """
         Release the most recent request for a specific IP address.
