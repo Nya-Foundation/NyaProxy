@@ -4,14 +4,14 @@ Provides authentication mechanisms and middleware.
 """
 
 import importlib.resources
+from typing import TYPE_CHECKING
 
-from fastapi import Depends, HTTPException, Request
-from fastapi.security import APIKeyHeader
-from loguru import logger
+from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import HTMLResponse, JSONResponse
 
-from nya.config import ConfigManager  # pragma: no cover
+if TYPE_CHECKING:
+    from nya.config import ConfigManager  # pragma: no cover
 
 
 class AuthManager:
@@ -19,66 +19,20 @@ class AuthManager:
     Centralized authentication manager for NyaProxy
     """
 
-    def __init__(self, config: ConfigManager = None):
+    def __init__(self, config: "ConfigManager" = None):
         """
         Initialize the authentication manager.
 
         Args:
-            config_manager: The configuration manager instance
+            config: The configuration manager instance
         """
-        self.config = config or ConfigManager.get_instance()
-        self.header = APIKeyHeader(name="Authorization", auto_error=False)
+        self.config = config
 
     def get_api_key(self):
         """
         Get the configured API key
         """
-        if not self.config:
-            return ""
         return self.config.get_api_key()
-
-    async def verify_api_access(
-        self,
-        api_key: str = Depends(APIKeyHeader(name="Authorization", auto_error=False)),
-    ):
-        """
-        Verify the API key if one is configured.
-
-        Returns:
-            bool: True if valid or no key configured, False otherwise
-        """
-        configured_key = self.get_api_key()
-
-        # No API key required if none is configured
-        if not configured_key:
-            return True
-
-        # API key required but not provided
-        if not api_key:
-            raise HTTPException(
-                status_code=401, detail="Unauthorized: API key required"
-            )
-
-        # Strip "Bearer " prefix if present
-        if api_key.startswith("Bearer "):
-            api_key = api_key[7:]
-
-        # API key provided but invalid
-        if api_key != configured_key:
-            raise HTTPException(
-                status_code=403, detail="Unauthorized: Insufficient Permissions"
-            )
-
-        return True
-
-    def create_middleware(self):
-        """
-        Create a new instance of AuthMiddleware.
-
-        Returns:
-            AuthMiddleware: A middleware instance configured with this auth manager
-        """
-        return lambda app: AuthMiddleware(app, self)
 
     def verify_api_key(self, key: str, verify_master: bool = False) -> bool:
         """
@@ -240,8 +194,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
             with template_path.open("r") as f:
                 html_content = f.read()
         except (FileNotFoundError, TypeError, ImportError):
-            # Log an error and return a generic error response
-            # Consider adding logging here if self.logger is available or passed
             return JSONResponse(
                 status_code=500,
                 content={"error": "Internal server error: Login page unavailable"},

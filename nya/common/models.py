@@ -29,36 +29,34 @@ class ProxyRequest:
         content: Optional[bytes],
         ip: str = None,
     ):
-        self.method = method
+        self.method: str = method
 
         # Lower number = higher priority (1=retry, 2=priority, 3=normal)
-        self.priority = 3
+        self.priority: int = 3
 
         # original url from the proxy request
-        self._url = _url
+        self._url: "URL" = _url
 
         # final url to be requested, will be set later
-        self.url = None
+        self.url: Optional[str] = None
 
-        self.headers = headers
-        self.content = content
+        self.headers: Headers = headers
+        self.content: Optional[bytes] = content
 
         # API Related metadata
-        self.api_name: str = "unknow"
+        self.api_name: str = None
         self.api_key: Optional[str] = None
 
+        self.ip: str = ip
         self.user: Optional[str] = None
-        self.ip = ip
 
         # Number of attempts made for this request
-        self.attempts = 0
+        self.attempts: int = 0
         # Timestamp when added to queue
-        self.added_at = time.time()
+        self.added_at: float = time.time()
 
-        # Whether the request is allowed to proceed
-        self._allowed = True
         # Whether to apply rate limiting for this request
-        self._rate_limited = False
+        self._rate_limited: bool = False
 
         self.future: Optional[asyncio.Future] = None
 

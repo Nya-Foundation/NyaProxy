@@ -2,23 +2,19 @@
 Utility functions for NyaProxy.
 """
 
-import gzip
 import json
 import re
-import zlib
 from collections.abc import Mapping
 from typing import Any, Dict, List, Optional, Union
 
-import brotli
 import jmespath
-import orjson  # Faster JSON library
+import orjson
 from jmespath.exceptions import JMESPathError
 from loguru import logger
 
 __all__ = [
     "mask_secret",
     "format_elapsed_time",
-    "decode_content",
     "json_safe_dumps",
     "apply_body_substitutions",
 ]
@@ -115,87 +111,6 @@ def format_elapsed_time(elapsed_seconds: float) -> str:
         hours = int(elapsed_seconds // 3600)
         minutes = int((elapsed_seconds % 3600) // 60)
         return f"{hours}h {minutes}m"
-
-
-def decode_content(content: bytes, encoding: Optional[str]) -> bytes:
-    """
-    Decode response content based on encoding.
-
-    Args:
-        content: Encoded content bytes
-        encoding: Content encoding (gzip, deflate, br, identity)
-
-    Returns:
-        Decoded content bytes
-    """
-    if not encoding or not content:
-        return content
-
-    # Magic bytes for different compression formats
-    GZIP_MAGIC = b"\x1f\x8b"  # gzip
-    ZLIB_MAGIC_1 = b"\x78\x01"  # zlib no compression
-    ZLIB_MAGIC_2 = b"\x78\x9c"  # zlib default compression
-    ZLIB_MAGIC_3 = b"\x78\xda"  # zlib best compression
-    BROTLI_MAGIC = b"\xce\xb2\xcf\x81"  # Not strict but common brotli signature
-
-    # Check for plaintext JSON content
-    is_plaintext_json = content and content.startswith((b"{", b"[", b'"'))
-
-    # Check for compression signatures
-    has_gzip_signature = len(content) >= 2 and content[:2] == GZIP_MAGIC
-    has_zlib_signature = len(content) >= 2 and content[:2] in (
-        ZLIB_MAGIC_1,
-        ZLIB_MAGIC_2,
-        ZLIB_MAGIC_3,
-    )
-    has_br_signature = len(content) >= 4 and content[:4] == BROTLI_MAGIC
-
-    # If content appears to be plaintext JSON and doesn't have compression signatures
-    if is_plaintext_json and not (
-        has_gzip_signature or has_zlib_signature or has_br_signature
-    ):
-        # Content appears to be plaintext JSON but has compression encoding header
-        # Return it unchanged rather than trying to decompress
-        return content
-
-    try:
-        for enc in reversed(encoding.split(",")):
-            enc = enc.strip().lower()
-            original_content = content
-
-            try:
-                if enc == "gzip":
-                    # Only attempt gzip decompression if it has gzip signature or we're not sure
-                    if has_gzip_signature or not is_plaintext_json:
-                        content = gzip.decompress(content)
-                elif enc == "deflate":
-                    # Only attempt deflate if it has zlib signature or we're not sure
-                    if has_zlib_signature or not is_plaintext_json:
-                        try:
-                            content = zlib.decompress(content)
-                        except zlib.error:
-                            content = zlib.decompress(content, -zlib.MAX_WBITS)
-                elif enc == "br":
-                    # Only attempt brotli if it doesn't look like plaintext JSON
-                    if not is_plaintext_json:
-                        content = brotli.decompress(content)
-                elif enc == "identity":
-                    continue
-                else:
-                    # Unknown encoding; stop decoding
-                    break
-            except Exception as e:
-                # If decompression fails, keep original content and continue
-                content = original_content
-                print(
-                    f"Failed to decode content with encoding '{enc}': {e}, keeping original content."
-                )
-
-        return content
-
-    except Exception as e:
-        print(f"Failed to process content with encoding '{encoding}': {e}")
-        return content
 
 
 def apply_body_substitutions(
@@ -716,8 +631,3 @@ def _process_value_references(value: Any, original_body: Union[Dict, List]) -> A
     # Return other values unchanged
     else:
         return value
-
-
-# Alias old function names to the new ones for backward compatibility
-_add_field = _set_field
-_replace_field = _set_field

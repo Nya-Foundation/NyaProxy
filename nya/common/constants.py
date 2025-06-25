@@ -44,4 +44,4 @@ EXCLUDED_REQUEST_HEADERS = {
 MAX_QUEUE_SIZE = 200
 
 
-WATCH_FILE = "watch_file.txt"
+WATCH_FILE = "watch.txt"

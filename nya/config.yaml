@@ -22,16 +22,16 @@ server:
 # Default configuration applied to all API endpoints unless overridden
 default_settings:
   key_variable: keys
-  key_concurrency: true # if true, each key can handle multiple concurrent requests
-  randomness: 0.0 # Random delay of (0.0-x)s to introduce variability in request timing and avoid detection
+  key_concurrency: true # mark it as true if each key can handle multiple concurrent requests, otherwise the key will be locked until the request completes
+  randomness: 0.0 # Random delay of (0.0-x)s to introduce variability in request timing and avoid detection due to consistent request patterns due to rate limits
   load_balancing_strategy: round_robin
   # Path and method filtering
   allowed_paths:
-    enabled: false # Set to true to enable path filtering
+    enabled: false # Set to true to enable request path filtering
     mode: whitelist # if "whitelist", only allow listed paths; if "blacklist", block listed paths
     paths:
       - "*"
-  allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+  allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"] # Allowed HTTP methods for the API
   queue:
     max_size: 200
     expiry_seconds: 300
@@ -53,26 +53,9 @@ default_settings:
   timeouts:
     request_timeout_seconds: 300
 
-  # Request body substitution settings
-  request_body_substitution:
-    enabled: false
-    # Substitution rules for request body with JMEPath
-    rules:
-      - name: "Remove frequency_penalty"
-        operation: remove
-        path: "frequency_penalty"
-        conditions:
-          - field: "frequency_penalty"
-            operator: "exists"
-      - name: "Remove presence_penalty"
-        operation: remove
-        path: "presence_penalty"
-        conditions:
-          - field: "presence_penalty"
-            operator: "exists"
 apis:
   gemini:
-    # OpenAI-compatible API endpoint
+    # Example for OpenAI-compatible API endpoint
     name: Google Gemini API
     # Supported endpoints:
     # Gemini: https://generativelanguage.googleapis.com/v1beta/openai
@@ -97,13 +80,32 @@ apis:
     rate_limit:
       enabled: true
       # For Gemini-2.5-pro-exp-03-25, rate limits per key are 5 RPM and 25 RPD
-      # Endpoint rate limit should be n × Per-Key-RPD, where n is the number of keys
+      # Endpoint rate limit should be n × per-key-RPD, where n is the number of keys
       endpoint_rate_limit: 75/d
       key_rate_limit: 5/m
       # Paths to apply rate limits (regex supported) - defaults to all paths "*"
       rate_limit_paths:
         - "/chat/*"
         - "/images/*"
+
+    # Request body substitution settings
+    request_body_substitution:
+      enabled: false
+      # Substitution rules for request body with JMEPath
+      rules:
+        # Since Gemini API doesn't support frequency_penalty and presence_penalty, we remove them with these rules
+        - name: "Remove frequency_penalty"
+          operation: remove
+          path: "frequency_penalty"
+          conditions:
+            - field: "frequency_penalty"
+              operator: "exists"
+        - name: "Remove presence_penalty"
+          operation: remove
+          path: "presence_penalty"
+          conditions:
+            - field: "presence_penalty"
+              operator: "exists"
 
   test:
     name: Test API
@@ -112,7 +114,7 @@ apis:
     randomness: 5
     headers:
       Authorization: 'Bearer ${{keys}}'
-      User-Agent: ${{agents}}
+      User-Agent: ${{agents}} # flexible headers customization with template variables supported
     variables:
       keys:
       - your_test_key_1

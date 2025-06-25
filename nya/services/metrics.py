@@ -16,9 +16,7 @@ class MetricsCollector:
     """
     Collects and aggregates metrics about API usage.
 
-    This class provides a centralized way to track request volumes,
-    response times, error rates, and other performance indicators
-    across different APIs and keys.
+    Tracks request counts, response times, status codes, and key usage.
     """
 
     def __init__(
