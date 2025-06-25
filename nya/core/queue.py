@@ -12,15 +12,15 @@ from loguru import logger
 
 from ..common.exceptions import (
     QueueFullError,
-    ReachedDailyQuotaError,
+    ReachedMaxQuotaError,
     ReachedMaxRetriesError,
     RequestExpiredError,
 )
-from ..common.models import ProxyRequest
 
 if TYPE_CHECKING:
     from starlette.responses import Response
 
+    from ..common.models import ProxyRequest
     from ..config import ConfigManager
     from ..services.metrics import MetricsCollector
     from .control import TrafficManager
@@ -40,7 +40,7 @@ class RequestQueue:
         """
         Initialize the simple queue.
         """
-        self.config = config or ConfigManager.get_instance()
+        self.config = config
         self.control = traffic_manager
         self.metrics_collector = metrics_collector
 
@@ -54,10 +54,12 @@ class RequestQueue:
         self._processors: Dict[str, asyncio.Task] = {}
 
         # Registered processor
-        self._processor: Optional[Callable[[ProxyRequest], Awaitable[Response]]] = None
+        self._processor: Optional[Callable[["ProxyRequest"], Awaitable["Response"]]] = (
+            None
+        )
 
     async def enqueue_request(
-        self, request: ProxyRequest, is_retry: bool = False, priority: int = None
+        self, request: "ProxyRequest", is_retry: bool = False, priority: int = None
     ) -> asyncio.Future:
         """
         Enqueue a request for processing.
@@ -125,7 +127,7 @@ class RequestQueue:
                     continue
 
                 # Get next request (blocks until available)
-                request: ProxyRequest = await self._queues[api_name].get()
+                request: "ProxyRequest" = await self._queues[api_name].get()
                 request.api_key = key
 
                 # Check if request expired
@@ -144,7 +146,9 @@ class RequestQueue:
                 )
                 await asyncio.sleep(1)
 
-    async def _process_with_worker(self, api_name: str, request: ProxyRequest) -> None:
+    async def _process_with_worker(
+        self, api_name: str, request: "ProxyRequest"
+    ) -> None:
         """
         Process a single request with worker pool limiting.
         """
@@ -174,14 +178,14 @@ class RequestQueue:
                     request.future.set_result(response)
 
             except Exception as e:
-                # unlock the key if processing failed to avoid deadlocks
-                self.control.unlock_key(request.api_name, request.api_key)
+                # free resources on errors
+                self._free_resources_on_failure(request, 500)
 
                 if not request.future.done():
                     request.future.set_exception(e)
 
     def _free_resources_on_failure(
-        self, request: ProxyRequest, status_code: int
+        self, request: "ProxyRequest", status_code: int
     ) -> None:
         """
         Release resources if request is failed.
@@ -201,7 +205,7 @@ class RequestQueue:
         )
 
     async def _handle_user_defined_retry(
-        self, request: ProxyRequest, status_code: int
+        self, request: "ProxyRequest", status_code: int
     ) -> bool:
         """
         Handle user-defined retry logic.
@@ -234,7 +238,7 @@ class RequestQueue:
         await self._handle_retry(request, retry_delay)
         return True
 
-    async def _handle_proxy_limit(self, api_name: str, request: ProxyRequest):
+    async def _handle_proxy_limit(self, api_name: str, request: "ProxyRequest"):
         """
         Wait for proxy resources to become available before processing.
         """
@@ -257,7 +261,7 @@ class RequestQueue:
         request.api_key = None
 
         if total_wait > self.config.get_api_queue_expiry(api_name):
-            request.future.set_exception(ReachedDailyQuotaError(api_name, total_wait))
+            request.future.set_exception(ReachedMaxQuotaError(api_name, total_wait))
             return total_wait
 
         await self._handle_retry(request, total_wait)
@@ -282,7 +286,7 @@ class RequestQueue:
 
         return key, 0.0  # Resources available
 
-    async def _handle_retry(self, request: ProxyRequest, retry_delay: float) -> None:
+    async def _handle_retry(self, request: "ProxyRequest", retry_delay: float) -> None:
         """
         Handle retry logic for any type of failure.
         """
@@ -308,7 +312,7 @@ class RequestQueue:
             # Max retries reached, fail the request
             request.future.set_exception(ReachedMaxRetriesError(api_name, max_retries))
 
-    def _is_request_expired(self, request: ProxyRequest) -> bool:
+    def _is_request_expired(self, request: "ProxyRequest") -> bool:
         """
         Check if request has expired.
         """
@@ -370,7 +374,7 @@ class RequestQueue:
         return {api_name: queue.qsize() for api_name, queue in self._queues.items()}
 
     def register_processor(
-        self, processor: Callable[[ProxyRequest], Awaitable[Any]]
+        self, processor: Callable[["ProxyRequest"], Awaitable[Any]]
     ) -> None:
         """
         Register the request processor.

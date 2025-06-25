@@ -31,7 +31,6 @@ dependencies = [
     "jinja2>=3.1.2",
     "setuptools>=42.0.0",
     "watchfiles>=0.18.0",
-    "brotli>=1.0.9",
     "jmespath>=1.0.1",
     "orjson>=3.10,<4",
     "loguru>=0.7.0",

@@ -3,7 +3,7 @@ Request handler for intercepting and forwarding HTTP requests with token rotatio
 """
 
 import random
-from typing import Any, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 from urllib.parse import urlparse
 
 import orjson
@@ -12,28 +12,27 @@ from loguru import logger
 from ..common.constants import API_PATH_PREFIX
 from ..common.exceptions import MissingAPIKeyError, VariablesConfigurationError
 from ..common.models import ProxyRequest
-from ..config.manager import ConfigManager
 from ..utils.header import HeaderUtils
 from ..utils.helper import apply_body_substitutions
+
+if TYPE_CHECKING:
+    from ..config.manager import ConfigManager
 
 
 class RequestHandler:
     """
     Handles the processing of individual requests including preparation,
-    validation, and key management.
+    validation, key management, and request body substitutions.
     """
 
-    def __init__(self, config: Optional[ConfigManager] = None):
+    def __init__(self, config: "ConfigManager" = None):
         """
         Initialize the request handler.
 
         Args:
-            key_manager: Key manager instance
+            config: Configuration manager instance, defaults to ConfigManager singleton if None
         """
-        self.config = config or ConfigManager.get_instance()
-
-        if not self.config:
-            raise ValueError("ConfigManager instance is not initialized.")
+        self.config = config
 
     def prepare_request(self, request: ProxyRequest) -> None:
         """
@@ -44,7 +43,6 @@ class RequestHandler:
         """
         # Identify target API based on path
         api_name, trail_path = self.parse_request(request)
-
         request.api_name = api_name
 
         # Construct target api endpoint URL
@@ -52,7 +50,6 @@ class RequestHandler:
         target_url = f"{target_endpoint}{trail_path}"
         request.url = target_url
 
-        request._allowed = self.is_request_allowed(request, trail_path)
         request._rate_limited = self.should_enforce_rate_limit(api_name, trail_path)
 
         # parse the original request ip from proxy headers
@@ -109,18 +106,18 @@ class RequestHandler:
         logger.warning(f"No API configuration found for endpoint: {api_name}")
         return None, None
 
-    def is_request_allowed(self, request: ProxyRequest, path: str) -> bool:
+    def is_request_allowed(self, request: ProxyRequest) -> bool:
         """
-        Check if the request is allowed based on API key and rate limiting.
+        Check if the request method and path are allowed for the API based on configuration.
 
         Args:
             request: ProxyRequest object to check
-            path: Request path to check
 
         Returns:
             bool: True if request is allowed, False otherwise
         """
-        api_name = request.api_name
+
+        api_name, path = self.parse_request(request)
 
         # If no API name, deny the request
         if not api_name:
@@ -273,7 +270,6 @@ class RequestHandler:
         request.headers["host"] = urlparse(request.url).netloc
 
         try:
-            # Get values for other variables from load_balancers
             for var in required_vars:
                 # randomly select a value for the variable from the configured values
                 variables = self.config.get_api_variable_values(api_name, var)
@@ -283,6 +279,7 @@ class RequestHandler:
             processed_headers = HeaderUtils.process_headers(
                 header_config, var_values, original_headers=dict(request.headers)
             )
+            # Merge processed user defined headers with existing request headers
             request.headers = HeaderUtils.merge_headers(
                 request.headers, processed_headers
             )

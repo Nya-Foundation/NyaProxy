@@ -3,17 +3,19 @@ Simplified key manager that focuses on key availability and rate limiting.
 """
 
 import asyncio
-from typing import Dict, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, Optional, Tuple, Union
 
 from ..common.exceptions import APIKeyNotConfiguredError
-from ..config.manager import ConfigManager
 from ..services.lb import LoadBalancer
 from ..services.limit import RateLimiter
+
+if TYPE_CHECKING:
+    from ..config.manager import ConfigManager
 
 
 class TrafficManager:
     """
-    Simple key manager that provides available keys and endpoint rate limits.
+    Provides traffic management for APIs, including load balancing and rate limiting.
 
     Rate Limiter Name Format:
     - `[API_NAME]_endpoint`: Rate limiter for the API endpoint
@@ -25,11 +27,14 @@ class TrafficManager:
     - `[API_NAME]`: Load balancer for the API, containing all keys
     """
 
-    def __init__(self, config: ConfigManager):
+    def __init__(self, config: "ConfigManager"):
         """
-        Initialize the simple key manager.
+        Initialize the TrafficManager with the given configuration.
+
+        Args:
+            config: Configuration manager instance
         """
-        self.config = config or ConfigManager.get_instance()
+        self.config = config
         self.load_balancers: Dict[str, LoadBalancer] = {}
         self.rate_limiters: Dict[str, RateLimiter] = {}
 
@@ -96,7 +101,7 @@ class TrafficManager:
             return False
 
         # Check if any key is actually available
-        for key in lb.values:
+        for key in lb.keys:
             key_limiter = self.get_key_limiter(api_name, key)
             if not key_limiter or not key_limiter.is_limited():
                 return True
@@ -116,6 +121,15 @@ class TrafficManager:
         """
         key_limiter = self.get_key_limiter(api_name, key)
         key_limiter.record()
+
+        key_concurrency = self.config.get_api_key_concurrency(api_name)
+        # Lock key if per-key concurrency is not allowed
+        if not key_concurrency:
+            key_limiter.lock()
+
+        # additional metrics update to support the key selection (least_requests)
+        key_lb = self.get_load_balancer(api_name)
+        key_lb.update_request_count(key, 1)
 
     def record_ip_request(self, api_name: str, ip: str) -> None:
         """
@@ -154,34 +168,38 @@ class TrafficManager:
 
     async def acquire_key(self, api_name: str) -> Tuple[Union[str, None], float]:
         """
-        Atomically acquire a key if endpoint allows.
+        Atomically acquire a key if both the endpoint and key are available.
+
+        Args:
+            api_name: The name of the API to acquire a key for.
         """
         endpoint_limiter = self.get_endpoint_limiter(api_name)
-
-        key_concurrency = self.config.get_api_key_concurrency(api_name)
 
         endpoint_wait_time = endpoint_limiter.time_until_reset()
         key_wait_time = self.time_to_key_ready(api_name)
 
+        # If endpoint or key is not available, return None and wait time
         if endpoint_wait_time > 0 or key_wait_time > 0:
             return None, max(endpoint_wait_time, key_wait_time)
 
-        key, limiter = await self.select_key(api_name)
+        key = await self.select_key(api_name)
         if key is None:  # handle race condition
             return None, 1.0
 
-        limiter.record()
+        self.record_key_usage(api_name, key)
         endpoint_limiter.record()
-
-        # Lock key if concurrency is not allowed
-        if not key_concurrency:
-            limiter.lock()
 
         return key, 0
 
     def select_any_key(self, api_name: str) -> Optional[str]:
         """
         Select a random key for the API bypassing rate limits.
+
+        Args:
+            api_name: The name of the API to select a key for.
+
+        Returns:
+            Optional[str]: The selected key if available, otherwise raises APIKeyNotConfiguredError.
         """
         lb = self.get_load_balancer(api_name)
 
@@ -192,22 +210,29 @@ class TrafficManager:
 
         return key
 
-    async def select_key(self, api_name: str) -> Tuple[Optional[str], RateLimiter]:
+    async def select_key(self, api_name: str) -> Optional[str]:
         """
-        Select a available key for the API endpoint.
+        Select a available key atomiclly for the API.
+        This method uses the load balancer to select the next key and checks if it's available.
+
+        Args:
+            api_name: The name of the API to select a key for.
+
+        Returns:
+            Optional[str]: The selected key if available, otherwise None.
         """
         lb = self.get_load_balancer(api_name)
 
         async with self._lock:
             # Use load balancer to select next key, then check if it's available
-            for _ in range(len(lb.values)):
+            for _ in range(len(lb.keys)):
                 key = lb.next()
                 key_limiter = self.get_key_limiter(api_name, key)
 
                 if not key_limiter.is_limited():
-                    return key, key_limiter
+                    return key
 
-            return None, None
+            return None
 
     def release_key(self, api_name: str, key: str) -> None:
         """
@@ -216,6 +241,10 @@ class TrafficManager:
         key_limiter = self.get_key_limiter(api_name, key)
         key_limiter.release()
         key_limiter.unlock()
+
+        # additional metrics update to support the key selection (least_requests)
+        key_lb = self.get_load_balancer(api_name)
+        key_lb.update_request_count(key, -1)
 
     def release_ip(self, api_name: str, ip: str) -> None:
         """
@@ -268,17 +297,21 @@ class TrafficManager:
         # Find the minimum reset time across actual API keys
         min_reset = float("inf")
 
-        for key in lb.values:
+        for key in lb.keys:
             key_limiter = self.get_key_limiter(api_name, key)
-            if key_limiter:
-                reset_time = (
-                    key_limiter.time_until_reset()
-                    if not key_limiter.locked
-                    else float("inf")
-                )
-                if reset_time == 0:
-                    return 0  # At least one key is available
-                min_reset = min(min_reset, reset_time)
+            if not key_limiter:
+                continue
+
+            reset_time = (
+                key_limiter.time_until_reset()
+                if not key_limiter.locked
+                else float("inf")
+            )
+            # return 0 immediately if any key is available
+            if reset_time == 0:
+                return 0
+
+            min_reset = min(min_reset, reset_time)
 
         if min_reset == float("inf"):
             return 1.0
