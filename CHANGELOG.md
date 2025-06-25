@@ -1,6 +1,22 @@
 # CHANGELOG
 
 
+## v0.4.2 (2025-06-25)
+
+### Bug Fixes
+
+- Code refactor, refine code comment, and update README.md file
+  ([`960dfb0`](https://github.com/Nya-Foundation/NyaProxy/commit/960dfb0e1d0cc44f1bb074e550c131d0f8df3117))
+
+- Remove brotli dependency
+  ([`9b578dc`](https://github.com/Nya-Foundation/NyaProxy/commit/9b578dc2abdbd061d8e939d365437cd16d87dc8f))
+
+### Chores
+
+- Black code formating
+  ([`b8dad84`](https://github.com/Nya-Foundation/NyaProxy/commit/b8dad84ff23229d0ae56a2bc0303e2bb4ac04e18))
+
+
 ## v0.4.1 (2025-06-23)
 
 ### Bug Fixes
