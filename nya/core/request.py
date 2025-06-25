@@ -3,17 +3,19 @@ Simplified request executor focused on HTTP execution only.
 """
 
 import time
-from typing import Optional, Union
+from typing import Optional, Union, TYPE_CHECKING
 
 import httpx
 from loguru import logger
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
-from ..common.models import ProxyRequest
-from ..config.manager import ConfigManager
-from ..services.metrics import MetricsCollector
-from ..utils.helper import decode_content, format_elapsed_time, json_safe_dumps
-from .streaming import StreamingHandler
+from ..utils.helper import format_elapsed_time, json_safe_dumps
+from .streaming import handle_streaming_response, detect_streaming_content
+
+if TYPE_CHECKING:
+    from ..common.models import ProxyRequest
+    from ..config.manager import ConfigManager
+    from ..services.metrics import MetricsCollector
 
 
 class RequestExecutor:
@@ -26,13 +28,13 @@ class RequestExecutor:
 
     def __init__(
         self,
-        config: ConfigManager,
-        metrics_collector: Optional[MetricsCollector] = None,
+        config: "ConfigManager",
+        metrics_collector: Optional["MetricsCollector"] = None,
     ):
         """
         Initialize the simple request executor.
         """
-        self.config = config or ConfigManager.get_instance()
+        self.config = config
         self.client = self._create_client()
         self.metrics_collector = metrics_collector
 
@@ -68,7 +70,7 @@ class RequestExecutor:
         return httpx.AsyncClient(**client_kwargs)
 
     async def execute(
-        self, request: ProxyRequest
+        self, request: "ProxyRequest"
     ) -> Union[Response, JSONResponse, StreamingResponse]:
         """
         Execute a single HTTP request.
@@ -111,7 +113,7 @@ class RequestExecutor:
         return await self.process_response(response)
 
     async def execute_request(
-        self, request: ProxyRequest, timeout: httpx.Timeout
+        self, request: "ProxyRequest", timeout: httpx.Timeout
     ) -> httpx.Response:
         """
         Execute the actual HTTP request.
@@ -152,8 +154,8 @@ class RequestExecutor:
         Process and forward the response to the client.
         """
         try:
-            if StreamingHandler.detect_streaming_content(response.headers):
-                return await StreamingHandler.handle_streaming_response(response)
+            if detect_streaming_content(response.headers):
+                return await handle_streaming_response(response)
 
             return await self.handle_normal_response(response)
         except Exception:

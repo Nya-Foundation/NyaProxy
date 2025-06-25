@@ -4,14 +4,14 @@ NyaProxy - A simple low-level API proxy with dynamic token rotation.
 """
 
 
-import argparse
-import contextlib
 import os
 import sys
+import argparse
+import contextlib
 
 import uvicorn
-from fastapi import FastAPI, Request
 from loguru import logger
+from fastapi import FastAPI, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
@@ -59,9 +59,9 @@ class NyaProxyApp:
         self.config: ConfigManager = None
 
         self._init_config(config_path=config_path, schema_path=schema_path)
-        self.auth = AuthManager()
 
         self.core = None
+        self.auth = AuthManager(config=self.config)
         self.dashboard = None
 
         # Create FastAPI app with middleware pre-configured
@@ -71,7 +71,6 @@ class NyaProxyApp:
         """
         Initialize the configuration manager
         """
-
         config_path = config_path or os.environ.get("CONFIG_PATH")
         schema_path = schema_path or os.environ.get("SCHEMA_PATH")
         remote_url = os.environ.get("REMOTE_CONFIG_URL")
@@ -274,8 +273,8 @@ class NyaProxyApp:
             logger.warning("Configuration web server not available")
             return False
 
-        host = os.environ.get("SERVER_HOST") or self.config.get_host()
-        port = os.environ.get("SERVER_PORT") or self.config.get_port()
+        host = os.environ.get("SERVER_HOST")
+        port = os.environ.get("SERVER_PORT")
         remote_url = os.environ.get("REMOTE_CONFIG_URL")
 
         if remote_url:

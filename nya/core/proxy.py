@@ -13,37 +13,42 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 from ..common.exceptions import (
     APIKeyNotConfiguredError,
     QueueFullError,
-    ReachedDailyQuotaError,
+    ReachedMaxQuotaError,
     ReachedMaxRetriesError,
 )
-from ..common.models import ProxyRequest
-from ..config.manager import ConfigManager
+
+
+from .queue import RequestQueue
 from .control import TrafficManager
 from .handler import RequestHandler
-from .queue import RequestQueue
 from .request import RequestExecutor
 
 if TYPE_CHECKING:
+    from ..common.models import ProxyRequest
+    from ..config.manager import ConfigManager
     from ..services.metrics import MetricsCollector
 
 
 class NyaProxyCore:
     """
-    Simple, elegant proxy core with queue-first architecture.
-
-    Design principle: Every request goes through the queue for consistent
-    processing and natural backpressure.
+    NyaProxyCore is the main proxy class that orchestrates all incoming requests
+    using a queue-first architecture. It manages request validation, queuing,
+    execution, addtional processing, and error handling.
     """
 
     def __init__(
         self,
-        config: Optional[ConfigManager] = None,
+        config: Optional["ConfigManager"] = None,
         metrics_collector: Optional["MetricsCollector"] = None,
     ):
         """
-        Initialize the proxy with minimal dependencies.
+        Initialize the NyaProxyCore with the given configuration and metrics collector.
+
+        Args:
+            config: Configuration manager instance, defaults to ConfigManager singleton if None
+            metrics_collector: Optional metrics collector for tracking request metrics
         """
-        self.config = config or ConfigManager.get_instance()
+        self.config = config
         self.metrics_collector = metrics_collector
 
         # Core components
@@ -62,7 +67,7 @@ class NyaProxyCore:
         self.request_queue.register_processor(self._process_queued_request)
 
     async def handle_request(
-        self, request: ProxyRequest
+        self, request: "ProxyRequest"
     ) -> Union[Response, JSONResponse, StreamingResponse]:
         """
         Handle request using queue-first architecture.
@@ -76,9 +81,10 @@ class NyaProxyCore:
             if not request.api_name:
                 return self._error_response("NyaProxy: Unknown API endpoint", 404)
 
-            if not request._allowed:
+            if not self.handler.is_request_allowed(request):
                 return self._error_response(
-                    "NyaProxy: Request not allowed for this API", 403
+                    "NyaProxy: The Request method or path are prohibited for this API",
+                    405,
                 )
 
             # If rate limit does not apply, get a random key and process immediately
@@ -91,7 +97,7 @@ class NyaProxyCore:
             timeout = self.config.get_api_default_timeout(request.api_name)
             return await asyncio.wait_for(future, timeout=timeout)
 
-        except (ReachedMaxRetriesError, ReachedDailyQuotaError) as e:
+        except (ReachedMaxRetriesError, ReachedMaxQuotaError) as e:
             return self._error_response(e.message, 429)
         except APIKeyNotConfiguredError as e:
             return self._error_response(e.message, 500)
@@ -105,7 +111,7 @@ class NyaProxyCore:
             )
             return self._error_response(str(e), 500)
 
-    async def _process_queued_request(self, request: ProxyRequest) -> Response:
+    async def _process_queued_request(self, request: "ProxyRequest") -> Response:
         """
         Process a request from the queue.
         """

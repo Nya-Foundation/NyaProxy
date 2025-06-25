@@ -294,7 +294,7 @@ class ReachedMaxRetriesError(NyaProxyStatus):
         )
 
 
-class ReachedDailyQuotaError(NyaProxyStatus):
+class ReachedMaxQuotaError(NyaProxyStatus):
     """
     Exception raised when the daily quota for an API is reached.
     """

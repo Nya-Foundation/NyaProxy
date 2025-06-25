@@ -35,44 +35,46 @@ class LoadBalancer:
 
     def __init__(
         self,
-        values: List[str],
+        keys: List[str],
         strategy: str = "round_robin",
     ):
         """
         Initialize the load balancer.
 
         Args:
-            values: List of values (keys, tokens, etc.) to balance between
+            keys: List of keys (tokens, etc.) to balance between
             strategy: Load balancing strategy to use
         """
-        self.values = values or [""]  # Ensure we always have at least an empty value
+        self.keys = keys or [""]  # Ensure we always have at least an empty value
         self.strategy_name = strategy.lower()
 
         # Initialize metrics data
-        self.requests_count = {value: 0 for value in self.values}
-        self.response_times = {value: [] for value in self.values}
-        self.weights = [1] * len(self.values)  # Default to equal weights
+        self.requests_count = {key: 0 for key in self.keys}
+        self.response_times = {key: [] for key in self.keys}
+        self.weights = [1] * len(self.keys)  # Default to equal weights
         self.current_index = 0  # Used for round_robin strategy
 
     def next(self, strategy: Optional[str] = None) -> str:
         """
-        Get the next value based on the selected load balancing strategy.
+        Get the next key based on the selected load balancing strategy.
 
         Returns:
-            The selected value
+            The selected key
         """
-        if not self.values:
-            logger.warning("No values available for load balancing")
+        if not self.keys:
+            logger.warning("No keys available for load balancing")
             return ""
 
         # Select strategy function
         strategy_func = self._get_strategy_function(strategy)
 
-        selected_value = strategy_func()
-        return selected_value
+        selected = strategy_func()
+        return selected
 
     def _get_strategy_function(self, strategy: Optional[str]) -> Callable[[], str]:
-        """Get the strategy function based on selected strategy."""
+        """
+        Get the strategy function based on selected strategy.
+        """
         strategy_map = {
             "round_robin": self._round_robin_select,
             "random": self._random_select,
@@ -86,20 +88,26 @@ class LoadBalancer:
         )
 
     def _round_robin_select(self) -> str:
-        """Select next value in round-robin fashion."""
-        if not self.values:
+        """
+        Select next value in round-robin fashion.
+        """
+        if not self.keys:
             return ""
 
-        value = self.values[self.current_index]
-        self.current_index = (self.current_index + 1) % len(self.values)
+        value = self.keys[self.current_index]
+        self.current_index = (self.current_index + 1) % len(self.keys)
         return value
 
     def _random_select(self) -> str:
-        """Select a random value."""
-        return random.choice(self.values)
+        """
+        Select a random value.
+        """
+        return random.choice(self.keys)
 
     def _least_requests_select(self) -> str:
-        """Select the value with the least requests."""
+        """
+        Select the value with the least requests.
+        """
         # Find values with minimum requests count
         min_requests = min(self.requests_count.values())
         candidates = [
@@ -112,10 +120,12 @@ class LoadBalancer:
         return random.choice(candidates)
 
     def _fastest_response_select(self) -> str:
-        """Select the value with the fastest average response time."""
+        """
+        Select the value with the fastest average response time.
+        """
         # Calculate average response times
         avg_times = {}
-        for value in self.values:
+        for value in self.keys:
             times = self.response_times.get(value, [])
             if times:
                 avg_times[value] = sum(times) / len(times)
@@ -126,33 +136,41 @@ class LoadBalancer:
         return min(avg_times, key=avg_times.get)
 
     def _weighted_select(self) -> str:
-        """Select a value based on weights."""
+        """
+        Select a value based on weights.
+        """
         # Create weighted list
         weighted_choices = []
-        for i, value in enumerate(self.values):
+        for i, value in enumerate(self.keys):
             weight = self.weights[i] if i < len(self.weights) else 1
             weighted_choices.extend([value] * weight)
 
         return random.choice(weighted_choices)
 
     def set_weights(self, weights: List[int]) -> None:
-        """Set weights for weighted load balancing."""
-        self.weights = weights[: len(self.values)]
+        """
+        Set weights for weighted load balancing.
+        """
+        self.weights = weights[: len(self.keys)]
         # Pad with 1s if not enough weights provided
-        while len(self.weights) < len(self.values):
+        while len(self.weights) < len(self.keys):
             self.weights.append(1)
 
-    def record_request_count(self, value: str) -> None:
-        """Record a request for the given value."""
-        if value in self.requests_count:
-            self.requests_count[value] += 1
+    def update_request_count(self, key: str, count: int) -> None:
+        """
+        Record a request for the given key.
+        """
+        if key in self.requests_count:
+            self.requests_count[key] += count
 
-    def record_response_time(self, value: str, response_time: float) -> None:
-        """Record response time for the given value."""
-        if value not in self.response_times:
-            self.response_times[value] = []
+    def record_response_time(self, key: str, response_time: float) -> None:
+        """
+        Record response time for the given key.
+        """
+        if key not in self.response_times:
+            self.response_times[key] = []
 
         # Keep only last 100 response times for efficiency
-        self.response_times[value].append(response_time)
-        if len(self.response_times[value]) > MAX_QUEUE_SIZE:
-            self.response_times[value] = self.response_times[value][-MAX_QUEUE_SIZE:]
+        self.response_times[key].append(response_time)
+        if len(self.response_times[key]) > MAX_QUEUE_SIZE:
+            self.response_times[key] = self.response_times[key][-MAX_QUEUE_SIZE:]

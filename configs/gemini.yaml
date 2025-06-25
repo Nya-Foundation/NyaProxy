@@ -1,27 +1,43 @@
 server:
-  host: 0.0.0.0
-  port: 8080
   api_key: 
   logging:
     enabled: true
-    level: info
+    level: debug
     log_file: app.log
   proxy:
     enabled: false
     address: socks5://username:password@proxy.example.com:1080
   dashboard:
     enabled: true
+  cors:
+    # Allow all origins with "*", but specify exact origins when allow_credentials is true for security
+    allow_origins: ["*"]
+    allow_credentials: true
+    allow_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    allow_headers: ["*"]
+
+# Default configuration applied to all API endpoints unless overridden
+default_settings:
+  key_variable: keys
+  key_concurrency: true # mark it as true if each key can handle multiple concurrent requests, otherwise the key will be locked until the request completes
+  randomness: 0.0 # Random delay of (0.0-x)s to introduce variability in request timing and avoid detection due to consistent request patterns due to rate limits
+  load_balancing_strategy: round_robin
+  # Path and method filtering
+  allowed_paths:
+    enabled: false # Set to true to enable request path filtering
+    mode: whitelist # if "whitelist", only allow listed paths; if "blacklist", block listed paths
+    paths:
+      - "*"
+  allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"] # Allowed HTTP methods for the API
   queue:
     max_size: 200
     expiry_seconds: 300
-
-# Default settings for the all apis if not specified
-default_settings:
-  key_variable: keys
-  load_balancing_strategy: round_robin
   rate_limit:
-    endpoint_rate_limit: 10/s
-    key_rate_limit: 10/m
+    enabled: true
+    endpoint_rate_limit: 10/s # Default endpoint rate limit - can be overridden per API
+    key_rate_limit: 10/m # Default key rate limit - can be overridden per API
+    ip_rate_limit: 1000/d # IP-based rate limit to protect against abuse and key redistribution
+    user_rate_limit: 1000/d # User-based rate limit per proxy API key defined in server section
     rate_limit_paths: 
       - "*"
   retry:
@@ -50,26 +66,29 @@ apis:
       - your_gemini_key_3
     load_balancing_strategy: least_requests
     rate_limit:
-      # For Gemini, the rate limits (gemini-2.5-pro-exp-03-25) for each key are 5 RPM and 25 RPD
-      # Ideally, the endpoint rate limit should be n x Per-Key-RPD, where n is the number of keys
+      enabled: true
+      # For Gemini-2.5-pro-exp-03-25, rate limits per key are 5 RPM and 25 RPD
+      # Endpoint rate limit should be n × per-key-RPD, where n is the number of keys
       endpoint_rate_limit: 75/d
       key_rate_limit: 5/m
-      # Rate limit paths are optional, but you can configure which paths to apply the rate limits to (regex supported), default is all paths "*"
+      # Paths to apply rate limits (regex supported) - defaults to all paths "*"
       rate_limit_paths:
         - "/chat/*"
         - "/images/*"
+
     # Request body substitution settings
-    request_body_substitution: 
-      enabled: true 
+    request_body_substitution:
+      enabled: false
       # Substitution rules for request body with JMEPath
-      rules: # JMEPath rules for request body substitution
-        - name: "Remove frequency_penalty" # Remove frequency_penalty from since Gemini does not support it
+      rules:
+        # Since Gemini API doesn't support frequency_penalty and presence_penalty, we remove them with these rules
+        - name: "Remove frequency_penalty"
           operation: remove
           path: "frequency_penalty"
           conditions:
             - field: "frequency_penalty"
               operator: "exists"
-        - name: "Remove presence_penalty" # Remove presence_penalty from since Gemini does not support it
+        - name: "Remove presence_penalty"
           operation: remove
           path: "presence_penalty"
           conditions:

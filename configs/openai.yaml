@@ -1,28 +1,43 @@
-# OpenAI API Configuration Example (Not yet tested)
-# Google Gemini API Configuration Example (Tested Working!)
-ser:
-  host: 0.0.0.0
-  port: 8080
-  api_key:
+server:
+  api_key: 
   logging:
     enabled: true
-    level: info
+    level: debug
     log_file: app.log
   proxy:
     enabled: false
     address: socks5://username:password@proxy.example.com:1080
   dashboard:
     enabled: true
+  cors:
+    # Allow all origins with "*", but specify exact origins when allow_credentials is true for security
+    allow_origins: ["*"]
+    allow_credentials: true
+    allow_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    allow_headers: ["*"]
+
+# Default configuration applied to all API endpoints unless overridden
+default_settings:
+  key_variable: keys
+  key_concurrency: true # mark it as true if each key can handle multiple concurrent requests, otherwise the key will be locked until the request completes
+  randomness: 0.0 # Random delay of (0.0-x)s to introduce variability in request timing and avoid detection due to consistent request patterns due to rate limits
+  load_balancing_strategy: round_robin
+  # Path and method filtering
+  allowed_paths:
+    enabled: false # Set to true to enable request path filtering
+    mode: whitelist # if "whitelist", only allow listed paths; if "blacklist", block listed paths
+    paths:
+      - "*"
+  allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"] # Allowed HTTP methods for the API
   queue:
     max_size: 200
     expiry_seconds: 300
-
-default_settings:
-  key_variable: keys
-  load_balancing_strategy: round_robin
   rate_limit:
-    endpoint_rate_limit: 10/s
-    key_rate_limit: 10/m
+    enabled: true
+    endpoint_rate_limit: 10/s # Default endpoint rate limit - can be overridden per API
+    key_rate_limit: 10/m # Default key rate limit - can be overridden per API
+    ip_rate_limit: 1000/d # IP-based rate limit to protect against abuse and key redistribution
+    user_rate_limit: 1000/d # User-based rate limit per proxy API key defined in server section
     rate_limit_paths: 
       - "*"
   retry:
@@ -34,11 +49,12 @@ default_settings:
     retry_status_codes: [ 429, 500, 502, 503, 504 ]
   timeouts:
     request_timeout_seconds: 300
-    
+
 apis:
   openai:
-    # Any OpenAI-Compatible API
-    name: OpenAI API
+    # Example for OpenAI-compatible API endpoint
+    name: Google Gemini API
+    # Supported endpoints:
     # Gemini: https://generativelanguage.googleapis.com/v1beta/openai
     # OpenAI: https://api.openai.com/v1
     # Anthropic: https://api.anthropic.com/v1
@@ -59,10 +75,9 @@ apis:
       - your_openai_key_3
     load_balancing_strategy: least_requests
     rate_limit:
-      # Ideally, the endpoint rate limit should be n x Per-Key-RPD, where n is the number of keys
-      endpoint_rate_limit: 75/d
-      key_rate_limit: 5/m
-      # Rate limit paths are optional, but you can configure which paths to apply the rate limits to (regex supported), default is all paths "*"
+      enabled: true
+      endpoint_rate_limit: 5000/d # Update this OpenAI endpoint rate limit as needed
+      key_rate_limit: 100/m # Update this OpenAI key rate limit as needed
       rate_limit_paths:
         - "/chat/*"
         - "/images/*"

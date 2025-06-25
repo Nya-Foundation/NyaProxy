@@ -173,5 +173,5 @@ cython_debug/
 .toDo.md
 .clean.py
 
-watch_file.txt
+watch.txt
 config.yaml

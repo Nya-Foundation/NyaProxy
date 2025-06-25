@@ -1,28 +1,43 @@
-# OpenAI API Configuration Example (Not yet tested)
-# Google Gemini API Configuration Example (Tested Working!)
 server:
-  host: 0.0.0.0
-  port: 8080
-  api_key:
+  api_key: 
   logging:
     enabled: true
-    level: info
+    level: debug
     log_file: app.log
   proxy:
     enabled: false
     address: socks5://username:password@proxy.example.com:1080
   dashboard:
     enabled: true
+  cors:
+    # Allow all origins with "*", but specify exact origins when allow_credentials is true for security
+    allow_origins: ["*"]
+    allow_credentials: true
+    allow_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    allow_headers: ["*"]
+
+# Default configuration applied to all API endpoints unless overridden
+default_settings:
+  key_variable: keys
+  key_concurrency: true # mark it as true if each key can handle multiple concurrent requests, otherwise the key will be locked until the request completes
+  randomness: 0.0 # Random delay of (0.0-x)s to introduce variability in request timing and avoid detection due to consistent request patterns due to rate limits
+  load_balancing_strategy: round_robin
+  # Path and method filtering
+  allowed_paths:
+    enabled: false # Set to true to enable request path filtering
+    mode: whitelist # if "whitelist", only allow listed paths; if "blacklist", block listed paths
+    paths:
+      - "*"
+  allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"] # Allowed HTTP methods for the API
   queue:
     max_size: 200
     expiry_seconds: 300
-
-default_settings:
-  key_variable: keys
-  load_balancing_strategy: round_robin
   rate_limit:
-    endpoint_rate_limit: 10/s
-    key_rate_limit: 10/m
+    enabled: true
+    endpoint_rate_limit: 10/s # Default endpoint rate limit - can be overridden per API
+    key_rate_limit: 10/m # Default key rate limit - can be overridden per API
+    ip_rate_limit: 1000/d # IP-based rate limit to protect against abuse and key redistribution
+    user_rate_limit: 1000/d # User-based rate limit per proxy API key defined in server section
     rate_limit_paths: 
       - "*"
   retry:
@@ -35,20 +50,96 @@ default_settings:
   timeouts:
     request_timeout_seconds: 300
 
+# API configurations, each API can have its own settings, but will inherit from default_settings if not specified
 apis:
-  novelai:
+  novelai: 
     name: NovelAI API
     endpoint: https://image.novelai.net
     aliases:
-      - /novelai
-    key_variable: tokens
+    - /novelai
+    key_variable: keys
+    key_concurrency: false # NovelAI does not support concurrent requests with the same key, so set this to false
+    randomness: 4 # Random delay of (0.0-8)s to introduce variability in request timing
     headers:
-      Authorization: 'Bearer ${{tokens}}'
+      Authorization: 'Bearer ${{keys}}'
+      Origin: https://novelai.net
+      Referer: https://novelai.net
+      Sec-Fetch-Dest: empty
+      Sec-Fetch-Mode: cors
+      Sec-Fetch-Site: same-origin
+      User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36
     variables:
-      tokens:
-        - your_novelai_token_1
-        - your_novelai_token_2
-    load_balancing_strategy: round_robin
+      keys:
+      -  your_novelai_key_1
+      -  your_novelai_key_2
+    load_balancing_strategy: least_requests
+    allowed_paths:
+      enabled: True # Set to true to enable path filtering
+      mode: whitelist # if "whitelist", only allow listed paths; if "blacklist", block listed paths
+      paths:
+        - "/ai/generate-image-stream"
+        # - "/ai/generate-image"  # Uncomment if you want to support legacy non-streaming endpoint
+        # or maybe more paths if also want to forward other NovelAI API endpoints such as tts and text generation
+    queue:
+      max_size: 2000
+      expiry_seconds: 600
+    retry:
+      enabled: true
+      mode: key_rotation
+      attempts: 3
+      retry_after_seconds: 3
+      retry_status_codes: [ 429 ]
     rate_limit:
-      endpoint_rate_limit: 10/s
-      key_rate_limit: 2/s
+      enabled: true
+      endpoint_rate_limit: 10000/d
+      key_rate_limit: 1/12s # 1/12s is a safe limit for NovelAI, to avoid bot detection
+      ip_rate_limit: 1000/d # IP-based rate limit to protect against abuse and key redistribution
+      rate_limit_paths: null
+    request_body_substitution: 
+      enabled: false # Set to true to if you only want to support unlimited image generation (Opus Tier)
+      rules:
+        - name: "Fix 1216x1216 to portrait"
+          operation: set
+          path: "parameters.width"
+          value: 832
+          conditions:
+            - field: "parameters.width"
+              operator: "eq"
+              value: 1216
+            - field: "parameters.height"
+              operator: "eq"
+              value: 1216
+
+        - name: "Limit image width"
+          operation: set
+          path: "parameters.width"
+          value: 832
+          conditions:
+            - field: "parameters.width"
+              operator: "nin"
+              value: [512, 768, 640, 832, 1216, 1024]
+        - name: "Limit image height"
+          operation: set
+          path: "parameters.height"
+          value: 1216
+          conditions:
+            - field: "parameters.height"
+              operator: "nin"
+              value: [768, 512, 640, 1216, 832, 1024]
+
+        - name: "Limit generation steps"
+          operation: set
+          path: "parameters.steps"
+          value: 28
+          conditions:
+            - field: "parameters.steps"
+              operator: "gt"
+              value: 28
+
+        - name: "Limit n_sample"
+          operation: set
+          path: "parameters.n_samples"
+          value: 1
+          conditions:
+            - field: "parameters.n_samples"
+              operator: "exists"

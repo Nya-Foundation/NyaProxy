@@ -146,7 +146,6 @@ docker run -d \
 Configuration reference can be found under [Configs folder](configs/) folder
 
 ```yaml
-# Basic config.yaml example for OpenAI API Compatible Endpoints
 # NyaProxy Configuration File
 # This file contains server settings and API endpoint configurations
 
@@ -171,9 +170,16 @@ server:
 # Default configuration applied to all API endpoints unless overridden
 default_settings:
   key_variable: keys
-  key_concurrency: true # Enable concurrent requests per API key for better performance
-  randomness: 0.0 # Random delay of (0.0-x)s to introduce variability in request timing and avoid detection
+  key_concurrency: true # mark it as true if each key can handle multiple concurrent requests, otherwise the key will be locked until the request completes
+  randomness: 0.0 # Random delay of (0.0-x)s to introduce variability in request timing and avoid detection due to consistent request patterns due to rate limits
   load_balancing_strategy: round_robin
+  # Path and method filtering
+  allowed_paths:
+    enabled: false # Set to true to enable request path filtering
+    mode: whitelist # if "whitelist", only allow listed paths; if "blacklist", block listed paths
+    paths:
+      - "*"
+  allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"] # Allowed HTTP methods for the API
   queue:
     max_size: 200
     expiry_seconds: 300
@@ -195,26 +201,9 @@ default_settings:
   timeouts:
     request_timeout_seconds: 300
 
-  # Request body substitution settings
-  request_body_substitution:
-    enabled: false
-    # Substitution rules for request body with JMEPath
-    rules:
-      - name: "Remove frequency_penalty"
-        operation: remove
-        path: "frequency_penalty"
-        conditions:
-          - field: "frequency_penalty"
-            operator: "exists"
-      - name: "Remove presence_penalty"
-        operation: remove
-        path: "presence_penalty"
-        conditions:
-          - field: "presence_penalty"
-            operator: "exists"
 apis:
   gemini:
-    # OpenAI-compatible API endpoint
+    # Example for OpenAI-compatible API endpoint
     name: Google Gemini API
     # Supported endpoints:
     # Gemini: https://generativelanguage.googleapis.com/v1beta/openai
@@ -239,13 +228,32 @@ apis:
     rate_limit:
       enabled: true
       # For Gemini-2.5-pro-exp-03-25, rate limits per key are 5 RPM and 25 RPD
-      # Endpoint rate limit should be n × Per-Key-RPD, where n is the number of keys
+      # Endpoint rate limit should be n × per-key-RPD, where n is the number of keys
       endpoint_rate_limit: 75/d
       key_rate_limit: 5/m
       # Paths to apply rate limits (regex supported) - defaults to all paths "*"
       rate_limit_paths:
         - "/chat/*"
         - "/images/*"
+
+    # Request body substitution settings
+    request_body_substitution:
+      enabled: false
+      # Substitution rules for request body with JMEPath
+      rules:
+        # Since Gemini API doesn't support frequency_penalty and presence_penalty, we remove them with these rules
+        - name: "Remove frequency_penalty"
+          operation: remove
+          path: "frequency_penalty"
+          conditions:
+            - field: "frequency_penalty"
+              operator: "exists"
+        - name: "Remove presence_penalty"
+          operation: remove
+          path: "presence_penalty"
+          conditions:
+            - field: "presence_penalty"
+              operator: "exists"
 
   test:
     name: Test API
@@ -254,7 +262,7 @@ apis:
     randomness: 5
     headers:
       Authorization: 'Bearer ${{keys}}'
-      User-Agent: ${{agents}}
+      User-Agent: ${{agents}} # flexible headers customization with template variables supported
     variables:
       keys:
       - your_test_key_1
@@ -355,7 +363,32 @@ server:
 
 ## Advanced Features
 
-### Dynamic Header Substitution
+### 🚦 Rate Limiting Capabilities
+
+NyaProxy provides comprehensive rate limiting at multiple levels to protect your APIs and ensure fair usage:
+
+**Multi-Level Rate Limiting:**
+- **Endpoint Rate Limit**: Controls total requests across all keys for an API endpoint
+- **Key Rate Limit**: Limits requests per individual API key to respect provider restrictions  
+- **IP Rate Limit**: Prevents abuse by limiting requests per client IP address
+- **User Rate Limit**: Controls usage per NyaProxy API key for multi-tenant scenarios
+
+**Flexible Rate Limit Formats:**
+- Per second: `1/15s` (1 requests per 15 second)
+- Per minute: `5/m` (5 requests per minute) 
+- Per hour: `100/h` (100 requests per hour)
+- Per day: `1000/d` (1000 requests per day)
+
+**Path-Specific Limiting:**
+Apply rate limits only to specific endpoints using regex patterns:
+```yaml
+rate_limit_paths:
+  - "/chat/*"      # Only limit chat endpoints
+  - "/images/*"    # Only limit image generation
+  - "/v1/models"   # Limit specific endpoint
+```
+
+### 🔄 Dynamic Header Substitution
 
 NyaProxy's powerful templating system allows you to create dynamic headers with variable substitution:
 
@@ -382,7 +415,7 @@ Use cases include:
 - Cycling through user agents to avoid detection
 - Alternating between different account identifiers
 
-### Request Body Substitution
+### 🔧 Request Body Substitution
 Dynamically transform JSON payloads using JMESPath expressions to add, replace, or remove fields:
 
 ```yaml
@@ -420,28 +453,6 @@ Manage at `http://localhost:8080/config`:
 - Variable management
 - Rate limit adjustments
 - Auto reload on save
-
-## 🛡️ Reference Architecture
-```mermaid
-graph TD
-    A[Client] --> B[Nginx]
-    B --> C[NyaProxyAuth]
-    C --> D[NyaProxyApp]
-    D --> E[API Providers]
-    F[Monitoring] --> D
-```
-
-## 🌌 Future Roadmap
-
-```mermaid
-graph LR
-A[Q1 2025] --> B[📡 Documentation Enhancement ]
-A --> C[🔄 Border Test Coverage ]
-B --> D[📈 API Key Usage/Balance Tracking]
-C --> E[📊 UI/UX Enhancement ]
-F[Q2 2025] --> G[🧩 Plugin System]
-F --> H[🔍 Custom Metrics API]
-```
 
 ## ❤️ Community
 

@@ -29,7 +29,7 @@ class DashboardAPI:
 
     def __init__(
         self,
-        port: int = 8082,
+        port: int = 8080,
         enable_control: bool = True,
         metrics_path: str = "./.metrics",
     ):
@@ -87,11 +87,13 @@ class DashboardAPI:
         self._setup_routes()
 
         # Set up control routes if enabled
-        if enable_control:
+        if self.enable_control:
             self._setup_control_routes()
 
     def get_html_directory(self) -> Path:
-        """Get the html directory path."""
+        """
+        Get the html directory path.
+        """
         try:
             # Try the new-style importlib.resources API
             return Path(importlib.resources.files("nya") / "html")
@@ -101,23 +103,33 @@ class DashboardAPI:
             return package_dir / "html"
 
     def set_metrics_collector(self, metrics_collector: "MetricsCollector"):
-        """Set the metrics collector."""
+        """
+        Set the metrics collector.
+        """
         self.metrics_collector = metrics_collector
 
     def set_request_queue(self, request_queue: "RequestQueue"):
-        """Set the request queue."""
+        """
+        Set the request queue.
+        """
         self.request_queue = request_queue
 
     def set_config_manager(self, config_manager: "ConfigManager"):
-        """Set the config manager."""
+        """
+        Set the config manager.
+        """
         self.config_manager = config_manager
 
     def _setup_routes(self):
-        """Set up API routes for the dashboard."""
+        """
+        Set up API routes for the dashboard.
+        """
 
         @self.app.get("/")
         async def index(request: Request):
-            """Render the dashboard HTML."""
+            """
+            Render the dashboard HTML.
+            """
             return self.templates.TemplateResponse(
                 "index.html",
                 {
@@ -128,13 +140,17 @@ class DashboardAPI:
 
         @self.app.get("/favicon.ico")
         async def favicon():
-            """Serve the favicon."""
+            """
+            Serve the favicon.
+            """
             favicon_path = self.www_dir / "favicon.ico"
             return FileResponse(favicon_path)
 
         @self.app.get("/api/metrics")
         async def get_metrics():
-            """Get all metrics as JSON."""
+            """
+            Get all metrics as JSON.
+            """
             if not self.metrics_collector:
                 return JSONResponse(
                     status_code=503,
@@ -153,7 +169,9 @@ class DashboardAPI:
 
         @self.app.get("/api/metrics/{api_name}")
         async def get_api_metrics(api_name: str):
-            """Get metrics for a specific API."""
+            """
+            Get metrics for a specific API.
+            """
             if not self.metrics_collector:
                 return JSONResponse(
                     status_code=503,
@@ -253,7 +271,9 @@ class DashboardAPI:
 
         @self.app.get("/api/history/{api_name}")
         async def get_api_history(api_name: str):
-            """Get recent request history for a specific API."""
+            """
+            Get recent request history for a specific API.
+            """
             if not self.metrics_collector:
                 return JSONResponse(
                     status_code=503,
@@ -367,7 +387,9 @@ class DashboardAPI:
 
         @self.app.get("/api/queue")
         async def get_queue_status():
-            """Get queue status."""
+            """
+            Get queue status.
+            """
             if not self.request_queue:
                 return JSONResponse(
                     status_code=503, content={"error": "Request queue not available"}
@@ -390,7 +412,9 @@ class DashboardAPI:
 
         @self.app.get("/api/key-usage")
         async def get_key_usage():
-            """Get API key usage statistics."""
+            """
+            Get API key usage statistics.
+            """
             if not self.metrics_collector:
                 return JSONResponse(
                     status_code=503,
@@ -564,11 +588,15 @@ class DashboardAPI:
             return dt.strftime("%m-%d %H:%M")
 
     def _setup_control_routes(self):
-        """Set up control API routes for the dashboard."""
+        """
+        Set up control API routes for the dashboard.
+        """
 
         @self.app.post("/api/queue/clear/{api_name}")
         async def clear_queue(api_name: str):
-            """Clear the queue for a specific API."""
+            """
+            Clear the queue for a specific API.
+            """
             if not self.request_queue:
                 return JSONResponse(
                     status_code=503, content={"error": "Request queue not available"}
@@ -586,7 +614,9 @@ class DashboardAPI:
 
         @self.app.post("/api/queue/clear")
         async def clear_all_queues():
-            """Clear all queues."""
+            """
+            Clear all queues.
+            """
             if not self.request_queue:
                 return JSONResponse(
                     status_code=503, content={"error": "Request queue not available"}
@@ -604,7 +634,9 @@ class DashboardAPI:
 
         @self.app.post("/api/metrics/reset")
         async def reset_metrics():
-            """Reset all metrics."""
+            """
+            Reset all metrics.
+            """
             if not self.metrics_collector:
                 return JSONResponse(
                     status_code=503,
@@ -622,7 +654,9 @@ class DashboardAPI:
                 )
 
     async def start_background(self, host: str = "0.0.0.0"):
-        """Start the dashboard server in the background."""
+        """
+        Start the dashboard server in the background.
+        """
         config = uvicorn.Config(
             app=self.app, host=host, port=self.port, log_level="info"
         )
@@ -630,5 +664,7 @@ class DashboardAPI:
         await server.serve()
 
     def run(self, host: str = "0.0.0.0"):
-        """Run the dashboard server in a separate process."""
+        """
+        Run the dashboard server in a separate process.
+        """
         uvicorn.run(self.app, host=host, port=self.port, log_config=None)

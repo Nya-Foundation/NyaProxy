@@ -16,20 +16,8 @@ T = TypeVar("T")
 
 class ConfigManager:
     """
-    Manages configuration for NyaProxy using NekoConf.
-    Implements the singleton pattern to ensure only one instance exists.
+    Manages configuration for NyaProxy using NekoConf (singleton pattern).
     """
-
-    _instance = None
-    _initialized = False
-
-    def __new__(cls, *args, **kwargs):
-        """
-        Create a singleton instance.
-        """
-        if cls._instance is None:
-            cls._instance = super(ConfigManager, cls).__new__(cls)
-        return cls._instance
 
     def __init__(
         self,
@@ -51,9 +39,6 @@ class ConfigManager:
             remote_app_name: Name of the application for remote configuration (optional)
             callback: Callback function to call after configuraiton is updated (optional)
         """
-        # Skip initialization if already initialized
-        if self._initialized:
-            return
 
         self.config: NekoConf = None
         self.server: NekoConfOrchestrator = None
@@ -71,26 +56,6 @@ class ConfigManager:
 
         self.config = self.init_config_client()
         self.server = self.init_config_server()
-
-        # Mark as initialized
-        ConfigManager._initialized = True
-
-    @classmethod
-    def reset(cls):
-        """
-        Reset the singleton instance (useful for testing).
-        """
-        cls._instance = None
-        cls._initialized = False
-
-    @classmethod
-    def get_instance(cls) -> "ConfigManager":
-        """
-        Get the singleton instance, creating it if needed.
-        """
-        if cls._instance is None:
-            cls._instance = ConfigManager()
-        return cls._instance
 
     def init_config_client(self) -> NekoConf:
         """
@@ -137,6 +102,9 @@ class ConfigManager:
         return client
 
     def init_config_server(self) -> NekoConfOrchestrator:
+        """
+        Initialize the NekoConfOrchestrator WebUI for the server.
+        """
 
         if self.remote_url is not None:
             logger.warning(
