@@ -8,7 +8,6 @@ import httpx
 from loguru import logger
 from starlette.responses import StreamingResponse
 
-
 __all__ = [
     "handle_streaming_response",
     "detect_streaming_content",

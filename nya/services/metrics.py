@@ -8,8 +8,8 @@ from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
-from ..utils.helper import mask_secret
 from ..common.constants import MAX_QUEUE_SIZE
+from ..utils.helper import mask_secret
 
 
 class MetricsCollector:

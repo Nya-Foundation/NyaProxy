@@ -2,17 +2,15 @@
 Utility functions for NyaProxy.
 """
 
-import re
 import json
+import re
 from collections.abc import Mapping
 from typing import Any, Dict, List, Optional, Union
 
-import orjson
-from loguru import logger
-
 import jmespath
+import orjson
 from jmespath.exceptions import JMESPathError
-
+from loguru import logger
 
 __all__ = [
     "mask_secret",

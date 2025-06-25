@@ -16,11 +16,9 @@ from ..common.exceptions import (
     ReachedMaxQuotaError,
     ReachedMaxRetriesError,
 )
-
-
-from .queue import RequestQueue
 from .control import TrafficManager
 from .handler import RequestHandler
+from .queue import RequestQueue
 from .request import RequestExecutor
 
 if TYPE_CHECKING:

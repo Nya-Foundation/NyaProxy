@@ -3,14 +3,14 @@ Simplified request executor focused on HTTP execution only.
 """
 
 import time
-from typing import Optional, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional, Union
 
 import httpx
 from loguru import logger
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
 from ..utils.helper import format_elapsed_time, json_safe_dumps
-from .streaming import handle_streaming_response, detect_streaming_content
+from .streaming import detect_streaming_content, handle_streaming_response
 
 if TYPE_CHECKING:
     from ..common.models import ProxyRequest

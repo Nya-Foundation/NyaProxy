@@ -3,12 +3,11 @@ Simplified key manager that focuses on key availability and rate limiting.
 """
 
 import asyncio
-from typing import Dict, Optional, Tuple, Union, TYPE_CHECKING
-
-from ..services.lb import LoadBalancer
-from ..services.limit import RateLimiter
+from typing import TYPE_CHECKING, Dict, Optional, Tuple, Union
 
 from ..common.exceptions import APIKeyNotConfiguredError
+from ..services.lb import LoadBalancer
+from ..services.limit import RateLimiter
 
 if TYPE_CHECKING:
     from ..config.manager import ConfigManager

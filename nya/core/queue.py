@@ -2,9 +2,9 @@
 Simple priority queue for handling requests with built-in retry priority.
 """
 
-import time
-import random
 import asyncio
+import random
+import time
 import traceback
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional, Tuple
 
@@ -20,10 +20,10 @@ from ..common.exceptions import (
 if TYPE_CHECKING:
     from starlette.responses import Response
 
-    from ..config import ConfigManager
-    from .control import TrafficManager
     from ..common.models import ProxyRequest
+    from ..config import ConfigManager
     from ..services.metrics import MetricsCollector
+    from .control import TrafficManager
 
 
 class RequestQueue:

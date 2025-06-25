@@ -4,12 +4,11 @@ Provides authentication mechanisms and middleware.
 """
 
 import importlib.resources
-from fastapi import Request
+from typing import TYPE_CHECKING
 
+from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import HTMLResponse, JSONResponse
-
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from nya.config import ConfigManager  # pragma: no cover

@@ -2,16 +2,16 @@
 Request handler for intercepting and forwarding HTTP requests with token rotation.
 """
 
-import orjson
 import random
-from loguru import logger
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 from urllib.parse import urlparse
-from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
 
-from ..common.models import ProxyRequest
+import orjson
+from loguru import logger
+
 from ..common.constants import API_PATH_PREFIX
 from ..common.exceptions import MissingAPIKeyError, VariablesConfigurationError
-
+from ..common.models import ProxyRequest
 from ..utils.header import HeaderUtils
 from ..utils.helper import apply_body_substitutions
 
