@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.4.3 (2025-06-25)
+
+### Bug Fixes
+
+- Fix lb strategy bug
+  ([`9be7f8e`](https://github.com/Nya-Foundation/NyaProxy/commit/9be7f8e4088c371bf1df743a4e65d8ed841b7da5))
+
+
 ## v0.4.2 (2025-06-25)
 
 ### Bug Fixes
