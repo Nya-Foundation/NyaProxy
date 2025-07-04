@@ -6,7 +6,7 @@ import os
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
 from loguru import logger
-from nekoconf import NekoConf, NekoConfOrchestrator
+from nekoconf import EventType, NekoConf, NekoConfOrchestrator
 from nekoconf.storage import FileStorageBackend, RemoteStorageBackend
 
 from nya.common.exceptions import ConfigurationError
@@ -48,7 +48,6 @@ class ConfigManager:
         self.remote_url = remote_url
         self.remote_api_key = remote_api_key
         self.remote_app_name = remote_app_name
-
         self.callback = callback
 
         if config_path and not os.path.exists(config_path):
@@ -65,7 +64,9 @@ class ConfigManager:
         storage: Union[FileStorageBackend, RemoteStorageBackend, None] = None
 
         if self.remote_url:
-            logger.info(f"Using remote configuration server: {self.remote_url}")
+            logger.info(
+                f"[NyaProxy] Using remote configuration server: {self.remote_url}"
+            )
             storage = RemoteStorageBackend(
                 remote_url=self.remote_url,
                 api_key=self.remote_api_key,
@@ -73,11 +74,10 @@ class ConfigManager:
                 logger=logger,
             )
         else:
-            logger.info(f"Using local configuration file: {self.config_path}")
+            logger.info(
+                f"[NyaProxy] Using local configuration file: {self.config_path}"
+            )
             storage = FileStorageBackend(config_path=self.config_path, logger=logger)
-
-        if self.callback:
-            storage.set_change_callback(self.callback)
 
         if not storage:
             raise ConfigurationError(
@@ -93,12 +93,20 @@ class ConfigManager:
             env_prefix="NYA",
         )
 
+        if self.callback:
+            client.event_pipeline.register_handler(
+                self.callback,
+                EventType.CHANGE,
+                path_pattern="@global",
+                priority=10,
+            )
+
         # Validate against the schema
         results = client.validate()
         if results:
             raise ConfigurationError(f"Configuration validation failed: {results}")
 
-        logger.info("Configuration loaded and validated successfully")
+        logger.info("[NyaProxy] NekoConf client configuration validated successfully")
         return client
 
     def init_config_server(self) -> NekoConfOrchestrator:
@@ -509,7 +517,7 @@ class ConfigManager:
             nya_app = [{"NyaProxy": self.config}]
             self.server = NekoConfOrchestrator(apps=nya_app, logger=logger)
 
-            logger.info("Configuration reloaded successfully")
+            logger.info("[NyaProxy] Configuration reloaded successfully")
         except Exception as e:
             logger.error(f"Failed to reload configuration: {str(e)}")
             raise ConfigurationError(f"Failed to reload configuration: {str(e)}")

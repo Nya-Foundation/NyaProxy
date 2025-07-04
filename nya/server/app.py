@@ -3,7 +3,6 @@
 NyaProxy - A simple low-level API proxy with dynamic token rotation.
 """
 
-
 import argparse
 import contextlib
 import os
@@ -77,16 +76,19 @@ class NyaProxyApp:
         remote_api_key = os.environ.get("REMOTE_CONFIG_API_KEY")
         remote_app_name = os.environ.get("REMOTE_CONFIG_APP_NAME")
 
-        config = ConfigManager(
-            config_path=config_path,
-            schema_path=schema_path,
-            remote_url=remote_url or None,
-            remote_api_key=remote_api_key or None,
-            remote_app_name=remote_app_name or None,
-            callback=trigger_reload,
-        )
-        if not config:
-            raise RuntimeError("Failed to initialize config manager")
+        try:
+            config = ConfigManager(
+                config_path=config_path,
+                schema_path=schema_path,
+                remote_url=remote_url or None,
+                remote_api_key=remote_api_key or None,
+                remote_app_name=remote_app_name or None,
+                callback=trigger_reload,
+            )
+        except Exception as e:
+            logger.error(f"Failed to initialize config manager: {e}")
+            raise
+
         self.config = config
 
     def _init_auth(self):

@@ -8,10 +8,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import uvicorn
-from fastapi import FastAPI, Query, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, HTTPException, Query, Request, status
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from loguru import logger
 
 from .._version import __version__
@@ -70,9 +69,6 @@ class DashboardAPI:
             version=__version__,
         )
 
-        # Set up templates for HTML views
-        self.templates = Jinja2Templates(directory=str(self.www_dir))
-
         # Serve static files
         if static_dir.exists():
             self.app.mount(
@@ -130,13 +126,22 @@ class DashboardAPI:
             """
             Render the dashboard HTML.
             """
-            return self.templates.TemplateResponse(
-                "index.html",
-                {
-                    "request": request,
-                    "enable_control": self.enable_control,
-                },
-            )
+            try:
+                with importlib.resources.open_text("nya.html", "index.html") as f:
+                    html_content = f.read()
+                    html_content = html_content.replace(
+                        "{{ root_path }}",
+                        request.scope.get("root_path", ""),
+                    ).replace(
+                        "{{ enable_control }}",
+                        "flex" if self.enable_control else "none",
+                    )
+                return HTMLResponse(html_content)
+            except Exception as e:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to load index.html",
+                )
 
         @self.app.get("/favicon.ico")
         async def favicon():
