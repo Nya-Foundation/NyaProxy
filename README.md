@@ -1,5 +1,10 @@
 # 🐾 NyaProxy - Universal API Proxy
 
+**📖 多言語ドキュメント / Multi-language Documentation:**
+- [English](README.md)
+- [简体中文](README_zh.md)
+- [日本語](README_ja.md)
+
 <div align="center">
   <img src="https://raw.githubusercontent.com/Nya-Foundation/NyaProxy/main/assets/banner.png" alt="NyaProxy Banner" width="800" />
   
@@ -19,6 +24,7 @@
     <a href="https://github.com/nya-foundation/nyaproxy/actions/workflows/scan.yml"><img src="https://github.com/nya-foundation/nyaproxy/actions/workflows/scan.yml/badge.svg" alt="CodeQL & Dependencies Scan"/></a>
     <a href="https://github.com/Nya-Foundation/nyaproxy/actions/workflows/publish.yml"><img src="https://github.com/Nya-Foundation/nyaproxy/actions/workflows/publish.yml/badge.svg" alt="CI/CD Builds"/></a>
   </div>
+  
 </div>
 
 ## 🌈 Introduction
