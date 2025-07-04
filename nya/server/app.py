@@ -3,18 +3,17 @@
 NyaProxy - A simple low-level API proxy with dynamic token rotation.
 """
 
-import os
-import sys
 import argparse
 import contextlib
+import os
+import sys
 
 import uvicorn
-from loguru import logger
 from fastapi import FastAPI, Request
-
-from starlette.responses import JSONResponse
+from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
+from starlette.responses import JSONResponse
 
 from .. import __version__
 from ..common.constants import (

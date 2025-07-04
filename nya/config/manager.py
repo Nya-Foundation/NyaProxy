@@ -6,7 +6,7 @@ import os
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
 from loguru import logger
-from nekoconf import NekoConf, NekoConfOrchestrator, EventType
+from nekoconf import EventType, NekoConf, NekoConfOrchestrator
 from nekoconf.storage import FileStorageBackend, RemoteStorageBackend
 
 from nya.common.exceptions import ConfigurationError

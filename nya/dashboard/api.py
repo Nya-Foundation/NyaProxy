@@ -2,14 +2,14 @@
 Dashboard API for NyaProxy.
 """
 
-import os
 import importlib.resources
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import uvicorn
-from fastapi import FastAPI, Query, Request, status, HTTPException
-from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
+from fastapi import FastAPI, HTTPException, Query, Request, status
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
