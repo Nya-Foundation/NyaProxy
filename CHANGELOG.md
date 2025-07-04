@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v0.4.4 (2025-07-04)
+
+### Bug Fixes
+
+- App restart logic on config changes (file backend), add ZH, JA support for README
+  ([`43138b1`](https://github.com/Nya-Foundation/NyaProxy/commit/43138b1de25e8b39d7b663c57489460b75250fa4))
+
+### Chores
+
+- **format**: Apply automatic formatting [skip ci]
+  ([`d0b4ec9`](https://github.com/Nya-Foundation/NyaProxy/commit/d0b4ec999c1f27e885cb532b1a8de6b3c9646faf))
+
+
 ## v0.4.3 (2025-06-25)
 
 ### Bug Fixes
