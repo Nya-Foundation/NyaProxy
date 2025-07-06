@@ -104,7 +104,11 @@ class ConfigManager:
         # Validate against the schema
         results = client.validate()
         if results:
-            raise ConfigurationError(f"Configuration validation failed: {results}")
+            logger.error("[NyaProxy] Configuration validation failed:")
+            for error in results:
+                logger.error(f"  - {error}")
+
+            raise ConfigurationError(errors=results)
 
         logger.info("[NyaProxy] NekoConf client configuration validated successfully")
         return client

@@ -59,13 +59,7 @@ class RequestExecutor:
         if self.config.get_proxy_enabled():
             proxy_address = self.config.get_proxy_address()
             if proxy_address:
-                if proxy_address.startswith(("socks5://", "socks4://")):
-                    client_kwargs["proxies"] = {"all://": proxy_address}
-                else:
-                    client_kwargs["proxies"] = {
-                        "http://": proxy_address,
-                        "https://": proxy_address,
-                    }
+                client_kwargs["proxy"] = proxy_address
 
         return httpx.AsyncClient(**client_kwargs)
 

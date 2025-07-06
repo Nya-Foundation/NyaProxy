@@ -2,6 +2,9 @@
 Improved custom exceptions for NyaProxy.
 """
 
+import json
+from typing import List
+
 
 class NyaProxyStatus(Exception):
     """
@@ -26,15 +29,15 @@ class ConfigurationError(NyaProxyStatus):
     Exception raised for configuration errors.
     """
 
-    def __init__(self, message: str):
+    def __init__(self, errors: List[str]):
         """
         Initialize configuration error.
 
         Args:
             message: Error message
         """
-        super().__init__(f"NyaProxy configuration error: {message}")
-        self.message = message
+        super().__init__(f"NyaProxy configuration error: {json.dumps(errors)}")
+        self.errors = errors
 
     pass
 
