@@ -183,6 +183,7 @@ default_settings:
   allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"] # API的允许HTTP方法
   queue:
     max_size: 200
+    max_workers: 10 # 设置可同时处理的最大请求数（队列并发处理数
     expiry_seconds: 300
   rate_limit:
     enabled: true

@@ -83,18 +83,16 @@ class QueueFullError(NyaProxyStatus):
     Exception raised when a request queue is full.
     """
 
-    def __init__(self, api_name: str, max_size: int):
+    def __init__(self, api_name: str):
         """
         Initialize queue full error.
 
         Args:
             api_name: Name of the API
-            max_size: Maximum queue size
         """
         self.api_name = api_name
-        self.max_size = max_size
         super().__init__(
-            f"NyaProxy: Request queue for {api_name} is full (capacity: {max_size})"
+            f"NyaProxy: Request queue for {api_name} is full, max size reached."
         )
 
 

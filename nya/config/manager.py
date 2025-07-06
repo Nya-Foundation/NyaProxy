@@ -385,6 +385,12 @@ class ConfigManager:
         """
         return self.get_api_setting(api_name, "queue.max_size", "int")
 
+    def get_api_max_workers(self, api_name: str) -> int:
+        """
+        Get the maximum number of concurrent workers for processing requests for the API.
+        """
+        return self.get_api_setting(api_name, "queue.max_workers", "int")
+
     def get_api_queue_expiry(self, api_name: str) -> float:
         """
         Get the queue expiry time for the API.
