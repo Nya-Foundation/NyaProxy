@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.4.5 (2025-07-06)
+
+### Bug Fixes
+
+- Fix proxy setting, add support for socks5
+  ([`cd2e6e7`](https://github.com/Nya-Foundation/NyaProxy/commit/cd2e6e74ce80768f864ed2e9de12b67955929632))
+
+- Performace enhancement, add max_workers config
+  ([`e9159b4`](https://github.com/Nya-Foundation/NyaProxy/commit/e9159b421266f335b312bd0eaf1618f2683b744a))
+
+
 ## v0.4.4 (2025-07-04)
 
 ### Bug Fixes
