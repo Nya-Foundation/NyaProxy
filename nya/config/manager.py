@@ -104,7 +104,11 @@ class ConfigManager:
         # Validate against the schema
         results = client.validate()
         if results:
-            raise ConfigurationError(f"Configuration validation failed: {results}")
+            logger.error("[NyaProxy] Configuration validation failed:")
+            for error in results:
+                logger.error(f"  - {error}")
+
+            raise ConfigurationError(errors=results)
 
         logger.info("[NyaProxy] NekoConf client configuration validated successfully")
         return client
@@ -384,6 +388,12 @@ class ConfigManager:
         Get the queue size for the API.
         """
         return self.get_api_setting(api_name, "queue.max_size", "int")
+
+    def get_api_max_workers(self, api_name: str) -> int:
+        """
+        Get the maximum number of concurrent workers for processing requests for the API.
+        """
+        return self.get_api_setting(api_name, "queue.max_workers", "int")
 
     def get_api_queue_expiry(self, api_name: str) -> float:
         """

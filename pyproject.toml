@@ -26,8 +26,7 @@ requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.100.0",
     "uvicorn>=0.22.0",
-    "httpx>=0.24.0",
-    "httpx-socks>=0.10.0",
+    "httpx[socks]>=0.24.0",
     "setuptools>=42.0.0",
     "watchfiles>=0.18.0",
     "jmespath>=1.0.1",

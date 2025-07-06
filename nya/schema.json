@@ -178,6 +178,11 @@
                             "description": "Maximum queue size per API",
                             "minimum": 1
                         },
+                        "max_workers": {
+                            "type": "integer",
+                            "description": "Maximum number of concurrent workers processing requests for this API",
+                            "minimum": 1
+                        },
                         "expiry_seconds": {
                             "type": "integer",
                             "description": "How long to keep requests in queue before expiry",
