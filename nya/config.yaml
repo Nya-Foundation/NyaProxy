@@ -34,6 +34,7 @@ default_settings:
   allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"] # Allowed HTTP methods for the API
   queue:
     max_size: 200
+    max_workers: 10 # Maximum number of concurrent workers for processing requests
     expiry_seconds: 300
   rate_limit:
     enabled: true

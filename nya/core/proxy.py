@@ -121,7 +121,9 @@ class NyaProxyCore:
 
         # introduce a random delay before executing the request
         random_delay = self.config.get_api_random_delay(request.api_name)
-        await asyncio.sleep(random.uniform(0, random_delay))
+
+        if random_delay > 0:
+            await asyncio.sleep(random.uniform(0, random_delay))
 
         return await self.request_executor.execute(request)
 

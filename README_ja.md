@@ -46,6 +46,7 @@ NyaProxyができること：
 | 🕵️ リクエストマスキング   | 複数のアイデンティティプロバイダー間での動的ヘッダー置換              | `headers` + `variables`   |
 | 📊 リアルタイムメトリクス | リクエスト分析とシステムヘルスを含むインタラクティブダッシュボード              | `dashboard`               |
 | 🔧 ボディ置換 | JSONPathを使用した動的JSONペイロード変換                          | `request_body_substitution` |
+| 🧑‍💻 最大ワーカー数 | 同時に処理できるリクエストの最大数を設定します（キューの並列処理数） | `queue.max_workers` |
 
 ## 📥 クイックスタート
 
@@ -183,6 +184,7 @@ default_settings:
   allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"] # APIの許可されたHTTPメソッド
   queue:
     max_size: 200
+    max_workers: 10 # 同時に処理できるリクエストの最大数を設定します（キューの並列処理数）
     expiry_seconds: 300
   rate_limit:
     enabled: true

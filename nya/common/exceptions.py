@@ -2,6 +2,9 @@
 Improved custom exceptions for NyaProxy.
 """
 
+import json
+from typing import List
+
 
 class NyaProxyStatus(Exception):
     """
@@ -26,15 +29,15 @@ class ConfigurationError(NyaProxyStatus):
     Exception raised for configuration errors.
     """
 
-    def __init__(self, message: str):
+    def __init__(self, errors: List[str]):
         """
         Initialize configuration error.
 
         Args:
             message: Error message
         """
-        super().__init__(f"NyaProxy configuration error: {message}")
-        self.message = message
+        super().__init__(f"NyaProxy configuration error: {json.dumps(errors)}")
+        self.errors = errors
 
     pass
 
@@ -83,18 +86,16 @@ class QueueFullError(NyaProxyStatus):
     Exception raised when a request queue is full.
     """
 
-    def __init__(self, api_name: str, max_size: int):
+    def __init__(self, api_name: str):
         """
         Initialize queue full error.
 
         Args:
             api_name: Name of the API
-            max_size: Maximum queue size
         """
         self.api_name = api_name
-        self.max_size = max_size
         super().__init__(
-            f"NyaProxy: Request queue for {api_name} is full (capacity: {max_size})"
+            f"NyaProxy: Request queue for {api_name} is full, max size reached."
         )
 
 
