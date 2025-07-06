@@ -194,8 +194,8 @@ default_settings:
     enabled: true
     endpoint_rate_limit: 10/s # Default endpoint rate limit - can be overridden per API
     key_rate_limit: 10/m # Default key rate limit - can be overridden per API
-    ip_rate_limit: 1000/d # IP-based rate limit to protect against abuse and key redistribution
-    user_rate_limit: 1000/d # User-based rate limit per proxy API key defined in server section
+    ip_rate_limit: 5000/d # IP-based rate limit to protect against abuse and key redistribution
+    user_rate_limit: 5000/d # User-based rate limit per proxy API key defined in server section
     rate_limit_paths: 
       - "*"
   retry:
@@ -284,8 +284,8 @@ apis:
       enabled: true
       endpoint_rate_limit: 20/m
       key_rate_limit: 5/m
-      ip_rate_limit: 1000/d
-      user_rate_limit: 1000/d
+      ip_rate_limit: 5000/d
+      user_rate_limit: 5000/d
       rate_limit_paths:
         - "/v1/*"
 
