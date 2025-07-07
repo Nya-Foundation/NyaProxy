@@ -31,13 +31,14 @@ default_settings:
   allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"] # Allowed HTTP methods for the API
   queue:
     max_size: 200
+    max_workers: 10 # Maximum number of concurrent workers for processing requests
     expiry_seconds: 300
   rate_limit:
     enabled: true
     endpoint_rate_limit: 10/s # Default endpoint rate limit - can be overridden per API
     key_rate_limit: 10/m # Default key rate limit - can be overridden per API
-    ip_rate_limit: 1000/d # IP-based rate limit to protect against abuse and key redistribution
-    user_rate_limit: 1000/d # User-based rate limit per proxy API key defined in server section
+    ip_rate_limit: 5000/d # IP-based rate limit to protect against abuse and key redistribution
+    user_rate_limit: 5000/d # User-based rate limit per proxy API key defined in server section
     rate_limit_paths: 
       - "*"
   retry:
@@ -78,7 +79,7 @@ apis:
 
     # Request body substitution settings
     request_body_substitution:
-      enabled: false
+      enabled: true
       # Substitution rules for request body with JMEPath
       rules:
         # Since Gemini API doesn't support frequency_penalty and presence_penalty, we remove them with these rules

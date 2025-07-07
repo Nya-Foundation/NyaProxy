@@ -189,8 +189,8 @@ default_settings:
     enabled: true
     endpoint_rate_limit: 10/s # 默认端点频率限制 - 可以按API覆盖
     key_rate_limit: 10/m # 默认密钥频率限制 - 可以按API覆盖
-    ip_rate_limit: 1000/d # 基于IP的频率限制，防止滥用和密钥重新分发
-    user_rate_limit: 1000/d # 基于服务器部分定义的代理API密钥的用户频率限制
+    ip_rate_limit: 5000/d # 基于IP的频率限制，防止滥用和密钥重新分发
+    user_rate_limit: 5000/d # 基于服务器部分定义的代理API密钥的用户频率限制
     rate_limit_paths: 
       - "*"
   retry:
@@ -279,8 +279,8 @@ apis:
       enabled: true
       endpoint_rate_limit: 20/m
       key_rate_limit: 5/m
-      ip_rate_limit: 1000/d
-      user_rate_limit: 1000/d
+      ip_rate_limit: 5000/d
+      user_rate_limit: 5000/d
       rate_limit_paths:
         - "/v1/*"
 

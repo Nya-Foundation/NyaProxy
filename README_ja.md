@@ -190,8 +190,8 @@ default_settings:
     enabled: true
     endpoint_rate_limit: 10/s # デフォルトエンドポイントレート制限 - APIごとにオーバーライド可能
     key_rate_limit: 10/m # デフォルトキーレート制限 - APIごとにオーバーライド可能
-    ip_rate_limit: 1000/d # 悪用とキー再配布を防ぐIPベースのレート制限
-    user_rate_limit: 1000/d # サーバーセクションで定義されたプロキシAPIキーごとのユーザーベースレート制限
+    ip_rate_limit: 5000/d # 悪用とキー再配布を防ぐIPベースのレート制限
+    user_rate_limit: 5000/d # サーバーセクションで定義されたプロキシAPIキーごとのユーザーベースレート制限
     rate_limit_paths: 
       - "*"
   retry:
@@ -280,8 +280,8 @@ apis:
       enabled: true
       endpoint_rate_limit: 20/m
       key_rate_limit: 5/m
-      ip_rate_limit: 1000/d
-      user_rate_limit: 1000/d
+      ip_rate_limit: 5000/d
+      user_rate_limit: 5000/d
       rate_limit_paths:
         - "/v1/*"
 
