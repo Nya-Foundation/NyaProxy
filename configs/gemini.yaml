@@ -31,6 +31,7 @@ default_settings:
   allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"] # Allowed HTTP methods for the API
   queue:
     max_size: 200
+    max_workers: 10 # Maximum number of concurrent workers for processing requests
     expiry_seconds: 300
   rate_limit:
     enabled: true
@@ -78,7 +79,7 @@ apis:
 
     # Request body substitution settings
     request_body_substitution:
-      enabled: false
+      enabled: true
       # Substitution rules for request body with JMEPath
       rules:
         # Since Gemini API doesn't support frequency_penalty and presence_penalty, we remove them with these rules
