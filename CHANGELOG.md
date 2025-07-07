@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v0.4.6 (2025-07-07)
+
+### Bug Fixes
+
+- Refine rate limit config, where 0/d means no rate limit
+  ([`2179a49`](https://github.com/Nya-Foundation/NyaProxy/commit/2179a490390bf44bbb425feb3ecd2ceb3bb4a489))
+
+### Chores
+
+- Update config example
+  ([`bd814a5`](https://github.com/Nya-Foundation/NyaProxy/commit/bd814a5cfab40edb3db8a5d41f4714952b40f95c))
+
+
 ## v0.4.5 (2025-07-06)
 
 ### Bug Fixes
