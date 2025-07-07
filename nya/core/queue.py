@@ -79,7 +79,12 @@ class RequestQueue:
             raise ReachedMaxQuotaError(api_name, wait_time)
 
         # Wait until proxy resources are available for this request
-        await asyncio.sleep(wait_time)
+        if wait_time > 0:
+            wait_time = max(wait_time, 0.1)
+            logger.debug(
+                f"Resource Unavailable for {api_name} (IP: {request.ip}, User: {request.user}) - wait time: {wait_time:.2f}s"
+            )
+            await asyncio.sleep(wait_time)
 
         self.control.record_ip_request(api_name, request.ip)
         self.control.record_user_request(api_name, request.user)
@@ -127,7 +132,11 @@ class RequestQueue:
             try:
                 key, wait_time = await self._check_for_resource_limit(api_name)
                 if wait_time > 0 or key is None:
-                    await asyncio.sleep(wait_time / 2)  # faster checks
+                    wait_time = max(wait_time / 2, 0.1)
+                    logger.debug(
+                        f"Resource Unavailable for {api_name} endpoint - wait time: {wait_time:.2f}s"
+                    )
+                    await asyncio.sleep(wait_time)  # faster checks
                     continue
 
                 # Get next request (blocks until available)
@@ -242,9 +251,6 @@ class RequestQueue:
         # Check IP and user rate limit
         ip_wait = self.control.time_to_ip_ready(api_name, request.ip)
         user_wait = self.control.time_to_user_ready(api_name, request.user)
-        logger.debug(
-            f"IP wait: {ip_wait:.2f}s, User wait: {user_wait:.2f}s for {api_name} (IP: {request.ip}, User: {request.user})"
-        )
 
         return max(ip_wait, user_wait)
 

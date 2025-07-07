@@ -78,6 +78,9 @@ class RateLimiter:
         if self.requests_limit == 0:
             return False
 
+        if self.window_seconds == 0:
+            return False
+
         self._clean_old_timestamps()
         return len(self.request_timestamps) >= self.requests_limit
 
@@ -143,20 +146,14 @@ class RateLimiter:
         """
         Get time until rate limit resets.
         """
-        if self.window_seconds == 0:
-            return 0
 
-        self._clean_old_timestamps()
-        if not self.request_timestamps:
-            return 0
-
-        if len(self.request_timestamps) < self.requests_limit:
-            return 0
+        if not self.is_limited():
+            return 0.0
 
         current_time = time.time()
         oldest_timestamp = self.request_timestamps[0]
         reset_time = oldest_timestamp + self.window_seconds - current_time
-        return max(0, reset_time)
+        return max(0.0, reset_time)
 
     def remaining_quota(self) -> int:
         """

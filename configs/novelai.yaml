@@ -31,13 +31,14 @@ default_settings:
   allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"] # Allowed HTTP methods for the API
   queue:
     max_size: 200
+    max_workers: 10 # Maximum number of concurrent workers for processing requests
     expiry_seconds: 300
   rate_limit:
     enabled: true
     endpoint_rate_limit: 10/s # Default endpoint rate limit - can be overridden per API
     key_rate_limit: 10/m # Default key rate limit - can be overridden per API
-    ip_rate_limit: 1000/d # IP-based rate limit to protect against abuse and key redistribution
-    user_rate_limit: 1000/d # User-based rate limit per proxy API key defined in server section
+    ip_rate_limit: 5000/d # IP-based rate limit to protect against abuse and key redistribution
+    user_rate_limit: 5000/d # User-based rate limit per proxy API key defined in server section
     rate_limit_paths: 
       - "*"
   retry:
@@ -93,7 +94,7 @@ apis:
       enabled: true
       endpoint_rate_limit: 10000/d
       key_rate_limit: 1/12s # 1/12s is a safe limit for NovelAI, to avoid bot detection
-      ip_rate_limit: 1000/d # IP-based rate limit to protect against abuse and key redistribution
+      ip_rate_limit: 5000/d # IP-based rate limit to protect against abuse and key redistribution
       rate_limit_paths: null
     request_body_substitution: 
       enabled: false # Set to true to if you only want to support unlimited image generation (Opus Tier)
