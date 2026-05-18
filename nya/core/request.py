@@ -2,8 +2,10 @@
 Simplified request executor focused on HTTP execution only.
 """
 
+import ipaddress
 import time
 from typing import TYPE_CHECKING, Optional, Union
+from urllib.parse import urlparse
 
 import httpx
 from loguru import logger
@@ -16,6 +18,40 @@ if TYPE_CHECKING:
     from ..common.models import ProxyRequest
     from ..config.manager import ConfigManager
     from ..services.metrics import MetricsCollector
+
+
+# Private/local IP ranges that redirects should not follow
+_PRIVATE_NETWORKS = [
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("169.254.0.0/16"),
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fc00::/7"),
+    ipaddress.ip_network("fe80::/10"),
+]
+
+
+def _is_private_url(url: str) -> bool:
+    """Check if a URL points to a private/internal IP address."""
+    try:
+        hostname = urlparse(url).hostname
+        if not hostname:
+            return False
+        addr = ipaddress.ip_address(hostname)
+        return any(addr in net for net in _PRIVATE_NETWORKS)
+    except (ValueError, TypeError):
+        return False
+
+
+def _validate_redirect(request: httpx.Request, response: httpx.Response) -> None:
+    """Validate redirect target is not a private IP (SSRF protection)."""
+    target = response.headers.get("location", "")
+    if target and _is_private_url(target):
+        raise httpx.TooManyRedirects(
+            f"Redirect to private IP address blocked: {target}"
+        )
 
 
 class RequestExecutor:
@@ -47,12 +83,16 @@ class RequestExecutor:
 
         client_kwargs = {
             "follow_redirects": True,
+            "max_redirects": 5,
             "timeout": timeout,
             "limits": httpx.Limits(
                 max_connections=2000,
                 max_keepalive_connections=500,
                 keepalive_expiry=min(120.0, proxy_timeout),
             ),
+            "event_hooks": {
+                "response": [_validate_redirect],
+            },
         }
 
         # Add proxy support if configured

@@ -4,9 +4,11 @@ Provides authentication mechanisms and middleware.
 """
 
 import importlib.resources
-from typing import TYPE_CHECKING
+import secrets
+from typing import TYPE_CHECKING, Optional
 
 from fastapi import Request
+from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import HTMLResponse, JSONResponse
 
@@ -27,12 +29,39 @@ class AuthManager:
             config: The configuration manager instance
         """
         self.config = config
+        self._auto_generated_key: Optional[str] = None
 
     def get_api_key(self):
         """
         Get the configured API key
         """
         return self.config.get_api_key()
+
+    def ensure_admin_key(self) -> str:
+        """
+        Ensure an admin key exists for management interfaces.
+        Auto-generates one if no API key is configured.
+        """
+        configured_key = self.get_api_key()
+        if configured_key and not (
+            isinstance(configured_key, str) and not configured_key.strip()
+        ):
+            if isinstance(configured_key, list):
+                return configured_key[0].strip()
+            return configured_key.strip()
+
+        if self._auto_generated_key is None:
+            self._auto_generated_key = secrets.token_urlsafe(32)
+            logger.warning(
+                "=" * 60 + "\n"
+                "SECURITY NOTICE: No API key configured.\n"
+                "A random admin key has been generated for /config and /dashboard:\n"
+                f"  {self._auto_generated_key}\n"
+                "Use this key in the Authorization header to access management interfaces.\n"
+                "Set 'server.api_key' in your config file for persistent configuration.\n"
+                + "=" * 60
+            )
+        return self._auto_generated_key
 
     def verify_api_key(self, key: str, verify_master: bool = False) -> bool:
         """
@@ -152,12 +181,35 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if any(request.url.path == path for path in excluded_paths):
             return await call_next(request)
 
-        configured_key = self.auth.get_api_key()
+        is_dashboard = request.url.path.startswith("/dashboard")
+        is_config = request.url.path.startswith("/config")
 
-        # No API key required if configured_key is None or empty string/list
-        if configured_key is None or (
+        configured_key = self.auth.get_api_key()
+        key_is_unset = configured_key is None or (
             isinstance(configured_key, (str, list)) and not configured_key
-        ):
+        )
+
+        # Management interfaces (/config, /dashboard) ALWAYS require auth
+        if is_dashboard or is_config:
+            if key_is_unset:
+                admin_key = self.auth.ensure_admin_key()
+                provided = ""
+                auth_header = request.headers.get("Authorization", "")
+                if auth_header.startswith("Bearer "):
+                    provided = auth_header[7:]
+                cookie_key = request.cookies.get("nyaproxy_api_key", "")
+                if secrets.compare_digest(admin_key, provided) or \
+                   secrets.compare_digest(admin_key, cookie_key.strip()):
+                    return await call_next(request)
+            else:
+                if self.auth.verify_session_cookie(request):
+                    return await call_next(request)
+                if self.auth.verify_api_key_header(request):
+                    return await call_next(request)
+            return self._generate_login_page(request)
+
+        # For proxy routes: no auth needed if API key is not set
+        if key_is_unset:
             return await call_next(request)
 
         # First, check for valid session cookie
@@ -167,14 +219,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Then, check for valid Authorization header
         if self.auth.verify_api_key_header(request):
             return await call_next(request)
-
-        # If no valid auth found, determine response based on path
-        is_dashboard = request.url.path.startswith("/dashboard")
-        is_config = request.url.path.startswith("/config")
-
-        # For dashboard and config paths, redirect to login page
-        if is_dashboard or is_config:
-            return self._generate_login_page(request)
 
         # For API and other paths, return JSON error
         return JSONResponse(

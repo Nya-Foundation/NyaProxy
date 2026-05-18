@@ -1,5 +1,6 @@
 server:
-  api_key: 
+  # IMPORTANT: Set an API key to secure all endpoints. Leave empty to auto-generate an admin key.
+  api_key:
   logging:
     enabled: true
     level: debug
@@ -12,7 +13,7 @@ server:
   cors:
     # Allow all origins with "*", but specify exact origins when allow_credentials is true for security
     allow_origins: ["*"]
-    allow_credentials: true
+    allow_credentials: false
     allow_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     allow_headers: ["*"]
 

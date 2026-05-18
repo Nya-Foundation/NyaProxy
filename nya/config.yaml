@@ -2,7 +2,10 @@
 # This file contains server settings and API endpoint configurations
 
 server:
-  api_key: 
+  # IMPORTANT: Set an API key to secure all proxy and management endpoints.
+  # If left empty, a random admin key is auto-generated on startup for /config and /dashboard only.
+  # Proxy routes will remain open without authentication until an API key is configured.
+  api_key:
   logging:
     enabled: true
     level: debug
@@ -13,9 +16,10 @@ server:
   dashboard:
     enabled: true
   cors:
-    # Allow all origins with "*", but specify exact origins when allow_credentials is true for security
+    # Specify exact origins when allow_credentials is true for security.
+    # Using "*" with allow_credentials: true is forbidden by the CORS specification.
     allow_origins: ["*"]
-    allow_credentials: true
+    allow_credentials: false
     allow_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     allow_headers: ["*"]
 
