@@ -1,0 +1,35 @@
+# Pre-commit hooks for NyaProxy.
+# Install once with:  pre-commit install
+# Run on all files:   pre-commit run --all-files
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+
+  - repo: https://github.com/psf/black
+    rev: 24.10.0
+    hooks:
+      - id: black
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        args: ["--profile", "black"]
+
+  # mypy runs via the project interpreter so it picks up the `files`
+  # ratchet configured in pyproject.toml [tool.mypy].
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy (type-clean modules)
+        entry: python -m mypy
+        language: system
+        pass_filenames: false
+        types: [python]

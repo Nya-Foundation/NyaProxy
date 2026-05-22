@@ -3,6 +3,7 @@ Simplified key manager that focuses on key availability and rate limiting.
 """
 
 import asyncio
+import time
 from typing import TYPE_CHECKING, Dict, Optional, Tuple, Union
 
 from ..common.exceptions import APIKeyNotConfiguredError
@@ -37,6 +38,8 @@ class TrafficManager:
         self.config = config
         self.load_balancers: Dict[str, LoadBalancer] = {}
         self.rate_limiters: Dict[str, RateLimiter] = {}
+        self._limiter_prune_interval_seconds = 60.0
+        self._last_limiter_prune = 0.0
 
         self._lock = asyncio.Lock()
 
@@ -58,11 +61,38 @@ class TrafficManager:
         """
         Get or create a rate limiter by name.
         """
+        self._prune_idle_limiters()
         limiter = self.rate_limiters.get(name)
         if not limiter:
             limiter = RateLimiter(rate_limit=rate_limit)
             self.rate_limiters[name] = limiter
+        else:
+            limiter.touch()
         return limiter
+
+    def _prune_idle_limiters(self) -> None:
+        """
+        Remove stale per-client limiters to avoid unbounded growth.
+        """
+        current_time = time.time()
+        if (
+            current_time - self._last_limiter_prune
+            < self._limiter_prune_interval_seconds
+        ):
+            return
+
+        self._last_limiter_prune = current_time
+        stale_names = []
+        for name, limiter in self.rate_limiters.items():
+            if "_ip_" not in name and "_user_" not in name:
+                continue
+
+            idle_ttl = max(float(limiter.window_seconds or 0) * 2, 60.0)
+            if current_time - limiter.last_accessed > idle_ttl:
+                stale_names.append(name)
+
+        for name in stale_names:
+            self.rate_limiters.pop(name, None)
 
     def get_ip_limiter(self, api_name: str, ip: str) -> RateLimiter:
         """
@@ -173,23 +203,29 @@ class TrafficManager:
         Args:
             api_name: The name of the API to acquire a key for.
         """
-        endpoint_limiter = self.get_endpoint_limiter(api_name)
+        async with self._lock:
+            endpoint_limiter = self.get_endpoint_limiter(api_name)
 
-        endpoint_wait_time = endpoint_limiter.time_until_reset()
-        key_wait_time = self.time_to_key_ready(api_name)
+            endpoint_wait_time = endpoint_limiter.time_until_reset()
+            key_wait_time = self.time_to_key_ready(api_name)
 
-        # If endpoint or key is not available, return None and wait time
-        if endpoint_wait_time > 0 or key_wait_time > 0:
-            return None, max(endpoint_wait_time, key_wait_time)
+            # If endpoint or key is not available, return None and wait time
+            if endpoint_wait_time > 0 or key_wait_time > 0:
+                return None, max(endpoint_wait_time, key_wait_time)
 
-        key = await self.select_key(api_name)
-        if key is None:  # handle race condition
+            lb = self.get_load_balancer(api_name)
+            for _ in range(len(lb.keys)):
+                key = lb.next()
+                key_limiter = self.get_key_limiter(api_name, key)
+
+                if key_limiter.is_limited():
+                    continue
+
+                self.record_key_usage(api_name, key)
+                endpoint_limiter.record()
+                return key, 0
+
             return None, 1.0
-
-        self.record_key_usage(api_name, key)
-        endpoint_limiter.record()
-
-        return key, 0
 
     def select_any_key(self, api_name: str) -> Optional[str]:
         """

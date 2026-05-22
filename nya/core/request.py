@@ -9,7 +9,8 @@ import httpx
 from loguru import logger
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
-from ..utils.helper import format_elapsed_time, json_safe_dumps
+from ..utils.formatting import format_elapsed_time, json_safe_dumps
+from ..utils.redaction import redact_sensitive_data
 from .streaming import detect_streaming_content, handle_streaming_response
 
 if TYPE_CHECKING:
@@ -74,28 +75,46 @@ class RequestExecutor:
         actual_start_time = time.time()
         api_name = request.api_name
 
-        # Record request metrics
-        if self.metrics_collector and request._rate_limited:
+        # Whether this request is counted in metrics at all.
+        track = bool(self.metrics_collector and request._rate_limited)
+
+        if track:
             self.metrics_collector.record_request(api_name, request.api_key)
 
         logger.debug(f"[Request] Method: {request.method.upper()}, URL: {request.url}")
 
-        # Execute HTTP request
-        response = await self.execute_request(request, self._get_timeout(api_name))
+        # Execute HTTP request. If it fails before producing a response, still
+        # record an outcome (status 0) so the active-request gauge is balanced
+        # and the failure is counted — otherwise active leaks upward forever.
+        try:
+            response = await self.execute_request(request, self._get_timeout(api_name))
+        except Exception:
+            if track:
+                self.metrics_collector.record_response(
+                    api_name,
+                    request.api_key,
+                    0,
+                    time.time() - actual_start_time,
+                )
+            raise
 
         # Log request/response details on error response
         if response.status_code >= 400:
             logger.debug(f"[Request] Content: {json_safe_dumps(request.content)}")
 
-        logger.debug(f"[Request] Headers: {json_safe_dumps(request.headers)}")
-        logger.debug(f"[Response] Headers: {json_safe_dumps(response.headers)}")
+        logger.debug(
+            f"[Request] Headers: {json_safe_dumps(redact_sensitive_data(request.headers))}"
+        )
+        logger.debug(
+            f"[Response] Headers: {json_safe_dumps(redact_sensitive_data(response.headers))}"
+        )
 
         logger.debug(
             f"[Response] URL: {request.url}, Status: {response.status_code} "
             f"({format_elapsed_time(time.time() - actual_start_time)})"
         )
 
-        if self.metrics_collector and request._rate_limited:
+        if track:
             self.metrics_collector.record_response(
                 api_name,
                 request.api_key,
@@ -178,12 +197,12 @@ class RequestExecutor:
             )
 
             # Read raw bytes without any decoding/processing
-            content = b""
+            chunks = []
             async for chunk in response.aiter_raw():
-                content += chunk
+                chunks.append(chunk)
 
             return Response(
-                content=content,
+                content=b"".join(chunks),
                 status_code=response.status_code,
                 headers=response.headers,
                 media_type=media_type,

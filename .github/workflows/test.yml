@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.10', '3.11', '3.12', '3.13']
+        python-version: ['3.11', '3.12', '3.13']
       fail-fast: false # Ensure all Python versions are tested
     steps:
     - name: Checkout code
@@ -49,16 +49,23 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -e .[dev]
+        pip install -e ".[dev,lint]"
+
+    - name: Type check (mypy ratchet)
+      # Checks only the type-clean module set in pyproject [tool.mypy].
+      run: |
+        mypy
 
     - name: Run tests with coverage
+      # --cov-fail-under is a ratchet: it must never drop. Raise it as
+      # coverage improves (next milestones: 45, then 60).
       run: |
-        pytest --cov=nya tests/ --cov-report=xml
+        pytest --cov=nya tests/ --cov-report=xml --cov-fail-under=42
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v5
       with:
-        files: ./coverage.xml
+        files: ./reports/coverage.xml
         token: ${{ secrets.CODECOV_TOKEN }} 
         fail_ci_if_error: true # Recommended to fail the build if Codecov upload fails
         name: codecov-${{ matrix.python-version }} # Optional: name the report based on Python version

@@ -16,6 +16,7 @@ from ..common.exceptions import (
     ReachedMaxRetriesError,
     RequestExpiredError,
 )
+from ..utils.redaction import mask_secret
 
 if TYPE_CHECKING:
     from starlette.responses import Response
@@ -80,6 +81,8 @@ class RequestQueue:
 
         # Wait until proxy resources are available for this request
         if wait_time > 0:
+            if self.metrics_collector:
+                self.metrics_collector.record_rate_limit_hit(api_name)
             wait_time = max(wait_time, 0.1)
             logger.debug(
                 f"Resource Unavailable for {api_name} (IP: {request.ip}, User: {request.user}) - wait time: {wait_time:.2f}s"
@@ -130,27 +133,25 @@ class RequestQueue:
 
         while True:
             try:
-                key, wait_time = await self._check_for_resource_limit(api_name)
-                if wait_time > 0 or key is None:
-                    wait_time = max(wait_time / 2, 0.1)
-                    logger.debug(
-                        f"Resource Unavailable for {api_name} endpoint - wait time: {wait_time:.2f}s"
-                    )
-                    await asyncio.sleep(wait_time)  # faster checks
-                    continue
-
                 # Get next request (blocks until available)
                 request: "ProxyRequest" = await self._queues[api_name].get()
-                request.api_key = key
 
                 # Check if request expired
                 if self._is_request_expired(request):
+                    self.control.release_ip(api_name, request.ip)
+                    self.control.release_user(api_name, request.user)
                     request.future.set_exception(
                         RequestExpiredError(
                             api_name=api_name, wait_time=time.time() - request.added_at
                         )
                     )
                     continue
+
+                key = await self._wait_for_key(api_name, request)
+                if key is None:
+                    continue
+
+                request.api_key = key
 
                 # Process with worker semaphore
                 await self._process_with_worker(api_name, request)
@@ -160,6 +161,42 @@ class RequestQueue:
                     f"Error in queue processor for {api_name}: {e}, traceback: {traceback.format_exc()}    "
                 )
                 await asyncio.sleep(1)
+
+    async def _wait_for_key(
+        self, api_name: str, request: "ProxyRequest"
+    ) -> Optional[str]:
+        """
+        Wait until endpoint and key quota are available for a queued request.
+        """
+        recorded_hit = False
+        while True:
+            key, wait_time = await self._check_for_resource_limit(api_name)
+            if key is not None and wait_time <= 0:
+                return key
+
+            # Count one rate-limit hit per request that has to wait, not one
+            # per spin of this loop.
+            if not recorded_hit and self.metrics_collector:
+                self.metrics_collector.record_rate_limit_hit(api_name)
+                recorded_hit = True
+
+            if self._is_request_expired(request):
+                self.control.release_ip(api_name, request.ip)
+                self.control.release_user(api_name, request.user)
+                if not request.future.done():
+                    request.future.set_exception(
+                        RequestExpiredError(
+                            api_name=api_name,
+                            wait_time=time.time() - request.added_at,
+                        )
+                    )
+                return None
+
+            wait_time = max(wait_time / 2, 0.1)
+            logger.debug(
+                f"Resource Unavailable for {api_name} endpoint - wait time: {wait_time:.2f}s"
+            )
+            await asyncio.sleep(wait_time)
 
     async def _process_with_worker(
         self, api_name: str, request: "ProxyRequest"
@@ -226,7 +263,8 @@ class RequestQueue:
 
         # check if request method is in retry list
         retry_methods = self.config.get_api_retry_request_methods(api_name)
-        if request.method not in retry_methods:
+        retry_methods = [method.upper() for method in retry_methods]
+        if request.method.upper() not in retry_methods:
             return False
 
         # check if response status code is in retry list
@@ -238,7 +276,7 @@ class RequestQueue:
         self.control.block_key(api_name, request.api_key, retry_delay)
 
         logger.debug(
-            f"[Rate Limit] Marked key {request.api_key}... as exhausted for {retry_delay}s"
+            f"[Rate Limit] Marked key {mask_secret(request.api_key)} as exhausted for {retry_delay}s"
         )
 
         await self._handle_retry(request, retry_delay)
@@ -343,15 +381,6 @@ class RequestQueue:
                     count += 1
                 except asyncio.QueueEmpty:
                     break
-
-            # Cancel processor
-            if api_name in self._worker_tasks:
-                self._worker_tasks[api_name].cancel()
-                del self._worker_tasks[api_name]
-
-            # Clean up worker semaphore
-            if api_name in self._worker_pools:
-                del self._worker_pools[api_name]
 
             logger.info(f"Cleared queue for {api_name}: {count} requests cancelled")
 

@@ -1,14 +1,14 @@
 """
-Configuration manager for NyaProxy using NekoConf.
+Configuration manager for NyaProxy using Nacho.
 """
 
 import os
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
 from loguru import logger
-from nekoconf import EventType, NekoConf, NekoConfOrchestrator
-from nekoconf.storage import FileStorageBackend, RemoteStorageBackend
+from nacho import FileStorageBackend, Nacho, NachoOrchestrator, RemoteStorageBackend
 
+from nya.common.constants import DEFAULT_HOST, DEFAULT_PORT
 from nya.common.exceptions import ConfigurationError
 
 T = TypeVar("T")
@@ -16,7 +16,7 @@ T = TypeVar("T")
 
 class ConfigManager:
     """
-    Manages configuration for NyaProxy using NekoConf (singleton pattern).
+    Manages configuration for NyaProxy using Nacho (singleton pattern).
     """
 
     def __init__(
@@ -40,8 +40,8 @@ class ConfigManager:
             callback: Callback function to call after configuraiton is updated (optional)
         """
 
-        self.config: NekoConf = None
-        self.server: NekoConfOrchestrator = None
+        self.config: Nacho = None
+        self.server: NachoOrchestrator = None
 
         self.config_path = config_path
         self.schema_path = schema_path
@@ -56,9 +56,9 @@ class ConfigManager:
         self.config = self.init_config_client()
         self.server = self.init_config_server()
 
-    def init_config_client(self) -> NekoConf:
+    def init_config_client(self) -> Nacho:
         """
-        Initialize the NekoConf.
+        Initialize the Nacho configuration client.
         """
 
         storage: Union[FileStorageBackend, RemoteStorageBackend, None] = None
@@ -68,38 +68,31 @@ class ConfigManager:
                 f"[NyaProxy] Using remote configuration server: {self.remote_url}"
             )
             storage = RemoteStorageBackend(
-                remote_url=self.remote_url,
+                url=self.remote_url,
                 api_key=self.remote_api_key,
-                app_name=self.remote_app_name or "default",
-                logger=logger,
+                app_name=self.remote_app_name,
+                watch=True,
             )
         else:
             logger.info(
                 f"[NyaProxy] Using local configuration file: {self.config_path}"
             )
-            storage = FileStorageBackend(config_path=self.config_path, logger=logger)
+            storage = FileStorageBackend(self.config_path)
 
         if not storage:
             raise ConfigurationError(
                 "No storage backend configured. Please set a config path or remote URL."
             )
 
-        client = NekoConf(
+        client = Nacho(
             storage=storage,
-            schema_path=self.schema_path,
-            logger=logger,
-            env_override_enabled=True,
-            event_emission_enabled=True,
+            schema=self.schema_path,
             env_prefix="NYA",
+            events=True,
         )
 
         if self.callback:
-            client.event_pipeline.register_handler(
-                self.callback,
-                EventType.CHANGE,
-                path_pattern="@global",
-                priority=10,
-            )
+            client.on_change("@global", priority=10)(self.callback)
 
         # Validate against the schema
         results = client.validate()
@@ -110,17 +103,17 @@ class ConfigManager:
 
             raise ConfigurationError(errors=results)
 
-        logger.info("[NyaProxy] NekoConf client configuration validated successfully")
+        logger.info("[NyaProxy] Nacho client configuration validated successfully")
         return client
 
-    def init_config_server(self) -> NekoConfOrchestrator:
+    def init_config_server(self) -> NachoOrchestrator:
         """
-        Initialize the NekoConfOrchestrator WebUI for the server.
+        Initialize the NachoOrchestrator WebUI for the server.
         """
 
         if self.remote_url is not None:
             logger.warning(
-                "Remote Config URL is set. NekoConfOrchestrator will not be initialized on this local instance."
+                "Remote Config URL is set. NachoOrchestrator will not be initialized on this local instance."
             )
             return None
 
@@ -130,7 +123,9 @@ class ConfigManager:
 
         try:
             nya_app = {"NyaProxy": self.config}
-            server = NekoConfOrchestrator(apps=nya_app, logger=logger)
+            server = NachoOrchestrator(
+                apps=nya_app, logger=logger, api_key=self.get_api_key()
+            )
         except Exception as e:
             error_msg = f"Failed to load configuration: {str(e)}"
             logger.error(error_msg)
@@ -143,6 +138,18 @@ class ConfigManager:
         Get the debug level for logging.
         """
         return self.config.get_str("server.debug_level", "INFO")
+
+    def get_host(self) -> str:
+        """
+        Get the server bind host (falls back to the built-in default).
+        """
+        return self.config.get_str("server.host", DEFAULT_HOST)
+
+    def get_port(self) -> int:
+        """
+        Get the server bind port (falls back to the built-in default).
+        """
+        return self.config.get_int("server.port", DEFAULT_PORT)
 
     def get_dashboard_enabled(self) -> bool:
         """
@@ -523,9 +530,7 @@ class ConfigManager:
         """
         try:
             self.config = self.init_config_client()
-
-            nya_app = [{"NyaProxy": self.config}]
-            self.server = NekoConfOrchestrator(apps=nya_app, logger=logger)
+            self.server = self.init_config_server()
 
             logger.info("[NyaProxy] Configuration reloaded successfully")
         except Exception as e:
