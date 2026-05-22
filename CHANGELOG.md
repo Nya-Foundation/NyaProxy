@@ -1,6 +1,295 @@
 # CHANGELOG
 
 
+## v0.4.6 (2025-07-07)
+
+### Bug Fixes
+
+- Refine rate limit config, where 0/d means no rate limit
+  ([`2179a49`](https://github.com/Nya-Foundation/NyaProxy/commit/2179a490390bf44bbb425feb3ecd2ceb3bb4a489))
+
+### Chores
+
+- Update config example
+  ([`bd814a5`](https://github.com/Nya-Foundation/NyaProxy/commit/bd814a5cfab40edb3db8a5d41f4714952b40f95c))
+
+
+## v0.4.5 (2025-07-06)
+
+### Bug Fixes
+
+- Fix proxy setting, add support for socks5
+  ([`cd2e6e7`](https://github.com/Nya-Foundation/NyaProxy/commit/cd2e6e74ce80768f864ed2e9de12b67955929632))
+
+- Performace enhancement, add max_workers config
+  ([`e9159b4`](https://github.com/Nya-Foundation/NyaProxy/commit/e9159b421266f335b312bd0eaf1618f2683b744a))
+
+
+## v0.4.4 (2025-07-04)
+
+### Bug Fixes
+
+- App restart logic on config changes (file backend), add ZH, JA support for README
+  ([`43138b1`](https://github.com/Nya-Foundation/NyaProxy/commit/43138b1de25e8b39d7b663c57489460b75250fa4))
+
+### Chores
+
+- **format**: Apply automatic formatting [skip ci]
+  ([`d0b4ec9`](https://github.com/Nya-Foundation/NyaProxy/commit/d0b4ec999c1f27e885cb532b1a8de6b3c9646faf))
+
+
+## v0.4.3 (2025-06-25)
+
+### Bug Fixes
+
+- Fix lb strategy bug
+  ([`9be7f8e`](https://github.com/Nya-Foundation/NyaProxy/commit/9be7f8e4088c371bf1df743a4e65d8ed841b7da5))
+
+
+## v0.4.2 (2025-06-25)
+
+### Bug Fixes
+
+- Code refactor, refine code comment, and update README.md file
+  ([`960dfb0`](https://github.com/Nya-Foundation/NyaProxy/commit/960dfb0e1d0cc44f1bb074e550c131d0f8df3117))
+
+- Remove brotli dependency
+  ([`9b578dc`](https://github.com/Nya-Foundation/NyaProxy/commit/9b578dc2abdbd061d8e939d365437cd16d87dc8f))
+
+### Chores
+
+- Black code formating
+  ([`b8dad84`](https://github.com/Nya-Foundation/NyaProxy/commit/b8dad84ff23229d0ae56a2bc0303e2bb4ac04e18))
+
+
+## v0.4.1 (2025-06-23)
+
+### Bug Fixes
+
+- Add path filtering and method filtering
+  ([`da9a67c`](https://github.com/Nya-Foundation/NyaProxy/commit/da9a67c805edff30693169be32c272c1a321dc75))
+
+
+## v0.4.0 (2025-06-23)
+
+### Bug Fixes
+
+- Add js-yaml
+  ([`88d5ec1`](https://github.com/Nya-Foundation/NyaProxy/commit/88d5ec15cc1497f386e6fa93421fc14eed096201))
+
+- Adjust backend API url
+  ([`3866e0a`](https://github.com/Nya-Foundation/NyaProxy/commit/3866e0a6ab1518b39f9cddcce873a61f6e4c41dd))
+
+- Improve encode/decode handling logic
+  ([`6ad75a9`](https://github.com/Nya-Foundation/NyaProxy/commit/6ad75a9ee3d521ad54f10450ac547c2a2adf7bb0))
+
+- Type error
+  ([`2afdb2e`](https://github.com/Nya-Foundation/NyaProxy/commit/2afdb2eab73eecd6b66936d0c49066d23cf7c437))
+
+### Chores
+
+- Add manualChunks
+  ([`b11a1e4`](https://github.com/Nya-Foundation/NyaProxy/commit/b11a1e40948ee6663237505edc9642e8d8242db7))
+
+- Black code formating
+  ([`16c3abd`](https://github.com/Nya-Foundation/NyaProxy/commit/16c3abd5950b6bd2b37ea95618a7664bc96ebae8))
+
+- Formatting
+  ([`d95dda6`](https://github.com/Nya-Foundation/NyaProxy/commit/d95dda6072846b940834f3b3c830857f6c94b85e))
+
+- Layout finish
+  ([`745c82f`](https://github.com/Nya-Foundation/NyaProxy/commit/745c82f1e1830284f592521215e932428d346ca8))
+
+- Minor changes on error handling
+  ([`fd880d6`](https://github.com/Nya-Foundation/NyaProxy/commit/fd880d6023d7d95e6f2a407859860e0bdc4be2fd))
+
+- Resolve merge
+  ([`ef0afeb`](https://github.com/Nya-Foundation/NyaProxy/commit/ef0afebc0b307a5d23fb0f09e710858b0671069d))
+
+- Update README.md and images
+  ([`a971753`](https://github.com/Nya-Foundation/NyaProxy/commit/a971753eeed2fe5f5cb58cbbe9c76fecca555a75))
+
+- **format**: Apply automatic formatting [skip ci]
+  ([`0e85be6`](https://github.com/Nya-Foundation/NyaProxy/commit/0e85be62bc73d0893a501a3e9d4bbb60c795e3b1))
+
+- **format**: Apply automatic formatting [skip ci]
+  ([`8d95f6e`](https://github.com/Nya-Foundation/NyaProxy/commit/8d95f6e167eba14547fe9d6a91399f5cf38934f7))
+
+- **format**: Apply automatic formatting [skip ci]
+  ([`6a81c8d`](https://github.com/Nya-Foundation/NyaProxy/commit/6a81c8ddfd6304a0527d98dce3e665939429a402))
+
+- **format**: Apply automatic formatting [skip ci]
+  ([`cf57feb`](https://github.com/Nya-Foundation/NyaProxy/commit/cf57feb899f3a5a58c0f9e67156e7d6b3296ae42))
+
+### Features
+
+- According config.yaml generate .env.production
+  ([`06b4179`](https://github.com/Nya-Foundation/NyaProxy/commit/06b4179dc7cc15e7d04ca0a87c6aeec98eb6ec37))
+
+- Login&404
+  ([`95dd9dc`](https://github.com/Nya-Foundation/NyaProxy/commit/95dd9dccd8970244398f6165023f396de17c1085))
+
+### Refactoring
+
+- Config page layout
+  ([`2643c92`](https://github.com/Nya-Foundation/NyaProxy/commit/2643c92be36cabb747088382503784f02cf733d1))
+
+- Dashboard
+  ([`53ec6b2`](https://github.com/Nya-Foundation/NyaProxy/commit/53ec6b25e0bd6944636a7c78cd4463538b979338))
+
+- Embedded config page
+  ([`87d731c`](https://github.com/Nya-Foundation/NyaProxy/commit/87d731ca2be3a4f764be2a7a6b963c638544fff8))
+
+- Frontend init
+  ([`f6bd416`](https://github.com/Nya-Foundation/NyaProxy/commit/f6bd416487122ffcd044c0e900bd51740ba7c4fd))
+
+
+## v0.3.6 (2025-06-07)
+
+### Bug Fixes
+
+- Fix security issues by bumping python version, add support for ip_rate_limit, user_rate_limit, and
+  randomness
+  ([`b714a39`](https://github.com/Nya-Foundation/NyaProxy/commit/b714a396fb3a0fd2c73329778a37818d17d69437))
+
+
+## v0.3.5 (2025-06-06)
+
+### Bug Fixes
+
+- Remove uvicorn 'optimition'
+  ([`df112b8`](https://github.com/Nya-Foundation/NyaProxy/commit/df112b813cd7342c253f9afea4f92eff500ff83b))
+
+### Chores
+
+- **format**: Apply automatic formatting [skip ci]
+  ([`7088dd6`](https://github.com/Nya-Foundation/NyaProxy/commit/7088dd6c5c1917c4064bd27f038f55055aae6fb5))
+
+- **format**: Apply automatic formatting [skip ci]
+  ([`47d7af7`](https://github.com/Nya-Foundation/NyaProxy/commit/47d7af703d0ead7627413253ef94afd161314d87))
+
+
+## v0.3.4 (2025-06-04)
+
+### Bug Fixes
+
+- Config nekoconf integration issue, add shutdown logging
+  ([`29d7a47`](https://github.com/Nya-Foundation/NyaProxy/commit/29d7a47ea42fc7480f954cc23cf10d8f86aa35eb))
+
+
+## v0.3.3 (2025-06-03)
+
+### Bug Fixes
+
+- Fix content-encoding/accept encoding issue when dealing with streamed request
+  ([`817e9b6`](https://github.com/Nya-Foundation/NyaProxy/commit/817e9b6d3f39e6cdf2566da65336fd534e4e2bca))
+
+
+## v0.3.2 (2025-06-02)
+
+### Bug Fixes
+
+- Refined and optimized request queue, update config settings and schema, performce optimization
+  ([`6e347ff`](https://github.com/Nya-Foundation/NyaProxy/commit/6e347ff1bd4b7e345deb7018276aa0eff1a9b323))
+
+### Chores
+
+- Black format
+  ([`6e87482`](https://github.com/Nya-Foundation/NyaProxy/commit/6e87482be10b5769d04895d388543ba8eb851942))
+
+- **format**: Apply automatic formatting [skip ci]
+  ([`459c671`](https://github.com/Nya-Foundation/NyaProxy/commit/459c67184668bc588ac545f199e15dd55c5c278b))
+
+- **format**: Apply automatic formatting [skip ci]
+  ([`707320f`](https://github.com/Nya-Foundation/NyaProxy/commit/707320f861f14a53621573a618d9f303659c7e48))
+
+
+## v0.3.1 (2025-06-02)
+
+### Bug Fixes
+
+- Request_body_substitution logic refinement
+  ([`b25ca72`](https://github.com/Nya-Foundation/NyaProxy/commit/b25ca7289fbee103041b62cc622529f624a188be))
+
+
+## v0.3.0 (2025-06-02)
+
+### Features
+
+- Major refactor and architecture re-design, simplify workflow, improve throughput
+  ([`d24ff13`](https://github.com/Nya-Foundation/NyaProxy/commit/d24ff131058ad5c6f50029c6b00aa89783dae941))
+
+
+## v0.2.5 (2025-05-31)
+
+### Bug Fixes
+
+- Bump nekoconf version to 1.1.1
+  ([`c239589`](https://github.com/Nya-Foundation/NyaProxy/commit/c23958954b6b39d97e34e490d281df8019872caf))
+
+
+## v0.2.4 (2025-05-31)
+
+### Bug Fixes
+
+- Add logic to exclude Cloudflare headers
+  ([`172cca3`](https://github.com/Nya-Foundation/NyaProxy/commit/172cca3224369625558e6bf11092ee9bbd532955))
+
+- Bump nekoconf version to 1.1.0, remove simulated streaming, add loguru for logging, add support
+  for python 3.10
+  ([`2043c0f`](https://github.com/Nya-Foundation/NyaProxy/commit/2043c0f3f1bca878b53e448126d76a85655c1331))
+
+### Chores
+
+- Black code format
+  ([`61a8707`](https://github.com/Nya-Foundation/NyaProxy/commit/61a8707ad08601f0fe70225904a6470369c5c388))
+
+### Documentation
+
+- Update README.md
+  ([`4986383`](https://github.com/Nya-Foundation/NyaProxy/commit/498638336138489908bc1db6d690a87bb4dd2f32))
+
+
+## v0.2.3 (2025-05-12)
+
+### Bug Fixes
+
+- Fix header processing issue, implement OPTIONS request hijack
+  ([`9ad3902`](https://github.com/Nya-Foundation/NyaProxy/commit/9ad3902c9299067a07f4b7c687d8824f5cad580a))
+
+
+## v0.2.2 (2025-05-12)
+
+### Bug Fixes
+
+- Add cors config support
+  ([`f496918`](https://github.com/Nya-Foundation/NyaProxy/commit/f496918d7248ede8ac22754488f3c9a49a95255d))
+
+
+## v0.2.1 (2025-05-09)
+
+### Bug Fixes
+
+- Patch config ui not save issue, update dashboard and login page logo
+  ([`bb01039`](https://github.com/Nya-Foundation/NyaProxy/commit/bb010396e63bb8d7c9e7814a32aad77d1a5b0f3a))
+
+### Chores
+
+- Add PyPI stats
+  ([`61681a9`](https://github.com/Nya-Foundation/NyaProxy/commit/61681a98ae5123391ba421c8f38adc72e8f55862))
+
+### Documentation
+
+- Add DeepWiki badge
+  ([`a85d88d`](https://github.com/Nya-Foundation/NyaProxy/commit/a85d88dd16300e070b880ebcff0a4824499a5baf))
+
+- Update python version requirements
+  ([`b3110e5`](https://github.com/Nya-Foundation/NyaProxy/commit/b3110e54bed39e7d8ffae9a0c1163335b810b356))
+
+- Update README.md
+  ([`4346954`](https://github.com/Nya-Foundation/NyaProxy/commit/43469542c91f46947b63a37da4b67fa2a9e6294a))
+
+
 ## v0.2.0 (2025-05-08)
 
 ### Bug Fixes
