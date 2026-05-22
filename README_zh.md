@@ -284,6 +284,7 @@ apis:
 ## 安全建议
 
 - 在对外暴露 NyaProxy 前设置 `server.api_key`。
+- 如果未配置 `server.api_key`，NyaProxy 会使用 `SUPER_SECURE_PASSWORD!!!` 作为默认值。
 - `server.api_key` 中的第一个 Key 会作为管理员 Key，用于访问仪表板和配置界面。
 - 其他代理 Key 可用于普通代理请求。
 - 不要将上游服务凭证交给客户端。应将其保存在 NyaProxy 配置或部署环境的 Secret 管理系统中。

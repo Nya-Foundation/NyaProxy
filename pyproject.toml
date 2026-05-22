@@ -54,7 +54,7 @@ lint = [
 profile = "black"
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 ignore_missing_imports = true
 # Legacy modules are still type-dirty; analyse them when imported but do
 # not report their errors. Remove this once `files` covers all of `nya`.
@@ -130,3 +130,6 @@ commit_author = "github-actions[bot] <github-actions[bot]@users.noreply.github.c
 [tool.semantic_release.publish]
 dist_glob_patterns = ["dist/*"]
 upload_to_vcs_release = true
+
+[dependency-groups]
+dev = []

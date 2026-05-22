@@ -284,6 +284,7 @@ apis:
 ## Security Notes
 
 - Set `server.api_key` before exposing NyaProxy outside localhost.
+- if `server.api_key` is not configured, NyaProxy falls back to `SUPER_SECURE_PASSWORD!!!`.
 - The first key in `server.api_key` is treated as the admin key for dashboard and configuration access.
 - Additional proxy keys can be used by applications for regular proxied API requests.
 - Do not share upstream provider credentials with clients. Store them in NyaProxy configuration or your deployment secret manager.
