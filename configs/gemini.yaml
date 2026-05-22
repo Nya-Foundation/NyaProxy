@@ -1,5 +1,5 @@
 server:
-  api_key: 
+  api_key: SUPER_SECURE_PASSWORD!!!
   logging:
     enabled: true
     level: debug
