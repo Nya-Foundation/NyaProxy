@@ -13,7 +13,7 @@ from ..common.constants import API_PATH_PREFIX
 from ..common.exceptions import MissingAPIKeyError, VariablesConfigurationError
 from ..common.models import ProxyRequest
 from ..utils.header import HeaderUtils
-from ..utils.helper import apply_body_substitutions
+from ..utils.substitution import apply_body_substitutions
 
 if TYPE_CHECKING:
     from ..config.manager import ConfigManager
@@ -44,6 +44,9 @@ class RequestHandler:
         # Identify target API based on path
         api_name, trail_path = self.parse_request(request)
         request.api_name = api_name
+
+        if not api_name:
+            return
 
         # Construct target api endpoint URL
         target_endpoint: str = self.config.get_api_endpoint(api_name)
@@ -263,7 +266,7 @@ class RequestHandler:
         # Identify all template variables in headers that needs to be substituted
         required_vars = HeaderUtils.extract_required_variables(header_config)
 
-        required_vars.remove(key_variable)  # Remove key variable if present
+        required_vars.discard(key_variable)  # Remove key variable if present
         var_values: Dict[str, Any] = {key_variable: request.api_key}
 
         # Ensure host header set to the target URL's host

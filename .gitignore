@@ -52,6 +52,9 @@ coverage.xml
 .pytest_cache/
 cover/
 
+# All generated test/coverage reports live here (see pyproject.toml [tool.coverage])
+reports/
+
 # Translations
 *.mo
 *.pot

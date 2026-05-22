@@ -3,8 +3,9 @@ Authentication module for NyaProxy.
 Provides authentication mechanisms and middleware.
 """
 
+import hmac
 import importlib.resources
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -19,7 +20,7 @@ class AuthManager:
     Centralized authentication manager for NyaProxy
     """
 
-    def __init__(self, config: "ConfigManager" = None):
+    def __init__(self, config: Optional["ConfigManager"] = None):
         """
         Initialize the authentication manager.
 
@@ -66,7 +67,7 @@ class AuthManager:
                 "null",
             ]:
                 return True
-            return key == configured_key.strip()
+            return self._secrets_equal(key, configured_key.strip())
 
         # Handle list case
         if isinstance(configured_key, list):
@@ -75,14 +76,28 @@ class AuthManager:
                 return True
 
             if verify_master:
-                # Only check first key if verify_master is True and list is not empty
-                return configured_key and key == configured_key[0].strip()
+                # Only the first key acts as the master key
+                return self._secrets_equal(key, configured_key[0].strip())
 
             # Check all keys if verify_master is False
-            return any(key == k.strip() for k in configured_key)
+            return any(self._secrets_equal(key, k.strip()) for k in configured_key)
 
         # If we reach here, configured_key is an unexpected type
         return False
+
+    @staticmethod
+    def _secrets_equal(provided: str, expected: str) -> bool:
+        """
+        Compare two secrets in constant time to avoid timing attacks.
+
+        ``hmac.compare_digest`` only accepts ASCII strings; a non-ASCII key
+        cannot match an ASCII-only configured key anyway, so treat it as a
+        mismatch instead of raising.
+        """
+        try:
+            return hmac.compare_digest(provided, expected)
+        except TypeError:
+            return False
 
     def verify_session_cookie(self, request: Request):
         """
@@ -100,9 +115,6 @@ class AuthManager:
 
         # Trim any whitespace that might be added by some browsers
         cookie_key = cookie_key.strip() if cookie_key else ""
-
-        # Log keys for debugging - remove in production
-        # print(f"Cookie key: '{cookie_key}', Configured key: '{configured_key}'")
 
         # Verify the cookie key against the configured master key only
         return self.verify_api_key(cookie_key, verify_master=True)
@@ -143,6 +155,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         excluded_paths = [
             "/",
             "/info",
+            "/metrics",
             "/docs",
             "/redoc",
             "/openapi.json",

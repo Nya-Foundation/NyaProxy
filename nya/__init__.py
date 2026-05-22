@@ -25,8 +25,8 @@ from .dashboard.api import DashboardAPI
 from .services.lb import LoadBalancer
 from .services.limit import RateLimiter
 from .services.metrics import MetricsCollector
+from .utils.formatting import format_elapsed_time
 from .utils.header import HeaderUtils
-from .utils.helper import format_elapsed_time
 
 # Define __all__ to control what is imported with "from nya import *"
 __all__ = [

@@ -13,7 +13,7 @@ from fastapi import FastAPI, Request
 from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 
 from .. import __version__
 from ..common.constants import (
@@ -27,7 +27,7 @@ from ..common.models import ProxyRequest
 from ..config.manager import ConfigManager
 from ..core.proxy import NyaProxyCore
 from ..dashboard.api import DashboardAPI
-from ..services.metrics import MetricsCollector
+from ..services.metrics import PROMETHEUS_CONTENT_TYPE, MetricsCollector
 from .auth import AuthManager, AuthMiddleware
 
 logger.remove()
@@ -74,7 +74,7 @@ class NyaProxyApp:
         schema_path = schema_path or os.environ.get("SCHEMA_PATH")
         remote_url = os.environ.get("REMOTE_CONFIG_URL")
         remote_api_key = os.environ.get("REMOTE_CONFIG_API_KEY")
-        remote_app_name = os.environ.get("REMOTE_CONFIG_APP_NAME")
+        remote_app_name = os.environ.get("REMOTE_CONFIG_APP_NAME", "default")
 
         try:
             config = ConfigManager(
@@ -187,6 +187,22 @@ class NyaProxyApp:
 
             return {"status": "running", "version": __version__, "apis": apis}
 
+        # Prometheus metrics exposition endpoint
+        @app.get("/metrics", include_in_schema=False)
+        async def metrics():
+            """
+            Expose all metrics in the Prometheus exposition format.
+            """
+            if not self.metrics_collector:
+                return JSONResponse(
+                    status_code=503,
+                    content={"error": "Metrics collector not available"},
+                )
+            return Response(
+                content=self.metrics_collector.render_prometheus(),
+                media_type=PROMETHEUS_CONTENT_TYPE,
+            )
+
     async def generic_proxy_request(self, request: Request):
         """
         Generic handler for all proxy requests.
@@ -275,8 +291,8 @@ class NyaProxyApp:
             logger.warning("Configuration web server not available")
             return False
 
-        host = os.environ.get("SERVER_HOST")
-        port = os.environ.get("SERVER_PORT")
+        host = os.environ.get("SERVER_HOST") or self.config.get_host()
+        port = os.environ.get("SERVER_PORT") or self.config.get_port()
         remote_url = os.environ.get("REMOTE_CONFIG_URL")
 
         if remote_url:
@@ -288,13 +304,12 @@ class NyaProxyApp:
         # Get the config server app and apply auth middleware before mounting
         config_app = self.config.server.app
 
-        # Add auth middleware to config app
-        config_app.add_middleware(AuthMiddleware, auth=self.auth)
-
         # Mount the config server app
         self.app.mount("/config", config_app, name="config_app")
 
-        logger.info(f"Configuration web server mounted at http://{host}:{port}/config")
+        logger.info(
+            f"Configuration web server mounted at http://{host}:{port}/config/ui"
+        )
         return True
 
     def init_dashboard(self):

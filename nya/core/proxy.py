@@ -107,7 +107,7 @@ class NyaProxyCore:
             logger.error(
                 f"Unexpected error handling request: {e}, traceback: {traceback.format_exc()}"
             )
-            return self._error_response(str(e), 500)
+            return self._error_response("NyaProxy: Internal proxy error", 500)
 
     async def _process_queued_request(self, request: "ProxyRequest") -> Response:
         """

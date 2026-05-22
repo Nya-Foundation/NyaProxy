@@ -1,415 +1,228 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>NyaProxy - Authentication</title>
+    <title>NyaProxy — Sign in</title>
+    <link rel="icon" href="/dashboard/favicon.ico" />
+    <script>
+      (function () {
+        var t = localStorage.getItem("nyaproxy-theme") || "dark";
+        document.documentElement.setAttribute("data-theme", t);
+      })();
+    </script>
     <style>
-      /* Base styles and CSS reset */
-      :root {
-        --bg-primary: #ffffff;
-        --bg-secondary: #f3f4f6;
-        --text-primary: #111827;
-        --text-secondary: #4b5563;
-        --accent: #7c3aed;
-        --accent-hover: #6d28d9;
-        --border: #e5e7eb;
-        --error: #ef4444;
-        --success: #10b981;
-        --input-bg: #ffffff;
-        --card-bg: #ffffff;
-        --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+      /* Self-contained: the login page is served before authentication,
+         so it cannot load the dashboard's shared stylesheet. */
+      :root,
+      [data-theme="dark"] {
+        --bg: #0d0f14;
+        --bg-elevated: #161922;
+        --border: #262b38;
+        --text: #e6e8ed;
+        --text-muted: #9ba1b0;
+        --text-faint: #646b7d;
+        --accent: #6366f1;
+        --accent-hover: #818cf8;
+        --accent-soft: rgba(99, 102, 241, 0.16);
+        --danger: #f87171;
+        --danger-soft: rgba(248, 113, 113, 0.15);
+        --shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
       }
-
-      .dark {
-        --bg-primary: #111827;
-        --bg-secondary: #1f2937;
-        --text-primary: #f9fafb;
-        --text-secondary: #d1d5db;
-        --accent: #8b5cf6;
-        --accent-hover: #7c3aed;
-        --border: #374151;
-        --error: #f87171;
-        --success: #34d399;
-        --input-bg: #1f2937;
-        --card-bg: #1f2937;
-        --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+      [data-theme="light"] {
+        --bg: #f4f5f7;
+        --bg-elevated: #ffffff;
+        --border: #e3e5ea;
+        --text: #1a1d23;
+        --text-muted: #5b616e;
+        --text-faint: #8b909d;
+        --accent: #4f46e5;
+        --accent-hover: #4338ca;
+        --accent-soft: rgba(79, 70, 229, 0.1);
+        --danger: #dc2626;
+        --danger-soft: rgba(220, 38, 38, 0.1);
+        --shadow: 0 12px 32px rgba(0, 0, 0, 0.16);
       }
-
       * {
+        box-sizing: border-box;
         margin: 0;
         padding: 0;
-        box-sizing: border-box;
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       }
-
       body {
-        background-color: var(--bg-primary);
-        color: var(--text-primary);
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+          Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
         min-height: 100vh;
         display: flex;
-        flex-direction: column;
         align-items: center;
         justify-content: center;
-        transition: background-color 0.3s, color 0.3s;
+        padding: 24px;
       }
-
-      /* Theme toggle */
-      .theme-toggle {
-        position: absolute;
-        top: 1.5rem;
-        right: 1.5rem;
-        background: transparent;
-        border: none;
-        color: var(--text-primary);
-        width: 2.5rem;
-        height: 2.5rem;
-        border-radius: 50%;
+      .card {
+        background: var(--bg-elevated);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        box-shadow: var(--shadow);
+        width: 100%;
+        max-width: 380px;
+        padding: 32px 28px;
+      }
+      .brand {
         display: flex;
         align-items: center;
+        gap: 10px;
         justify-content: center;
-        cursor: pointer;
-        transition: background-color 0.2s;
       }
-
-      .theme-toggle:hover {
-        background-color: var(--bg-secondary);
+      .brand img {
+        width: 30px;
+        height: 30px;
       }
-
-      .theme-toggle svg {
-        width: 1.25rem;
-        height: 1.25rem;
-        transition: transform 0.3s ease;
+      .brand span {
+        font-size: 1.15rem;
+        font-weight: 650;
       }
-
-      .theme-toggle.rotate-180 svg {
-        transform: rotate(180deg);
-      }
-
-      /* Login card */
-      .login-card {
-        background-color: var(--card-bg);
-        border-radius: 1rem;
-        box-shadow: var(--card-shadow);
-        width: 90%;
-        max-width: 400px;
-        padding: 2rem;
-        margin: 1rem;
-        transition: all 0.3s ease;
-      }
-
-      /* Logo and header */
-      .header {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        margin-bottom: 2rem;
-      }
-
-      .logo {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 4rem;
-        height: 4rem;
-        background-color: var(--accent);
-        border-radius: 1rem;
-        margin-bottom: 1rem;
-        color: white;
-      }
-
-      .logo svg {
-        width: 2rem;
-        height: 2rem;
-      }
-
-      h1 {
-        font-size: 1.5rem;
-        font-weight: 700;
-        margin-bottom: 0.5rem;
-      }
-
-      .subtitle {
-        color: var(--text-secondary);
+      .sub {
         text-align: center;
-        margin-bottom: 2rem;
-        font-size: 0.95rem;
+        color: var(--text-muted);
+        font-size: 0.85rem;
+        margin: 8px 0 24px;
       }
-
-      /* Form */
-      .form-group {
-        margin-bottom: 1.5rem;
-        position: relative;
-      }
-
       label {
         display: block;
-        margin-bottom: 0.5rem;
+        font-size: 0.78rem;
         font-weight: 500;
-        font-size: 0.9rem;
+        color: var(--text-muted);
+        margin-bottom: 6px;
       }
-
-      input {
+      input[type="password"] {
         width: 100%;
-        padding: 0.75rem 1rem;
+        background: var(--bg);
         border: 1px solid var(--border);
-        border-radius: 0.5rem;
-        background-color: var(--input-bg);
-        color: var(--text-primary);
-        font-size: 1rem;
-        transition: border-color 0.2s, box-shadow 0.2s;
+        border-radius: 8px;
+        color: var(--text);
+        font-size: 0.9rem;
+        padding: 10px 12px;
+        transition: border-color 0.12s ease, box-shadow 0.12s ease;
       }
-
-      input:focus {
+      input[type="password"]:focus {
         outline: none;
         border-color: var(--accent);
-        box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.2);
+        box-shadow: 0 0 0 3px var(--accent-soft);
       }
-
-      .form-group.focused input {
-        border-color: var(--accent);
-        box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.2);
-      }
-
-      /* Error message */
-      .error {
-        display: flex;
-        align-items: center;
-        padding: 0.75rem;
-        background-color: rgba(239, 68, 68, 0.1);
-        border-radius: 0.5rem;
-        margin-bottom: 1.5rem;
-        color: var(--error);
-      }
-
-      .error svg {
-        width: 1.25rem;
-        height: 1.25rem;
-        margin-right: 0.5rem;
-        flex-shrink: 0;
-      }
-
-      /* Button */
-      button {
+      button[type="submit"] {
         width: 100%;
-        padding: 0.75rem 1rem;
-        background-color: var(--accent);
-        color: white;
+        margin-top: 16px;
+        padding: 10px;
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: #fff;
+        background: var(--accent);
         border: none;
-        border-radius: 0.5rem;
-        font-size: 1rem;
-        font-weight: 500;
+        border-radius: 8px;
         cursor: pointer;
+        transition: background-color 0.12s ease;
+      }
+      button[type="submit"]:hover {
+        background: var(--accent-hover);
+      }
+      button[type="submit"]:disabled {
+        opacity: 0.6;
+        cursor: progress;
+      }
+      .error {
+        display: none;
+        margin-top: 14px;
+        font-size: 0.82rem;
+        color: var(--danger);
+        background: var(--danger-soft);
+        border-radius: 8px;
+        padding: 9px 12px;
+      }
+      .theme-toggle {
+        position: fixed;
+        top: 18px;
+        right: 18px;
+        width: 34px;
+        height: 34px;
         display: flex;
         align-items: center;
         justify-content: center;
-        transition: background-color 0.2s;
-        position: relative;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--bg-elevated);
+        color: var(--text-muted);
+        cursor: pointer;
       }
-
-      button:hover {
-        background-color: var(--accent-hover);
-      }
-
-      button:disabled {
-        opacity: 0.7;
-        cursor: not-allowed;
-      }
-
-      /* Loading spinner */
-      @keyframes spin {
-        to {
-          transform: rotate(360deg);
-        }
-      }
-
-      button.loading span:first-child {
-        margin-right: 0.5rem;
-        width: 1rem;
-        height: 1rem;
-        border: 2px solid rgba(255, 255, 255, 0.3);
-        border-radius: 50%;
-        border-top-color: white;
-        animation: spin 0.8s linear infinite;
-        display: inline-block;
-      }
-
-      /* Footer */
-      .footer {
-        margin-top: 2rem;
-        text-align: center;
-        color: var(--text-secondary);
-        font-size: 0.85rem;
-      }
-
-      .footer a {
-        color: var(--accent);
-        text-decoration: none;
-        transition: color 0.2s;
-      }
-
-      .footer a:hover {
-        color: var(--accent-hover);
-        text-decoration: underline;
-      }
-
-      /* Responsive adjustments */
-      @media (max-width: 480px) {
-        .login-card {
-          padding: 1.5rem;
-        }
+      .theme-toggle svg {
+        width: 17px;
+        height: 17px;
       }
     </style>
   </head>
   <body>
-    <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="moon">
-        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+    <button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme">
+      <svg class="icon-moon" viewBox="0 0 20 20" fill="currentColor">
+        <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
       </svg>
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="sun" style="display: none">
-        <circle cx="12" cy="12" r="5"></circle>
-        <line x1="12" y1="1" x2="12" y2="3"></line>
-        <line x1="12" y1="21" x2="12" y2="23"></line>
-        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
-        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
-        <line x1="1" y1="12" x2="3" y2="12"></line>
-        <line x1="21" y1="12" x2="23" y2="12"></line>
-        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
-        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+      <svg class="icon-sun" viewBox="0 0 20 20" fill="currentColor" style="display: none">
+        <path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clip-rule="evenodd" />
       </svg>
     </button>
 
-    <div class="login-card">
-      <div class="header">
-        <div>
-          <img class="app-logo" src="/dashboard/static/logo.svg" width="70" height="70" />
-        </div>
-        <h1>NyaProxy</h1>
-        <p class="subtitle">Enter your API key to access the service</p>
+    <div class="card">
+      <div class="brand">
+        <img src="/dashboard/static/logo.svg" alt="" />
+        <span>NyaProxy</span>
       </div>
+      <p class="sub">Sign in to access the dashboard</p>
 
-      <form id="loginForm" method="post" action="javascript:void(0);">
-        <div class="form-group">
-          <label for="apiKey">API Key</label>
-          <input type="password" id="apiKey" name="apiKey" required autocomplete="off" placeholder="Enter your API key" />
-        </div>
-
-        <div id="errorMessage" class="error" style="display: none">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="12" y1="8" x2="12" y2="12"></line>
-            <line x1="12" y1="16" x2="12.01" y2="16"></line>
-          </svg>
-          <span id="errorText">Invalid API key. Please try again.</span>
-        </div>
-
-        <button type="submit" id="submitButton">
-          <span class="loading-spinner"></span>
-          <span>Authenticate</span>
-        </button>
+      <form id="login-form" method="post" action="javascript:void(0);">
+        <label for="api-key">API key</label>
+        <input type="password" id="api-key" name="apiKey" required autocomplete="off" placeholder="Enter your API key" />
+        <button type="submit" id="submit-btn">Sign in</button>
       </form>
-
-      <div class="footer">
-        <p>
-          Powered by
-          <a href="https://github.com/Nya-Foundation/NyaProxy" target="_blank" rel="noopener noreferrer">NyaProxy</a>
-        </p>
-      </div>
+      <div id="error" class="error"></div>
     </div>
 
     <script>
-      // Theme toggle functionality
-      const themeToggle = document.getElementById("theme-toggle");
-      const moonIcon = themeToggle.querySelector(".moon");
-      const sunIcon = themeToggle.querySelector(".sun");
-      const htmlElement = document.documentElement;
+      const root = document.documentElement;
+      const toggle = document.getElementById("theme-toggle");
+      const moon = toggle.querySelector(".icon-moon");
+      const sun = toggle.querySelector(".icon-sun");
 
-      // Function to set theme
-      const setTheme = (isDark) => {
-        if (isDark) {
-          htmlElement.classList.add("dark");
-          moonIcon.style.display = "none";
-          sunIcon.style.display = "block";
-        } else {
-          htmlElement.classList.remove("dark");
-          moonIcon.style.display = "block";
-          sunIcon.style.display = "none";
-        }
-        localStorage.theme = isDark ? "dark" : "light";
-      };
-
-      // Check for saved theme preference or respect OS preference
-      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      const savedTheme = localStorage.getItem("theme");
-
-      // Default to dark theme as requested
-      if (savedTheme === "light") {
-        setTheme(false);
-      } else {
-        setTheme(true); // Default to dark theme
+      function applyTheme(theme) {
+        root.setAttribute("data-theme", theme);
+        localStorage.setItem("nyaproxy-theme", theme);
+        const dark = theme === "dark";
+        moon.style.display = dark ? "" : "none";
+        sun.style.display = dark ? "none" : "";
       }
+      applyTheme(localStorage.getItem("nyaproxy-theme") || "dark");
+      toggle.addEventListener("click", () =>
+        applyTheme(root.getAttribute("data-theme") === "dark" ? "light" : "dark")
+      );
 
-      // Theme toggle button
-      themeToggle.addEventListener("click", () => {
-        const isDark = htmlElement.classList.contains("dark");
-        setTheme(!isDark);
-
-        // Add a subtle animation effect
-        themeToggle.classList.add("rotate-180");
-        setTimeout(() => {
-          themeToggle.classList.remove("rotate-180");
-        }, 300);
-      });
-
-      // Listen for OS theme changes
-      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
-        if (!localStorage.theme) {
-          // Only auto-switch if user hasn't set a preference
-          setTheme(e.matches);
-        }
-      });
-
-      // Form submission
-      document.getElementById("loginForm").addEventListener("submit", async function (e) {
-        e.preventDefault();
-
-        const apiKey = document.getElementById("apiKey").value;
-        const submitButton = document.getElementById("submitButton");
-        const errorElem = document.getElementById("errorMessage");
-
-        // Show loading state
-        submitButton.classList.add("loading");
-        submitButton.disabled = true;
-        errorElem.style.display = "none";
-
-        try {
-          // Simulate a slight delay for better UX
-          await new Promise((resolve) => setTimeout(resolve, 800));
-
-          // Set the API key as a cookie with path=/
-          document.cookie = `nyaproxy_api_key=${apiKey}; path=/; max-age=7200; SameSite=Strict`;
-
-          // Redirect back to the original path
-          window.location.href = "{{ return_path }}";
-        } catch (error) {
-          document.getElementById("errorText").textContent = "Error during authentication. Please try again.";
-          errorElem.style.display = "flex";
-
-          // Reset button state
-          submitButton.classList.remove("loading");
-          submitButton.disabled = false;
-        }
-      });
-
-      // Add focus animation to input
-      const input = document.getElementById("apiKey");
-      input.addEventListener("focus", () => {
-        input.parentElement.classList.add("focused");
-      });
-
-      input.addEventListener("blur", () => {
-        input.parentElement.classList.remove("focused");
-      });
+      document
+        .getElementById("login-form")
+        .addEventListener("submit", function () {
+          const key = document.getElementById("api-key").value;
+          const btn = document.getElementById("submit-btn");
+          const error = document.getElementById("error");
+          btn.disabled = true;
+          error.style.display = "none";
+          try {
+            document.cookie =
+              "nyaproxy_api_key=" +
+              key +
+              "; path=/; max-age=7200; SameSite=Strict";
+            window.location.href = "{{ return_path }}";
+          } catch (e) {
+            error.textContent = "Authentication failed. Please try again.";
+            error.style.display = "block";
+            btn.disabled = false;
+          }
+        });
     </script>
   </body>
 </html>
