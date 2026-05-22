@@ -59,25 +59,26 @@ git remote add upstream https://github.com/Nya-Foundation/nyaproxy.git
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
-5. Install the package in development mode:
-```bash
-pip install -e .[dev]
-```
 
 ## Code Style and Standards
 
-NyaProxy uses automated formatting tools to maintain consistent code style:
+NyaProxy uses automated tools to maintain consistent code style and type safety:
 
-- **Black**: For Python code formatting
-- **isort**: For import sorting (with Black compatibility profile)
+- **Black**: Python code formatting
+- **isort**: Import sorting (with the Black compatibility profile)
+- **mypy**: Static type checking (see the ratchet note below)
 
-Before submitting your PR, run these tools locally:
-```bash
-isort --profile black .
-black .
 ```
 
-Our CI pipeline will automatically check and format code when you submit a PR, but it's best to format your code before pushing.
+### Type-checking ratchet
+
+`mypy` does not yet pass on the whole codebase. `pyproject.toml`
+(`[tool.mypy]`) lists the modules that are currently type-clean, and only
+those are checked in CI. When you clean up a legacy module, add it to that
+`files` list so it can never regress.
+
+Our CI pipeline also checks formatting on every PR, but it's best to format
+your code before pushing.
 
 ## Pull Request Process
 
@@ -95,22 +96,91 @@ All pull requests require at least one approval from a maintainer before merging
 
 ## Testing
 
-All new code should include appropriate tests:
+All new code should include tests at the right level:
 
-- Unit tests for specific functions or classes
-- Integration tests for API endpoints
+- Unit tests for isolated functions, classes, and edge cases
+- End-to-end tests for proxy behavior that depends on real HTTP routing, config loading, queueing, retries, or upstream responses
 
-To run tests locally:
+The test suite is organized as:
+
+```text
+tests/
+  unit/   # focused tests for internal logic
+  e2e/    # true local proxy + mock upstream tests
+```
+
+Install development dependencies:
+
+```bash
+pip install -e ".[dev]"
+```
+
+Or, if you use `uv`:
+
+```bash
+uv run --extra dev python -m pytest --version
+```
+
+Run the full test suite:
+
 ```bash
 pytest
 ```
 
+With `uv`:
+
+```bash
+uv run --extra dev python -m pytest
+```
+
+Run unit tests only:
+
+```bash
+pytest tests/unit
+```
+
+Run E2E tests only:
+
+```bash
+pytest tests/e2e -m e2e
+```
+
+With `uv`:
+
+```bash
+uv run --extra dev python -m pytest tests/e2e -m e2e
+```
+
+### End-to-End Tests
+
+E2E tests start real local services:
+
+- a mock upstream API on a random `127.0.0.1` port
+- a NyaProxy process on a random `127.0.0.1` port
+- a temporary YAML config file that points NyaProxy to the mock upstream
+
+The mock upstream records each received request, including path, method, body, and injected upstream key. Tests then send real HTTP requests through NyaProxy and assert externally visible behavior.
+
+Current E2E coverage includes:
+
+- credential injection and round-robin key rotation
+- retry behavior that rotates to the next key after retryable status codes such as `429`
+- path policy rejection before requests reach the upstream
+- key rate-limit queueing
+- streaming response forwarding
+- request body substitution
+
+Keep E2E tests focused. Prefer one test per user-visible proxy behavior. Do not duplicate unit-level assertions in E2E unless the behavior only appears when the proxy, config file, queue, and upstream server run together.
+
 For coverage information:
+
 ```bash
 pytest --cov=nya tests/ --cov-report=term
 ```
 
-Our CI pipeline automatically runs tests across Python versions 3.9 through 3.14.
+When running E2E tests, coverage from the NyaProxy subprocess is not included in the parent pytest coverage report unless subprocess coverage is explicitly configured. Treat E2E tests primarily as behavioral checks, not coverage boosters.
+
+Our CI pipeline automatically runs tests across supported Python versions.
 
 ## Reporting Bugs
 

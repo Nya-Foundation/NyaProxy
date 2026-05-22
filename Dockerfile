@@ -1,5 +1,5 @@
-# Use Alpine as the base image for smaller size and potentially fewer vulnerabilities
-FROM alpine:latest AS builder
+# Use a pinned Python Alpine base for a small, repeatable image.
+FROM python:3.13-alpine AS builder
 
 # Set working directory
 WORKDIR /app
@@ -10,22 +10,19 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=off \
     PIP_DISABLE_PIP_VERSION_CHECK=on
 
-# Install Python and build dependencies
+# Install build dependencies
 RUN apk add --no-cache \
-    python3=3.12.11-r0 \
-    py3-pip \
     gcc \
-    musl-dev \
-    python3-dev=3.12.11-r0
+    musl-dev
 
 # Create and use a virtual environment
-RUN python3 -m venv /opt/venv
+RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy requirements and install external dependencies in the virtual environment
-COPY requirements.txt .
+COPY pyproject.toml .
 RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install -e .
 
 # Copy the source code
 COPY . .
@@ -38,7 +35,7 @@ RUN addgroup -S nya && \
     adduser -S -G nya -s /sbin/nologin -h /app -g "Non-privileged app user" nya
 
 # Create a runtime stage to minimize the final image size
-FROM alpine:latest AS runtime
+FROM python:3.13-alpine AS runtime
 
 # Add image metadata
 LABEL org.opencontainers.image.description="NyaProxy: A versatile API proxy with load balancing, rate limiting, and token rotation." \
@@ -53,9 +50,6 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH"
-
-# Install Python runtime only (no build tools)
-RUN apk add --no-cache python3=3.12.11-r0
 
 # Create the same user in the runtime image
 RUN addgroup -S nya && \

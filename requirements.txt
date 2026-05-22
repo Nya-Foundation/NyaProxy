@@ -1,9 +1,0 @@
-fastapi>=0.100.0
-uvicorn>=0.22.0
-httpx[socks]>=0.24.0
-setuptools>=42.0.0
-watchfiles>=0.18.0
-jmespath>=1.0.1
-orjson >= 3.10
-loguru>=0.7.0
-nekoconf[remote,schema,server]==1.2.1

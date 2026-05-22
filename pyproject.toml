@@ -17,12 +17,11 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.100.0",
     "uvicorn>=0.22.0",
@@ -32,7 +31,8 @@ dependencies = [
     "jmespath>=1.0.1",
     "orjson>=3.10,<4",
     "loguru>=0.7.0",
-    "nekoconf[remote,schema,server]==1.2.1",
+    "prometheus-client>=0.20.0",
+    "nacho-python[remote,schema,server]>=0.0.3",
 ]
 
 [project.optional-dependencies]
@@ -47,17 +47,41 @@ lint = [
     "flake8>=6.0.0",
     "black>=23.0.0",
     "isort>=5.0.0",
+    "mypy>=1.8.0",
 ]
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-addopts = "-v --cov=nya --cov-report=term-missing"
-asyncio_mode = "auto"
+[tool.isort]
+profile = "black"
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+# Legacy modules are still type-dirty; analyse them when imported but do
+# not report their errors. Remove this once `files` covers all of `nya`.
+follow_imports = "silent"
+# Ratchet: mypy currently checks only the modules known to be type-clean.
+# As legacy modules are fixed (run `mypy nya/` to see the backlog), add
+# them here until the whole `nya` package is covered.
+files = [
+    "nya/server/auth.py",
+    "nya/services/limit.py",
+    "nya/services/lb.py",
+    "nya/utils/formatting.py",
+    "nya/utils/redaction.py",
+    "nya/utils/substitution.py",
+    "nya/dashboard",
+]
 
 [tool.coverage.run]
 source = ["nya"]
 omit = ["tests/*"]
+data_file = "reports/.coverage"
+
+[tool.coverage.html]
+directory = "reports/htmlcov"
+
+[tool.coverage.xml]
+output = "reports/coverage.xml"
 
 [tool.coverage.report]
 exclude_lines = [

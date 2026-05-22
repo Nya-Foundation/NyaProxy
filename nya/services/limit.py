@@ -7,7 +7,7 @@ import time
 from collections import deque
 from typing import Deque, Optional, Tuple
 
-from loguru import logger
+from ..common.exceptions import ConfigurationError
 
 
 class RateLimiter:
@@ -22,7 +22,7 @@ class RateLimiter:
         "d": 86400,
     }
 
-    def __init__(self, rate_limit: str = None):
+    def __init__(self, rate_limit: Optional[str] = None):
         """
         Initialize rate limiter.
 
@@ -32,15 +32,21 @@ class RateLimiter:
         self.rate_limit = rate_limit or "0/s"
         self.requests_limit, self.window_seconds = self._parse_rate_limit(rate_limit)
         self.request_timestamps: Deque[float] = deque()
+        self.last_accessed = time.time()
 
         self.locked = False
 
     def __repr__(self):
         return f"<RateLimiter rate_limit={self.rate_limit}>"
 
-    def _parse_rate_limit(self, rate_limit: str) -> Tuple[int, int]:
+    def _parse_rate_limit(self, rate_limit: Optional[str]) -> Tuple[int, int]:
         """
-        Parse rate limit string into numeric values.
+        Parse a rate limit string into ``(requests, window_seconds)``.
+
+        ``None``, an empty string, or ``"0"`` mean "no rate limit". Any other
+        value that does not match a supported format raises
+        ``ConfigurationError`` so a typo cannot silently disable rate
+        limiting.
         """
         if not rate_limit or rate_limit == "0":
             return 0, 0
@@ -64,13 +70,19 @@ class RateLimiter:
             unit = simple_match.group(2)
             return requests, self.TIME_UNITS[unit]
 
-        logger.warning(f"Invalid rate limit format: {rate_limit}")
-        return 0, 0
+        raise ConfigurationError(
+            [
+                f"Invalid rate limit format: {rate_limit!r}. "
+                "Expected a value like '10/m', '100/h', or '1/5s' "
+                "(or '0' for no limit)."
+            ]
+        )
 
     def is_limited(self) -> bool:
         """
         Check if currently at rate limit.
         """
+        self.touch()
 
         if self.locked:
             return True
@@ -98,12 +110,20 @@ class RateLimiter:
         """
         Record a request timestamp.
         """
+        self.touch()
         self.request_timestamps.append(time.time())
+
+    def touch(self) -> None:
+        """
+        Update the last access timestamp for cache eviction.
+        """
+        self.last_accessed = time.time()
 
     def release(self) -> None:
         """
         Refund the most recent request if possible.
         """
+        self.touch()
         if not self.request_timestamps:
             return
         # Remove the most recent timestamp
@@ -113,18 +133,21 @@ class RateLimiter:
         """
         Lock the rate limiter to prevent any further requests.
         """
+        self.touch()
         self.locked = True
 
     def unlock(self) -> None:
         """
         Unlock the rate limiter to allow requests again.
         """
+        self.touch()
         self.locked = False
 
     def block_for(self, duration: float) -> None:
         """
         Block requests for specific duration.
         """
+        self.touch()
         current_time = time.time()
         self.request_timestamps = deque()
 
@@ -150,6 +173,11 @@ class RateLimiter:
         if not self.is_limited():
             return 0.0
 
+        # A locked limiter has no natural reset time and may hold no
+        # timestamps at all; guard against indexing an empty deque.
+        if not self.request_timestamps:
+            return 0.0
+
         current_time = time.time()
         oldest_timestamp = self.request_timestamps[0]
         reset_time = oldest_timestamp + self.window_seconds - current_time
@@ -168,4 +196,5 @@ class RateLimiter:
         """
         Clear rate limiter state.
         """
+        self.touch()
         self.request_timestamps = deque()

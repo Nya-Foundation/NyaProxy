@@ -3,7 +3,7 @@ Load balancer for selecting API keys based on various strategies.
 """
 
 import random
-from typing import Callable, List, Optional, TypeVar
+from typing import Callable, Dict, List, Optional, TypeVar
 
 from loguru import logger
 
@@ -50,7 +50,7 @@ class LoadBalancer:
 
         # Initialize metrics data
         self.requests_count = {key: 0 for key in self.keys}
-        self.response_times = {key: [] for key in self.keys}
+        self.response_times: Dict[str, List[float]] = {key: [] for key in self.keys}
         self.weights = [1] * len(self.keys)  # Default to equal weights
         self.current_index = 0  # Used for round_robin strategy
 
@@ -133,7 +133,7 @@ class LoadBalancer:
                 avg_times[value] = 0  # Give priority to unused values
 
         # Find value with minimum average response time
-        return min(avg_times, key=avg_times.get)
+        return min(avg_times, key=lambda key: avg_times[key])
 
     def _weighted_select(self) -> str:
         """

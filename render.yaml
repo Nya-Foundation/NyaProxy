@@ -1,9 +1,0 @@
-services:
-  - type: web
-    runtime: python
-    name: nya-proxy
-    autoDeploy: false
-    plan: free
-    buildCommand: pip install nya-proxy
-    startCommand: nyaproxy
-    healthCheckPath: /info
