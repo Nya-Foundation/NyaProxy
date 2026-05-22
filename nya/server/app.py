@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-NyaProxy - A simple low-level API proxy with dynamic token rotation.
+NyaProxy - A lightweight, header-based API proxy for managing authenticated upstream services.
 """
 
 import argparse
@@ -108,7 +108,7 @@ class NyaProxyApp:
         """
         app = FastAPI(
             title="NyaProxy",
-            description="A simple low-level API proxy with dynamic token rotation and load balancing",
+            description="A lightweight, header-based API proxy for managing authenticated upstream services",
             lifespan=self.lifespan,
             version=__version__,
         )
