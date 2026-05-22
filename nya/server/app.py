@@ -74,7 +74,7 @@ class NyaProxyApp:
         schema_path = schema_path or os.environ.get("SCHEMA_PATH")
         remote_url = os.environ.get("REMOTE_CONFIG_URL")
         remote_api_key = os.environ.get("REMOTE_CONFIG_API_KEY")
-        remote_app_name = os.environ.get("REMOTE_CONFIG_APP_NAME", "default")
+        remote_app_name = os.environ.get("REMOTE_CONFIG_APP_NAME")
 
         try:
             config = ConfigManager(
