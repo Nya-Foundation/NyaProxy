@@ -1,6 +1,22 @@
 # CHANGELOG
 
 
+## v0.5.0 (2026-05-22)
+
+### Chores
+
+- Drop python 3.10 support
+  ([`5b62536`](https://github.com/Nya-Foundation/NyaProxy/commit/5b6253655dae3374a3d955ac711531350d1efb48))
+
+### Features
+
+- Force version bump
+  ([`f8020fe`](https://github.com/Nya-Foundation/NyaProxy/commit/f8020fe7fbc2acd85742504620630531fd743ae9))
+
+- Update default passwd... doc update
+  ([`b71b20b`](https://github.com/Nya-Foundation/NyaProxy/commit/b71b20b5423d065aac477be9a4a5730cf8920ece))
+
+
 ## v0.4.6 (2025-07-07)
 
 ### Bug Fixes
