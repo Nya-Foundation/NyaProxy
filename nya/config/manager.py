@@ -16,7 +16,7 @@ T = TypeVar("T")
 
 class ConfigManager:
     """
-    Manages configuration for NyaProxy using Nacho (singleton pattern).
+    Manages configuration for NyaProxy using Nacho.
     """
 
     def __init__(
@@ -232,12 +232,6 @@ class ConfigManager:
         """
         return self.config.get_bool("server.cors.allow_credentials", False)
 
-    def get_default_settings(self) -> Dict[str, Any]:
-        """
-        Get the default settings for endpoints.
-        """
-        return self.config.get_dict("default_settings", {})
-
     def get_default_timeout(self) -> int:
         """
         Get the default timeout for API requests.
@@ -289,22 +283,6 @@ class ConfigManager:
             )
         else:  # Default to string
             return self.config.get_str(f"apis.{api_name}.{setting_path}", default_value)
-
-    def get_api_request_body_substitution_enabled(self, api_name: str) -> bool:
-        """
-        Get whether request body substitution is enabled for an API.
-        """
-        return self.get_api_setting(
-            api_name, "request_body_substitution.enabled", "bool"
-        )
-
-    def get_api_request_body_substitution_rules(
-        self, api_name: str
-    ) -> List[Dict[str, Any]]:
-        """
-        Get request body substitution rules.
-        """
-        return self.get_api_setting(api_name, "request_body_substitution.rules", "list")
 
     def get_api_default_timeout(self, api_name: str) -> int:
         """
@@ -495,26 +473,13 @@ class ConfigManager:
             # If it's not a list or string, try to convert to string
             return [str(values)]
 
-    def get_api_request_subst_rules(self, api_name: str) -> Dict[str, Any]:
+    def get_api_request_subst_rules(self, api_name: str) -> List[Dict[str, Any]]:
         """
-        Get request body substitution rules if enabled.
+        Get request body substitution rules, or an empty list when disabled.
         """
-
-        enable = self.get_api_request_body_substitution_enabled(api_name)
-
-        if not enable:
-            return {}
-        return self.get_api_request_body_substitution_rules(api_name)
-
-    def reload(self) -> None:
-        """
-        Reload the configuration from disk.
-        """
-        try:
-            self.config = self.init_config_client()
-            self.server = self.init_config_server()
-
-            logger.info("[NyaProxy] Configuration reloaded successfully")
-        except Exception as e:
-            logger.error(f"Failed to reload configuration: {str(e)}")
-            raise ConfigurationError(f"Failed to reload configuration: {str(e)}")
+        enabled = self.get_api_setting(
+            api_name, "request_body_substitution.enabled", "bool"
+        )
+        if not enabled:
+            return []
+        return self.get_api_setting(api_name, "request_body_substitution.rules", "list")

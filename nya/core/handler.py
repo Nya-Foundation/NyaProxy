@@ -30,7 +30,7 @@ class RequestHandler:
         Initialize the request handler.
 
         Args:
-            config: Configuration manager instance, defaults to ConfigManager singleton if None
+            config: Configuration manager instance
         """
         self.config = config
 
@@ -225,13 +225,6 @@ class RequestHandler:
 
         This method can be overridden to implement custom request body modifications.
         """
-        body_subst_enabled = self.config.get_api_request_body_substitution_enabled(
-            request.api_name
-        )
-
-        if not body_subst_enabled:
-            return
-
         content_type = request.headers.get("content-type", "").lower()
         if "application/json" not in content_type:
             return

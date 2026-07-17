@@ -27,6 +27,7 @@ dependencies = [
     "uvicorn>=0.22.0",
     "httpx[socks]>=0.24.0",
     "setuptools>=42.0.0",
+    # Not imported directly: uvicorn's file-watch backend for config hot-reload
     "watchfiles>=0.18.0",
     "jmespath>=1.0.1",
     "orjson>=3.10,<4",

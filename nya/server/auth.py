@@ -35,6 +35,20 @@ class AuthManager:
         """
         return self.config.get_api_key()
 
+    def is_auth_disabled(self) -> bool:
+        """
+        True when no usable API key is configured, i.e. every request is allowed.
+        """
+        configured_key = self.get_api_key()
+        if configured_key is None:
+            return True
+        if isinstance(configured_key, str):
+            stripped = configured_key.strip()
+            return not stripped or stripped.lower() in ("none", "null")
+        if isinstance(configured_key, list):
+            return not configured_key
+        return False
+
     def verify_api_key(self, key: str, verify_master: bool = False) -> bool:
         """
         Verify if the provided key matches the configured API key.
@@ -52,29 +66,16 @@ class AuthManager:
         # Strip the key to ensure consistent comparison
         key = key.strip()
 
-        # Get the configured key (can be None, str, or List[str])
-        configured_key = self.get_api_key()
-
-        # If no API key is configured, allow all keys
-        if configured_key is None:
+        if self.is_auth_disabled():
             return True
 
-        # Handle string case
+        # Get the configured key (can be str or List[str] at this point)
+        configured_key = self.get_api_key()
+
         if isinstance(configured_key, str):
-            # Empty config key or special values mean no auth
-            if not configured_key.strip() or configured_key.strip().lower() in [
-                "none",
-                "null",
-            ]:
-                return True
             return self._secrets_equal(key, configured_key.strip())
 
-        # Handle list case
         if isinstance(configured_key, list):
-            # Empty list means no auth
-            if not configured_key:
-                return True
-
             if verify_master:
                 # Only the first key acts as the master key
                 return self._secrets_equal(key, configured_key[0].strip())
@@ -154,6 +155,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Skip auth for specific paths if needed
         excluded_paths = [
             "/",
+            "/health",
             "/info",
             "/metrics",
             "/docs",
@@ -165,12 +167,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if any(request.url.path == path for path in excluded_paths):
             return await call_next(request)
 
-        configured_key = self.auth.get_api_key()
-
-        # No API key required if configured_key is None or empty string/list
-        if configured_key is None or (
-            isinstance(configured_key, (str, list)) and not configured_key
-        ):
+        if self.auth.is_auth_disabled():
             return await call_next(request)
 
         # First, check for valid session cookie

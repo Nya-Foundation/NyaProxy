@@ -241,7 +241,8 @@
                                 "backoff",
                                 "key_rotation"
                             ],
-                            "description": "Retry mode"
+                            "description": "Deprecated: has no effect. Retries always cool down the failing key and rotate to the next available one. Kept only so existing configs keep validating.",
+                            "deprecated": true
                         },
                         "attempts": {
                             "type": "integer",

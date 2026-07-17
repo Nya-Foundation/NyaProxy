@@ -379,14 +379,6 @@ class RequestQueue:
         expiry_seconds = self.config.get_api_queue_expiry(request.api_name)
         return time.time() - request.added_at > expiry_seconds
 
-    def get_queue_size(self, api_name: str) -> int:
-        """
-        Get current queue size for an API.
-        """
-        if api_name in self._queues:
-            return self._queues[api_name].qsize()
-        return 0
-
     async def clear_queue(self, api_name: str) -> int:
         """
         Clear queue for an API.

@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import socket
@@ -101,6 +102,18 @@ def upstream_server():
 
             return StreamingResponse(events(), media_type="text/event-stream")
 
+        if path == "stream-error":
+
+            async def broken_events():
+                yield b"data: first\n\n"
+                raise RuntimeError("upstream stream failure")
+
+            return StreamingResponse(broken_events(), media_type="text/event-stream")
+
+        if path == "slow":
+            await asyncio.sleep(4)
+            return JSONResponse(content={"status": "finally"})
+
         status = state.next_status(key)
         return JSONResponse(
             status_code=status,
@@ -152,6 +165,7 @@ def proxy_server(tmp_path: Path, upstream_server):
         dashboard_enabled: bool = False,
         extra_api_config: str = "",
         keys: tuple = UPSTREAM_KEYS,
+        endpoint_override: str | None = None,
     ) -> str:
         port = get_free_port()
         config_path = tmp_path / f"nyaproxy-{port}.yaml"
@@ -205,7 +219,7 @@ default_settings:
 apis:
   mock:
     name: Mock API
-    endpoint: {upstream_url}
+    endpoint: {endpoint_override or upstream_url}
     aliases:
       - mock-alias
     key_variable: keys

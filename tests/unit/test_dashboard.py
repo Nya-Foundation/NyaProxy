@@ -240,19 +240,6 @@ def test_control_routes_absent_when_disabled():
     assert client.post("/api/queue/clear").status_code == 404
 
 
-def test_queue_status_includes_optional_queue_metrics():
-    class QueueWithMetrics(FakeRequestQueue):
-        def get_metrics(self):
-            return {"oldest_wait_seconds": 1.5}
-
-    dashboard = DashboardAPI()
-    dashboard.set_request_queue(QueueWithMetrics())
-    resp = TestClient(dashboard.app).get("/api/queue")
-
-    assert resp.status_code == 200
-    assert resp.json()["metrics"] == {"oldest_wait_seconds": 1.5}
-
-
 def test_dashboard_html_directory_fallback(monkeypatch):
     monkeypatch.setattr(
         "nya.dashboard.api.importlib.resources.files",

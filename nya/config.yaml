@@ -1,11 +1,15 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Nya-Foundation/NyaProxy/main/nya/schema.json
 # NyaProxy Configuration File
 # This file contains server settings and API endpoint configurations
 
 server:
-  api_key: 
+  # WARNING: leaving api_key empty disables authentication entirely — anyone
+  # who can reach NyaProxy can use the proxy, dashboard, and config UI.
+  # Set one key (or a list; the first entry is the master key).
+  api_key:
   logging:
     enabled: true
-    level: debug
+    level: info # debug logs request/response metadata; enable only when needed
     log_file: app.log
   proxy:
     enabled: false
@@ -77,6 +81,9 @@ apis:
       - your_gemini_key_2
       - your_gemini_key_3
     load_balancing_strategy: least_requests
+    # For the "weighted" strategy, assign per-key weights (same order as variables.keys):
+    # load_balancing_strategy: weighted
+    # key_weights: [3, 1, 1]
     rate_limit:
       enabled: true
       # For Gemini-2.5-pro-exp-03-25, rate limits per key are 5 RPM and 25 RPD

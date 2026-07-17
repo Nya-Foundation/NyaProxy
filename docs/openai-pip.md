@@ -25,7 +25,7 @@ Installing NyaProxy directly with PIP offers these advantages:
 
 Before starting, you'll need:
 
-1. **Python Installed** (version 3.8 or higher)
+1. **Python Installed** (version 3.11 or higher)
    - [Download Python](https://www.python.org/downloads/)
    - During installation, check "Add Python to PATH" (Windows)
 
@@ -196,7 +196,7 @@ print(response.json())
 
 1. **"Command not found" Error**
    - Make sure Python is in your PATH
-   - Try using `python -m nya.server.app` instead
+   - Try using `python -m nya` instead
 
 2. **Can't Access Dashboard/Config UI**
    - Make sure NyaProxy is running (check terminal output)

@@ -102,16 +102,6 @@ class RateLimiter:
         self._clean_old_timestamps()
         return len(self.request_timestamps) >= self.requests_limit
 
-    def can_proceed(self) -> bool:
-        """
-        Check if request can proceed and record it if allowed.
-        """
-        if self.is_limited():
-            return False
-
-        self.record()
-        return True
-
     def record(self) -> None:
         """
         Record a request timestamp.
@@ -185,15 +175,6 @@ class RateLimiter:
         oldest_timestamp = self.request_timestamps[0]
         reset_time = oldest_timestamp + self.window_seconds - current_time
         return max(blocked_wait, reset_time, 0.0)
-
-    def remaining_quota(self) -> int:
-        """
-        Get remaining requests in current window.
-        """
-        if self.requests_limit == 0:
-            return 999
-        self._clean_old_timestamps()
-        return max(0, self.requests_limit - len(self.request_timestamps))
 
     def clear(self) -> None:
         """

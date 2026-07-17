@@ -8,6 +8,7 @@ import random
 import traceback
 from typing import TYPE_CHECKING, Dict, Optional, Union
 
+import httpx
 from loguru import logger
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
@@ -45,7 +46,7 @@ class NyaProxyCore:
         Initialize the NyaProxyCore with the given configuration and metrics collector.
 
         Args:
-            config: Configuration manager instance, defaults to ConfigManager singleton if None
+            config: Configuration manager instance
             metrics_collector: Optional metrics collector for tracking request metrics
         """
         self.config = config
@@ -109,6 +110,13 @@ class NyaProxyCore:
             return self._error_response(e.message, 503)
         except (asyncio.TimeoutError, RequestExpiredError):
             return self._error_response("NyaProxy: Request timed out in queue", 504)
+        except httpx.TimeoutException:
+            return self._error_response("NyaProxy: Upstream request timed out", 504)
+        except httpx.TransportError as e:
+            logger.warning(f"Upstream transport error for {request.api_name}: {e}")
+            return self._error_response(
+                "NyaProxy: Unable to reach upstream endpoint", 502
+            )
         except Exception as e:
             logger.error(
                 f"Unexpected error handling request: {e}, traceback: {traceback.format_exc()}"

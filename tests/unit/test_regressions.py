@@ -19,7 +19,7 @@ from nya.core.queue import RequestQueue
 from nya.services.limit import RateLimiter
 from nya.utils.header import HeaderUtils
 
-from .test_core_components import CoreConfig, make_request
+from .core_helpers import CoreConfig, make_request
 
 # --------------------------------------------------------------------------
 # RateLimiter.block_for on unlimited limiters (key cool-down after 429)
@@ -50,7 +50,7 @@ def test_block_for_does_not_wipe_recorded_usage():
     limiter.record()
     limiter.record()
     limiter.block_for(0.01)
-    assert limiter.remaining_quota() == 3
+    assert len(limiter.request_timestamps) == 2
 
 
 def test_clear_resets_block():
