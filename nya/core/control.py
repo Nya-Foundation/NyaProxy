@@ -54,6 +54,11 @@ class TrafficManager:
 
             keys = self.config.get_api_variable_values(api_name, key_variable)
             lb = LoadBalancer(keys, strategy)
+
+            weights = self.config.get_api_key_weights(api_name)
+            if weights:
+                lb.set_weights([int(w) for w in weights])
+
             self.load_balancers[api_name] = lb
         return lb
 
@@ -122,22 +127,6 @@ class TrafficManager:
         rate_limit = self.config.get_api_endpoint_rate_limit(api_name)
         return self.get_or_create_limiter(f"{api_name}_endpoint", rate_limit)
 
-    def has_keys_available(self, api_name: str) -> bool:
-        """
-        Check if any keys are available for the API.
-        """
-        lb = self.get_load_balancer(api_name)
-        if not lb:
-            return False
-
-        # Check if any key is actually available
-        for key in lb.keys:
-            key_limiter = self.get_key_limiter(api_name, key)
-            if not key_limiter or not key_limiter.is_limited():
-                return True
-
-        return False
-
     def time_to_ip_ready(self, api_name: str, ip: str) -> float:
         """
         Check if the IP address is ready for requests.
@@ -174,13 +163,6 @@ class TrafficManager:
         """
         user_limiter = self.get_user_limiter(api_name, user)
         user_limiter.record()
-
-    def record_endpoint_request(self, api_name: str) -> None:
-        """
-        Record a request for the API endpoint.
-        """
-        endpoint_limiter = self.get_endpoint_limiter(api_name)
-        endpoint_limiter.record()
 
     def time_to_endpoint_ready(self, api_name: str) -> float:
         """
@@ -246,30 +228,6 @@ class TrafficManager:
 
         return key
 
-    async def select_key(self, api_name: str) -> Optional[str]:
-        """
-        Select a available key atomiclly for the API.
-        This method uses the load balancer to select the next key and checks if it's available.
-
-        Args:
-            api_name: The name of the API to select a key for.
-
-        Returns:
-            Optional[str]: The selected key if available, otherwise None.
-        """
-        lb = self.get_load_balancer(api_name)
-
-        async with self._lock:
-            # Use load balancer to select next key, then check if it's available
-            for _ in range(len(lb.keys)):
-                key = lb.next()
-                key_limiter = self.get_key_limiter(api_name, key)
-
-                if not key_limiter.is_limited():
-                    return key
-
-            return None
-
     def release_key(self, api_name: str, key: str) -> None:
         """
         Release a key that was previously used.
@@ -305,13 +263,6 @@ class TrafficManager:
         """
         key_limiter = self.get_key_limiter(api_name, key)
         key_limiter.block_for(duration)
-
-    def lock_key(self, api_name: str, key: str) -> None:
-        """
-        Lock a key to prevent any further requests.
-        """
-        key_limiter = self.get_key_limiter(api_name, key)
-        key_limiter.lock()
 
     def unlock_key(self, api_name: str, key: str) -> None:
         """

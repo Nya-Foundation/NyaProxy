@@ -67,7 +67,7 @@ class FakeRequestQueue:
     async def clear_queue(self, api_name):
         return 2
 
-    def clear_all_queues(self):
+    async def clear_all_queues(self):
         return 5
 
 
@@ -77,7 +77,7 @@ class FakeRequestQueue:
 
 
 def make_dashboard(*, with_deps=True, enable_control=True):
-    dashboard = DashboardAPI(port=0, enable_control=enable_control)
+    dashboard = DashboardAPI(enable_control=enable_control)
     if with_deps:
         dashboard.set_metrics_collector(FakeMetricsCollector())
         dashboard.set_request_queue(FakeRequestQueue())
@@ -245,7 +245,7 @@ def test_queue_status_includes_optional_queue_metrics():
         def get_metrics(self):
             return {"oldest_wait_seconds": 1.5}
 
-    dashboard = DashboardAPI(port=0)
+    dashboard = DashboardAPI()
     dashboard.set_request_queue(QueueWithMetrics())
     resp = TestClient(dashboard.app).get("/api/queue")
 
@@ -271,38 +271,7 @@ def test_dashboard_index_template_failure_returns_500(monkeypatch):
         "nya.dashboard.routes.pages.importlib.resources.open_text", broken_open_text
     )
 
-    assert TestClient(DashboardAPI(port=0).app).get("/").status_code == 500
-
-
-@pytest.mark.asyncio
-async def test_dashboard_start_background_and_run_delegate_to_uvicorn(monkeypatch):
-    calls = {}
-
-    class FakeServer:
-        def __init__(self, config):
-            calls["config"] = config
-
-        async def serve(self):
-            calls["served"] = True
-
-    monkeypatch.setattr("nya.dashboard.api.uvicorn.Server", FakeServer)
-    dashboard = DashboardAPI(port=1234)
-
-    await dashboard.start_background(host="127.0.0.1")
-    assert calls["config"].host == "127.0.0.1"
-    assert calls["config"].port == 1234
-    assert calls["served"] is True
-
-    monkeypatch.setattr(
-        "nya.dashboard.api.uvicorn.run",
-        lambda app, host, port, log_config: calls.update(
-            {"run_host": host, "run_port": port, "log_config": log_config}
-        ),
-    )
-    dashboard.run(host="127.0.0.2")
-    assert calls["run_host"] == "127.0.0.2"
-    assert calls["run_port"] == 1234
-    assert calls["log_config"] is None
+    assert TestClient(DashboardAPI().app).get("/").status_code == 500
 
 
 def test_dashboard_route_failures_return_500():
@@ -326,10 +295,10 @@ def test_dashboard_route_failures_return_500():
         async def clear_queue(self, api_name):
             raise RuntimeError("clear one failed")
 
-        def clear_all_queues(self):
+        async def clear_all_queues(self):
             raise RuntimeError("clear all failed")
 
-    dashboard = DashboardAPI(port=0, enable_control=True)
+    dashboard = DashboardAPI(enable_control=True)
     dashboard.set_metrics_collector(BrokenMetrics())
     dashboard.set_request_queue(BrokenQueue())
     client = TestClient(dashboard.app)

@@ -133,12 +133,6 @@ class ConfigManager:
 
         return server
 
-    def get_debug_level(self) -> str:
-        """
-        Get the debug level for logging.
-        """
-        return self.config.get_str("server.debug_level", "INFO")
-
     def get_host(self) -> str:
         """
         Get the server bind host (falls back to the built-in default).
@@ -156,18 +150,6 @@ class ConfigManager:
         Check if dashboard is enabled.
         """
         return self.config.get_bool("server.dashboard.enabled", True)
-
-    def get_retry_mode(self) -> str:
-        """
-        Get the retry mode for failed requests.
-        """
-        return self.config.get_str("server.retry.mode", "default")
-
-    def get_retry_config(self) -> Dict[str, Any]:
-        """
-        Get the retry configuration.
-        """
-        return self.config.get_dict("server.retry", {})
 
     def get_api_key(self) -> Union[None, str, List[str]]:
         """
@@ -366,6 +348,12 @@ class ConfigManager:
         """
         return self.get_api_setting(api_name, "load_balancing_strategy", "str")
 
+    def get_api_key_weights(self, api_name: str) -> List[int]:
+        """
+        Get key selection weights for the 'weighted' load balancing strategy.
+        """
+        return self.config.get_list(f"apis.{api_name}.key_weights", [])
+
     def get_api_allowed_paths(self, api_name: str) -> List[str]:
         """
         Get the list of allowed paths for the API.
@@ -443,12 +431,6 @@ class ConfigManager:
         Get retry enabled status.
         """
         return self.get_api_setting(api_name, "retry.enabled", "bool")
-
-    def get_api_retry_mode(self, api_name: str) -> str:
-        """
-        Get retry mode.
-        """
-        return self.get_api_setting(api_name, "retry.mode", "str")
 
     def get_api_retry_attempts(self, api_name: str) -> int:
         """

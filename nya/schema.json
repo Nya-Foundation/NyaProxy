@@ -165,7 +165,8 @@
                             "PUT",
                             "DELETE",
                             "PATCH",
-                            "OPTIONS"
+                            "OPTIONS",
+                            "HEAD"
                         ],
                         "description": "HTTP methods to allow or block"
                     }
@@ -199,29 +200,29 @@
                         },
                         "endpoint_rate_limit": {
                             "type": "string",
-                            "pattern": "^(\\d+)/((\\d+[smhd])|[smhd])$",
-                            "description": "Endpoint rate limit"
+                            "pattern": "^(0|(\\d+)/((\\d+[smhd])|[smhd]))$",
+                            "description": "Endpoint rate limit (e.g. '10/m', '1/5s', or '0' for unlimited)"
                         },
                         "key_rate_limit": {
                             "type": "string",
-                            "pattern": "^(\\d+)/((\\d+[smhd])|[smhd])$",
-                            "description": "Per key rate limit"
+                            "pattern": "^(0|(\\d+)/((\\d+[smhd])|[smhd]))$",
+                            "description": "Per key rate limit (e.g. '10/m', '1/5s', or '0' for unlimited)"
                         },
                         "ip_rate_limit": {
                             "type": "string",
-                            "pattern": "^(\\d+)/((\\d+[smhd])|[smhd])$",
-                            "description": "Per IP rate limit"
+                            "pattern": "^(0|(\\d+)/((\\d+[smhd])|[smhd]))$",
+                            "description": "Per IP rate limit (e.g. '10/m', '1/5s', or '0' for unlimited)"
                         },
                         "user_rate_limit": {
                             "type": "string",
-                            "pattern": "^(\\d+)/((\\d+[smhd])|[smhd])$",
-                            "description": "Per User rate limit"
+                            "pattern": "^(0|(\\d+)/((\\d+[smhd])|[smhd]))$",
+                            "description": "Per User rate limit (e.g. '10/m', '1/5s', or '0' for unlimited)"
                         },
                         "rate_limit_paths": {
                             "type": "array",
                             "items": {
                                 "type": "string",
-                                "description": "Path patterns to apply rate limits to, regex supported"
+                                "description": "Path patterns to apply rate limits to (prefix match, trailing * wildcard)"
                             }
                         }
                     }
@@ -269,7 +270,8 @@
                                     "PUT",
                                     "DELETE",
                                     "PATCH",
-                                    "OPTIONS"
+                                    "OPTIONS",
+                                    "HEAD"
                                 ]
                             }
                         }
@@ -477,6 +479,14 @@
                         },
                         "load_balancing_strategy": {
                             "$ref": "#/$defs/default_settings/properties/load_balancing_strategy"
+                        },
+                        "key_weights": {
+                            "type": "array",
+                            "items": {
+                                "type": "integer",
+                                "minimum": 0
+                            },
+                            "description": "Relative selection weights for the API keys (same order as the key variable values); used by the 'weighted' load balancing strategy"
                         },
                         "allowed_paths": {
                             "$ref": "#/$defs/default_settings/properties/allowed_paths"

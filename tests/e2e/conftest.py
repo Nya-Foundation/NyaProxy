@@ -67,7 +67,9 @@ def upstream_server():
     app = FastAPI()
     port = get_free_port()
 
-    @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+    @app.api_route(
+        "/{path:path}", methods=["GET", "HEAD", "POST", "PUT", "DELETE", "PATCH"]
+    )
     async def catch_all(request: Request, path: str):
         if path == "health":
             return {"status": "ok"}
@@ -133,7 +135,10 @@ def proxy_server(tmp_path: Path, upstream_server):
         load_balancing_strategy: str = "round_robin",
         key_rate_limit: str = "1000/m",
         endpoint_rate_limit: str = "1000/m",
+        ip_rate_limit: str = "1000/m",
+        user_rate_limit: str = "1000/m",
         retry_enabled: bool = True,
+        retry_after_seconds: float = 0.01,
         request_body_substitution: str = "      enabled: false",
         allowed_paths: str = """
     enabled: false
@@ -142,7 +147,11 @@ def proxy_server(tmp_path: Path, upstream_server):
       - "*"
 """,
         queue_expiry_seconds: int = 5,
+        queue_max_size: int = 20,
         max_workers: int = 3,
+        dashboard_enabled: bool = False,
+        extra_api_config: str = "",
+        keys: tuple = UPSTREAM_KEYS,
     ) -> str:
         port = get_free_port()
         config_path = tmp_path / f"nyaproxy-{port}.yaml"
@@ -157,7 +166,7 @@ server:
     level: info
     log_file: {log_path}
   dashboard:
-    enabled: false
+    enabled: {str(dashboard_enabled).lower()}
   cors:
     allow_origins: ["*"]
     allow_credentials: false
@@ -171,24 +180,23 @@ default_settings:
   load_balancing_strategy: {load_balancing_strategy}
   allowed_paths:
 {allowed_paths.rstrip()}
-  allowed_methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+  allowed_methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"]
   queue:
-    max_size: 20
+    max_size: {queue_max_size}
     max_workers: {max_workers}
     expiry_seconds: {queue_expiry_seconds}
   rate_limit:
     enabled: true
-    endpoint_rate_limit: {endpoint_rate_limit}
-    key_rate_limit: {key_rate_limit}
-    ip_rate_limit: 1000/m
-    user_rate_limit: 1000/m
+    endpoint_rate_limit: "{endpoint_rate_limit}"
+    key_rate_limit: "{key_rate_limit}"
+    ip_rate_limit: "{ip_rate_limit}"
+    user_rate_limit: "{user_rate_limit}"
     rate_limit_paths:
       - "*"
   retry:
     enabled: {str(retry_enabled).lower()}
-    mode: key_rotation
     attempts: 3
-    retry_after_seconds: 0.01
+    retry_after_seconds: {retry_after_seconds}
     retry_request_methods: [GET, POST, PUT, DELETE, PATCH, OPTIONS]
     retry_status_codes: [429, 500, 502, 503, 504]
   timeouts:
@@ -198,16 +206,16 @@ apis:
   mock:
     name: Mock API
     endpoint: {upstream_url}
+    aliases:
+      - mock-alias
     key_variable: keys
     headers:
       Authorization: "Bearer ${{{{keys}}}}"
     variables:
       keys:
-        - {UPSTREAM_KEYS[0]}
-        - {UPSTREAM_KEYS[1]}
-        - {UPSTREAM_KEYS[2]}
+{chr(10).join(f"        - {key}" for key in keys)}
     load_balancing_strategy: {load_balancing_strategy}
-    request_body_substitution:
+{extra_api_config.rstrip() + chr(10) if extra_api_config.strip() else ""}    request_body_substitution:
 {request_body_substitution.rstrip()}
 """,
             encoding="utf-8",

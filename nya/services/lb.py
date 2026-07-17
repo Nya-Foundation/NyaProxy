@@ -7,9 +7,10 @@ from typing import Callable, Dict, List, Optional, TypeVar
 
 from loguru import logger
 
-from ..common.constants import MAX_QUEUE_SIZE
-
 T = TypeVar("T")
+
+#: Number of recent response times kept per key for fastest_response.
+RESPONSE_TIME_WINDOW = 200
 
 
 class LoadBalancer:
@@ -139,13 +140,16 @@ class LoadBalancer:
         """
         Select a value based on weights.
         """
-        # Create weighted list
-        weighted_choices = []
-        for i, value in enumerate(self.keys):
-            weight = self.weights[i] if i < len(self.weights) else 1
-            weighted_choices.extend([value] * weight)
+        weights = [
+            self.weights[i] if i < len(self.weights) else 1
+            for i in range(len(self.keys))
+        ]
 
-        return random.choice(weighted_choices)
+        # Fall back to uniform selection if no key has a positive weight
+        if not any(weight > 0 for weight in weights):
+            return random.choice(self.keys)
+
+        return random.choices(self.keys, weights=weights, k=1)[0]
 
     def set_weights(self, weights: List[int]) -> None:
         """
@@ -170,7 +174,7 @@ class LoadBalancer:
         if key not in self.response_times:
             self.response_times[key] = []
 
-        # Keep only last 100 response times for efficiency
+        # Keep only a bounded window of recent response times
         self.response_times[key].append(response_time)
-        if len(self.response_times[key]) > MAX_QUEUE_SIZE:
-            self.response_times[key] = self.response_times[key][-MAX_QUEUE_SIZE:]
+        if len(self.response_times[key]) > RESPONSE_TIME_WINDOW:
+            self.response_times[key] = self.response_times[key][-RESPONSE_TIME_WINDOW:]

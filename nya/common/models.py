@@ -44,8 +44,11 @@ class ProxyRequest:
         self.content: Optional[bytes] = content
 
         # API Related metadata
-        self.api_name: str = None
+        self.api_name: Optional[str] = None
         self.api_key: Optional[str] = None
+
+        # Path portion after the API prefix, set during preparation
+        self.trail_path: str = "/"
 
         self.ip: str = ip
         self.user: Optional[str] = None

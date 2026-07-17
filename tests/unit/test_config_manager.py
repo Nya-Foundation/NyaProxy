@@ -137,12 +137,9 @@ def sample_data():
 def test_top_level_getters_return_configured_values():
     manager = make_manager(sample_data())
 
-    assert manager.get_debug_level() == "DEBUG"
     assert manager.get_host() == "127.0.0.1"
     assert manager.get_port() == 9191
     assert manager.get_dashboard_enabled() is False
-    assert manager.get_retry_mode() == "aggressive"
-    assert manager.get_retry_config()["attempts"] == 3
     assert manager.get_api_key() == ["master", "secondary"]
     assert manager.get_logging_config() == {
         "enabled": False,
@@ -187,7 +184,6 @@ def test_api_getters_fall_back_to_default_settings_and_api_overrides():
     assert manager.get_api_ip_rate_limit("openai") == "2/s"
     assert manager.get_api_user_rate_limit("openai") == "3/s"
     assert manager.get_api_retry_enabled("openai") is True
-    assert manager.get_api_retry_mode("openai") == "default"
     assert manager.get_api_retry_attempts("openai") == 4
     assert manager.get_api_retry_after_seconds("openai") == 0.5
     assert manager.get_api_retry_status_codes("openai") == [429, 500]

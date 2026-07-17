@@ -25,6 +25,9 @@ class DummyConfig:
     def get_api_key_variable(self, api_name):
         return "keys"
 
+    def get_api_key_weights(self, api_name):
+        return []
+
     def get_api_variable_values(self, api_name, variable_name):
         if variable_name == "keys":
             return self.keys

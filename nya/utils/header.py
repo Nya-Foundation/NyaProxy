@@ -45,9 +45,11 @@ class HeaderUtils:
         ]:
             proxy_info = headers.get(header)
             if proxy_info:
-                # Extract first IP and validate it
+                # Extract first IP and validate it; these headers are
+                # client-supplied, so malformed values must be ignored,
+                # never raised.
                 first_ip = proxy_info.split(",")[0].strip()
-                if ipaddress.ip_address(first_ip):
+                if HeaderUtils._is_valid_ip(first_ip):
                     return first_ip
 
         if "forwarded" in headers:
@@ -56,10 +58,21 @@ class HeaderUtils:
             result = re.search(r"for=([^;,]+)", forwarded)
             if result:
                 ip = result.group(1).strip('"').strip("[]")  # Handle IPv6 brackets
-                if ipaddress.ip_address(ip):
+                if HeaderUtils._is_valid_ip(ip):
                     return ip
 
         return None
+
+    @staticmethod
+    def _is_valid_ip(value: str) -> bool:
+        """
+        Return True if the value parses as an IPv4/IPv6 address.
+        """
+        try:
+            ipaddress.ip_address(value)
+            return True
+        except ValueError:
+            return False
 
     @staticmethod
     def extract_required_variables(header_templates: Dict[str, Any]) -> Set[str]:

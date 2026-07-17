@@ -43,7 +43,6 @@ default_settings:
       - "*"
   retry:
     enabled: true
-    mode: key_rotation
     attempts: 3
     retry_after_seconds: 1
     retry_request_methods: [ POST, GET, PUT, DELETE, PATCH, OPTIONS ]
@@ -86,7 +85,6 @@ apis:
       expiry_seconds: 600
     retry:
       enabled: true
-      mode: key_rotation
       attempts: 3
       retry_after_seconds: 3
       retry_status_codes: [ 429 ]

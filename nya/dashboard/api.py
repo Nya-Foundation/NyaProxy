@@ -11,7 +11,6 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
-import uvicorn
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
@@ -36,23 +35,14 @@ class DashboardAPI:
     Dashboard API for monitoring and controlling NyaProxy.
     """
 
-    def __init__(
-        self,
-        port: int = 8080,
-        enable_control: bool = True,
-        metrics_path: str = "./.metrics",
-    ):
+    def __init__(self, enable_control: bool = True):
         """
         Initialize the dashboard API.
 
         Args:
-            port: Port to run the dashboard on
             enable_control: Whether to enable control API routes
-            metrics_path: Path to store metrics data
         """
-        self.port = port
         self.enable_control = enable_control
-        self.metrics_path = metrics_path
 
         # Set up template / static directories.
         self.www_dir = self.get_html_directory()
@@ -113,15 +103,3 @@ class DashboardAPI:
     def set_config_manager(self, config_manager: "ConfigManager") -> None:
         """Set the config manager."""
         self.config_manager = config_manager
-
-    async def start_background(self, host: str = "0.0.0.0") -> None:
-        """Start the dashboard server in the background."""
-        config = uvicorn.Config(
-            app=self.app, host=host, port=self.port, log_level="info"
-        )
-        server = uvicorn.Server(config)
-        await server.serve()
-
-    def run(self, host: str = "0.0.0.0") -> None:
-        """Run the dashboard server."""
-        uvicorn.run(self.app, host=host, port=self.port, log_config=None)

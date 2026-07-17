@@ -48,6 +48,8 @@ class RequestHandler:
         if not api_name:
             return
 
+        request.trail_path = trail_path
+
         # Construct target api endpoint URL
         target_endpoint: str = self.config.get_api_endpoint(api_name)
         target_url = f"{target_endpoint}{trail_path}"
@@ -109,44 +111,46 @@ class RequestHandler:
         logger.warning(f"No API configuration found for endpoint: {api_name}")
         return None, None
 
-    def is_request_allowed(self, request: ProxyRequest) -> bool:
+    def validate_request_policy(
+        self, request: ProxyRequest
+    ) -> Optional[Tuple[int, str]]:
         """
-        Check if the request method and path are allowed for the API based on configuration.
+        Check the request method and path against the API's policy.
+
+        Uses the api_name/trail_path resolved by ``prepare_request``.
 
         Args:
-            request: ProxyRequest object to check
+            request: A prepared ProxyRequest object
 
         Returns:
-            bool: True if request is allowed, False otherwise
+            None if the request is allowed, otherwise a tuple of
+            (status_code, error_message) describing the denial.
         """
+        api_name = request.api_name
+        path = request.trail_path
 
-        api_name, path = self.parse_request(request)
-
-        # If no API name, deny the request
-        if not api_name:
-            return False
-
-        allowed_paths_enabled = self.config.get_api_allowed_paths_enabled(api_name)
         allowed_methods = self.config.get_api_allowed_methods(api_name)
-
         if request.method.upper() not in allowed_methods:
-            return False
+            return (
+                405,
+                f"NyaProxy: Method {request.method.upper()} is not allowed for this API",
+            )
 
-        if not allowed_paths_enabled:
-            return True
+        if not self.config.get_api_allowed_paths_enabled(api_name):
+            return None
 
         paths = self.config.get_api_allowed_paths(api_name)
         mode = self.config.get_api_allowed_paths_mode(api_name)
-        action = True if mode == "whitelist" else False
+        allowed_on_match = mode == "whitelist"
 
-        if "*" in paths:
-            return action
+        matched = "*" in paths or any(
+            pattern == path or path.startswith(pattern.rstrip("*")) for pattern in paths
+        )
 
-        for pattern in paths:
-            if pattern == path or path.startswith(pattern.rstrip("*")):
-                return action
+        if matched == allowed_on_match:
+            return None
 
-        return not action
+        return 403, "NyaProxy: The request path is prohibited for this API"
 
     def set_request_priority(self, request: ProxyRequest) -> None:
         """

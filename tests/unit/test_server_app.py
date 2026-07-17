@@ -9,7 +9,7 @@ from starlette.responses import JSONResponse, Response
 from starlette.testclient import TestClient
 
 from nya.server import app as server_app
-from nya.server.app import NyaProxyApp, RootPathMiddleware
+from nya.server.app import NyaProxyApp
 
 
 class AppConfig:
@@ -79,8 +79,7 @@ class FakeMetricsCollector:
 
 
 class FakeDashboard:
-    def __init__(self, port, enable_control):
-        self.port = port
+    def __init__(self, enable_control):
         self.enable_control = enable_control
         self.app = FastAPI()
         self.metrics_collector = None
@@ -110,17 +109,6 @@ def make_app_instance(config=_DEFAULT_CONFIG):
     return app
 
 
-def test_root_path_middleware_sets_scope_root_path():
-    app = FastAPI()
-    app.add_middleware(RootPathMiddleware, root_path="/proxy")
-
-    @app.get("/scope")
-    async def scope_root(request: Request):
-        return {"root_path": request.scope["root_path"]}
-
-    assert TestClient(app).get("/scope").json() == {"root_path": "/proxy"}
-
-
 def test_create_main_app_registers_public_routes_and_metrics():
     instance = make_app_instance()
     instance.metrics_collector = FakeMetricsCollector()
@@ -145,19 +133,9 @@ def test_constructor_and_auth_logging_metric_initializers(monkeypatch):
     assert isinstance(created.config, FakeConfigManager)
     assert created.core is None
     assert created.dashboard is None
-    assert created._init_auth().config is created.config
-
     created.init_logging()
     created.init_metrics_collector()
     assert created.metrics_collector is not None
-
-
-def test_init_auth_raises_if_auth_manager_factory_fails(monkeypatch):
-    instance = make_app_instance()
-    monkeypatch.setattr(server_app, "AuthManager", lambda config: None)
-
-    with pytest.raises(RuntimeError):
-        instance._init_auth()
 
 
 def test_metrics_route_reports_unavailable_without_collector():
@@ -329,10 +307,6 @@ def test_init_config_reads_environment_and_auth_guard(monkeypatch):
     assert captured["schema_path"] == "schema.json"
     assert captured["remote_url"] == "https://remote.test"
     assert instance.config is not None
-
-    instance.auth = None
-    with pytest.raises(RuntimeError):
-        instance._create_main_app()
 
 
 def test_init_config_wraps_config_manager_failures(monkeypatch):

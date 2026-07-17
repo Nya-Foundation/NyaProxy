@@ -11,7 +11,6 @@ import sys
 import uvicorn
 from fastapi import FastAPI, Request
 from loguru import logger
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse, Response
 
@@ -32,16 +31,6 @@ from .auth import AuthManager, AuthMiddleware
 
 logger.remove()
 logger.add(sys.stderr, level="INFO")
-
-
-class RootPathMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, root_path: str):
-        super().__init__(app)
-        self.root_path = root_path
-
-    async def dispatch(self, request: Request, call_next):
-        request.scope["root_path"] = self.root_path
-        return await call_next(request)
 
 
 class NyaProxyApp:
@@ -91,17 +80,6 @@ class NyaProxyApp:
 
         self.config = config
 
-    def _init_auth(self):
-        """
-        Initialize the authentication manager
-        """
-        auth = AuthManager(
-            config=self.config,
-        )
-        if not auth:
-            raise RuntimeError("Failed to initialize auth manager")
-        return auth
-
     def _create_main_app(self):
         """
         Create the main FastAPI application with middleware pre-configured
@@ -130,11 +108,6 @@ class NyaProxyApp:
             allow_methods=allow_methods,
             allow_headers=allow_headers,
         )
-
-        if not self.auth:
-            raise RuntimeError(
-                "Auth manager must be initialized before adding middleware"
-            )
 
         # Add auth middleware
         app.add_middleware(AuthMiddleware, auth=self.auth)
@@ -328,10 +301,7 @@ class NyaProxyApp:
         port = os.environ.get("SERVER_PORT") or self.config.get_port()
 
         try:
-            self.dashboard = DashboardAPI(
-                port=port,
-                enable_control=True,
-            )
+            self.dashboard = DashboardAPI(enable_control=True)
 
             # Set dependencies from the core
             self.dashboard.set_metrics_collector(self.metrics_collector)

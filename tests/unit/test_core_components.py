@@ -112,6 +112,9 @@ class CoreConfig:
     def get_api_load_balancing_strategy(self, api_name):
         return "round_robin"
 
+    def get_api_key_weights(self, api_name):
+        return []
+
     def get_api_key_rate_limit(self, api_name):
         return "1/s"
 
@@ -239,21 +242,34 @@ def test_handler_prepares_requests_aliases_priority_and_rate_limit_paths():
     assert request._rate_limited is True
 
 
+def _policy_denial(handler, path, method="GET"):
+    request = make_request(path, method)
+    handler.prepare_request(request)
+    return handler.validate_request_policy(request)
+
+
 @pytest.mark.parametrize(
-    ("path", "method", "allowed"),
+    ("path", "method", "denied_status"),
     [
-        ("/api/mock/v1/chat", "GET", True),
-        ("/api/mock/v2/chat", "GET", False),
-        ("/api/mock/v1/chat", "DELETE", False),
-        ("/not-api/mock", "GET", False),
-        ("/api/unknown/v1", "GET", False),
+        ("/api/mock/v1/chat", "GET", None),
+        ("/api/mock/v2/chat", "GET", 403),
+        ("/api/mock/v1/chat", "DELETE", 405),
     ],
 )
-def test_handler_request_allowlist(path, method, allowed):
-    assert (
-        RequestHandler(CoreConfig()).is_request_allowed(make_request(path, method))
-        is allowed
-    )
+def test_handler_request_allowlist(path, method, denied_status):
+    denial = _policy_denial(RequestHandler(CoreConfig()), path, method)
+    if denied_status is None:
+        assert denial is None
+    else:
+        assert denial[0] == denied_status
+
+
+@pytest.mark.parametrize("path", ["/not-api/mock", "/api/unknown/v1", "/api/"])
+def test_handler_unknown_paths_resolve_to_no_api(path):
+    handler = RequestHandler(CoreConfig())
+    request = make_request(path)
+    handler.prepare_request(request)
+    assert request.api_name is None
 
 
 def test_handler_blacklist_mode_and_rate_limit_path_matching():
@@ -263,8 +279,8 @@ def test_handler_blacklist_mode_and_rate_limit_path_matching():
     config.rate_limit_paths = ["/v1/limited/*"]
     handler = RequestHandler(config)
 
-    assert handler.is_request_allowed(make_request("/api/mock/v1/public")) is True
-    assert handler.is_request_allowed(make_request("/api/mock/v1/private")) is False
+    assert _policy_denial(handler, "/api/mock/v1/public") is None
+    assert _policy_denial(handler, "/api/mock/v1/private")[0] == 403
     assert handler.should_enforce_rate_limit("mock", "/v1/limited/chat") is True
     assert handler.should_enforce_rate_limit("mock", "/v1/free") is False
     config.rate_limit_enabled = False
@@ -330,7 +346,6 @@ async def test_traffic_manager_key_selection_release_and_blocking():
     config.key_concurrency = False
     control = TrafficManager(config)
 
-    assert control.has_keys_available("mock") is True
     key, wait_time = await control.acquire_key("mock")
     assert (key, wait_time) == ("key-a", 0)
     assert control.time_to_key_ready("mock") == 0
@@ -338,11 +353,9 @@ async def test_traffic_manager_key_selection_release_and_blocking():
     assert control.time_to_key_ready("mock") > 0
     control.release_key("mock", "key-a")
     control.unlock_key("mock", "key-b")
-    assert await control.select_key("mock") in {"key-a", "key-b"}
     assert control.select_any_key("mock") in {"key-a", "key-b"}
     control.record_ip_request("mock", "ip")
     control.record_user_request("mock", "user")
-    control.record_endpoint_request("mock")
     control.release_ip("mock", "ip")
     control.release_user("mock", "user")
     control.release_endpoint("mock")
@@ -434,7 +447,6 @@ async def test_queue_processor_loop_handles_no_processor_expiry_success_and_erro
     await queue._process_api_queue("mock")
 
     queue._queues["mock"] = asyncio.PriorityQueue()
-    queue._worker_pools["mock"] = asyncio.Semaphore(1)
 
     expired = make_request()
     expired.api_name = "mock"
@@ -487,7 +499,6 @@ async def test_queue_processes_success_failure_retry_and_expiry(monkeypatch):
     control = TrafficManager(config)
     queue = RequestQueue(config, control)
     queue._queues["mock"] = asyncio.PriorityQueue()
-    queue._worker_pools["mock"] = asyncio.Semaphore(1)
 
     success = make_request()
     success.api_name = "mock"
@@ -568,9 +579,7 @@ async def test_queue_wait_for_key_expires_and_basic_status_methods():
     with pytest.raises(RequestExpiredError):
         request.future.result()
     assert queue.get_queue_size("mock") == 0
-    assert await queue.get_estimated_wait_time("mock") == 0.0
     await queue._queues["mock"].put(make_request())
-    assert await queue.get_estimated_wait_time("mock") == 1.0
     assert queue.get_all_queue_sizes() == {"mock": 1}
 
 

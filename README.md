@@ -39,7 +39,7 @@ Use NyaProxy only with credentials and traffic patterns that are allowed by the 
 | --- | --- | --- |
 | Credential injection | Add upstream credentials through headers without exposing them to clients | `headers`, `variables` |
 | Credential pooling | Route traffic across multiple upstream keys or tokens | `variables.<name>` |
-| Load balancing | Round robin, random, least requests, fastest response, and weighted selection | `load_balancing_strategy` |
+| Load balancing | Round robin, random, least requests, fastest response, and weighted selection | `load_balancing_strategy`, `key_weights` |
 | Rate limiting | Endpoint, upstream key, client IP, and proxy user limits | `rate_limit` |
 | Queueing | Hold requests until configured quota becomes available | `queue` |
 | Retry and failover | Retry selected status codes and temporarily cool down exhausted keys | `retry` |

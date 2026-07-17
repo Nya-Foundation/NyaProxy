@@ -35,6 +35,9 @@ class RateLimiter:
         self.last_accessed = time.time()
 
         self.locked = False
+        # Explicit cool-down deadline (block_for), independent of the
+        # request-window limit so it also works on unlimited limiters.
+        self.blocked_until = 0.0
 
     def __repr__(self):
         return f"<RateLimiter rate_limit={self.rate_limit}>"
@@ -85,6 +88,9 @@ class RateLimiter:
         self.touch()
 
         if self.locked:
+            return True
+
+        if time.time() < self.blocked_until:
             return True
 
         if self.requests_limit == 0:
@@ -145,16 +151,11 @@ class RateLimiter:
 
     def block_for(self, duration: float) -> None:
         """
-        Block requests for specific duration.
+        Block requests for a specific duration (e.g. key cool-down after a
+        retryable upstream status). Works even when no rate limit is set.
         """
         self.touch()
-        current_time = time.time()
-        self.request_timestamps = deque()
-
-        # Fill with timestamps that expire after duration
-        expiry_time = current_time - self.window_seconds + duration
-        for _ in range(self.requests_limit):
-            self.request_timestamps.append(expiry_time)
+        self.blocked_until = max(self.blocked_until, time.time() + duration)
 
     def _clean_old_timestamps(self, current_time: Optional[float] = None) -> None:
         """
@@ -173,15 +174,17 @@ class RateLimiter:
         if not self.is_limited():
             return 0.0
 
+        current_time = time.time()
+        blocked_wait = max(0.0, self.blocked_until - current_time)
+
         # A locked limiter has no natural reset time and may hold no
         # timestamps at all; guard against indexing an empty deque.
         if not self.request_timestamps:
-            return 0.0
+            return blocked_wait
 
-        current_time = time.time()
         oldest_timestamp = self.request_timestamps[0]
         reset_time = oldest_timestamp + self.window_seconds - current_time
-        return max(0.0, reset_time)
+        return max(blocked_wait, reset_time, 0.0)
 
     def remaining_quota(self) -> int:
         """
@@ -198,3 +201,4 @@ class RateLimiter:
         """
         self.touch()
         self.request_timestamps = deque()
+        self.blocked_until = 0.0
