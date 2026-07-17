@@ -5,7 +5,9 @@ Provides authentication mechanisms and middleware.
 
 import hmac
 import importlib.resources
+import json
 from typing import TYPE_CHECKING, Optional
+from urllib.parse import unquote
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -111,11 +113,13 @@ class AuthManager:
             bool: True if valid, False otherwise
         """
 
-        # Get API key from session cookie
+        # Get API key from session cookie. The login page URI-encodes the
+        # value so keys containing ';', ',' or non-ASCII survive the cookie
+        # grammar — decode before comparing.
         cookie_key = request.cookies.get("nyaproxy_api_key", "")
 
         # Trim any whitespace that might be added by some browsers
-        cookie_key = cookie_key.strip() if cookie_key else ""
+        cookie_key = unquote(cookie_key).strip() if cookie_key else ""
 
         # Verify the cookie key against the configured master key only
         return self.verify_api_key(cookie_key, verify_master=True)
@@ -161,10 +165,17 @@ class AuthMiddleware(BaseHTTPMiddleware):
             "/docs",
             "/redoc",
             "/openapi.json",
+        ]
+        # Public assets the pre-auth login page needs; suffix match so they
+        # stay reachable behind any reverse-proxy path prefix.
+        excluded_asset_suffixes = (
             "/dashboard/static/logo.svg",
             "/dashboard/favicon.ico",
-        ]
-        if any(request.url.path == path for path in excluded_paths):
+            "/dashboard/static/fonts/SpaceGrotesk-var.woff2",
+        )
+        if request.url.path in excluded_paths or request.url.path.endswith(
+            excluded_asset_suffixes
+        ):
             return await call_next(request)
 
         if self.auth.is_auth_disabled():
@@ -209,7 +220,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 content={"error": "Internal server error: Login page unavailable"},
             )
 
-        # Replace placeholders in the HTML template
-        html_content = html_content.replace("{{ return_path }}", return_path)
+        # The template quotes the placeholder ("{{ return_path }}") inside JS
+        # string literals; substitute a JSON-escaped literal so a crafted
+        # percent-encoded path cannot break out of the string (reflected XSS).
+        # \u-escape <> as well so '</script>' cannot terminate the block.
+        safe_return_path = (
+            json.dumps(return_path).replace("<", "\\u003c").replace(">", "\\u003e")
+        )
+        asset_root = request.scope.get("root_path", "") + "/dashboard"
+        html_content = html_content.replace(
+            '"{{ return_path }}"', safe_return_path
+        ).replace("{{ asset_root }}", asset_root)
 
         return HTMLResponse(content=html_content, status_code=401)
