@@ -5,7 +5,7 @@
 [English](README.md) | [简体中文](README_zh.md) | [日本語](README_ja.md)
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/Nya-Foundation/NyaProxy/main/assets/banner.png" alt="NyaProxy Banner" width="800" />
+  <img src="https://raw.githubusercontent.com/Nya-Foundation/NyaProxy/main/assets/brand/banner-1280x640.png" alt="NyaProxy Banner" width="800" />
 
   <p>Centralize credential injection, quota-aware routing, rate limiting, retries, and observability for any HTTP API that uses keys or tokens.</p>
 

@@ -5,7 +5,7 @@
 [English](README.md) | [简体中文](README_zh.md) | [日本語](README_ja.md)
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/Nya-Foundation/NyaProxy/main/assets/banner.png" alt="NyaProxy Banner" width="800" />
+  <img src="https://raw.githubusercontent.com/Nya-Foundation/NyaProxy/main/assets/brand/banner-1280x640.png" alt="NyaProxy Banner" width="800" />
 
   <p>API Key、Bearer Token、カスタムヘッダーを使う HTTP API に対して、認証情報の注入、クォータを考慮したルーティング、レート制限、リトライ、可観測性を一元化します。</p>
 

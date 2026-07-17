@@ -5,7 +5,7 @@
 [English](README.md) | [简体中文](README_zh.md) | [日本語](README_ja.md)
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/Nya-Foundation/NyaProxy/main/assets/banner.png" alt="NyaProxy Banner" width="800" />
+  <img src="https://raw.githubusercontent.com/Nya-Foundation/NyaProxy/main/assets/brand/banner-1280x640.png" alt="NyaProxy Banner" width="800" />
 
   <p>集中处理凭证注入、配额感知路由、频率限制、重试、故障转移和可观测性，适用于任何使用 API Key、Bearer Token 或自定义请求头的 HTTP API。</p>
 
