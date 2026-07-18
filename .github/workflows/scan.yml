@@ -1,90 +1,60 @@
-# .github/workflows/dependency-review.yml
-name: Dependency Review and Vulnerability Scan
+name: Dependency and Code Scan
 
 on:
   push:
-    branches-ignore:
-      - 'main'
-      - 'staging'
-      - 'dev'
+    branches: [main, staging, dev]
     paths:
+      - 'nya/**'
       - 'pyproject.toml'
-      - 'setup.py'
-      - 'setup.cfg'
-      - '**/*requirements*.txt'
-      - 'Pipfile'
-      - 'Pipfile.lock'
+      - 'uv.lock'
+      - 'Dockerfile'
+      - '.github/workflows/scan.yml'
   pull_request:
-    branches: ['staging', 'dev']
+    branches: [main, staging, dev]
     paths:
+      - 'nya/**'
       - 'pyproject.toml'
-      - 'setup.py'
-      - 'setup.cfg'
-      - '**/*requirements*.txt'
-      - 'Pipfile'
-      - 'Pipfile.lock'
+      - 'uv.lock'
+      - 'Dockerfile'
+      - '.github/workflows/scan.yml'
   workflow_dispatch:
 
-# Updated permissions to allow for code scanning alerts
 permissions:
   contents: read
   security-events: write
 
-# Cancel outdated workflow runs on the same branch/PR
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   dependency-review:
-    name: Scan Dependencies
+    if: github.event_name == 'pull_request'
+    name: Dependency review
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Dependency Review
-        # This action scans dependency manifest files for known vulnerabilities
-        # using the GitHub Advisory Database and can check for license compliance.
-        # See: https://github.com/actions/dependency-review-action
+      - name: Review dependency changes
         uses: actions/dependency-review-action@v4
         with:
-          # The base branch for the pull request or the main branch for pushes
-          base-ref: ${{ github.event.pull_request.base.sha || 'main' }}
-          head-ref: ${{ github.sha }}
-
-          # Scan for vulnerabilities reported in the GitHub Advisory Database
-          vulnerability-check: true
-          # Fail the workflow if any vulnerabilities with 'high' or 'critical' severity are found.
-          # Allowed values: low, moderate, high, critical
           fail-on-severity: high
-
-          # Uncomment based on your license policy
           allow-licenses: MIT, Apache-2.0, BSD-3-Clause, ISC, 0BSD, Python-2.0
-          
-  codeql-analysis:
-    name: CodeQL SAST Analysis
+
+  codeql:
+    name: CodeQL
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
           languages: python
-          # Optional: specify queries for additional security checks
-          # queries: security-extended,security-and-quality
-          
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
-        
-      - name: Perform CodeQL Analysis
+
+      - name: Analyze
         uses: github/codeql-action/analyze@v3
         with:
-          category: "/language:python"
-          upload: true
+          category: /language:python

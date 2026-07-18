@@ -134,12 +134,15 @@ class TrafficManager:
         ip_limiter = self.get_ip_limiter(api_name, ip)
         return ip_limiter.time_until_reset()
 
-    def record_key_usage(self, api_name: str, key: str) -> None:
+    def record_key_usage(
+        self, api_name: str, key: str, *, enforce_rate_limit: bool = True
+    ) -> None:
         """
         Record a request for the specific API key.
         """
         key_limiter = self.get_key_limiter(api_name, key)
-        key_limiter.record()
+        if enforce_rate_limit:
+            key_limiter.record()
 
         key_concurrency = self.config.get_api_key_concurrency(api_name)
         # Lock key if per-key concurrency is not allowed
@@ -178,7 +181,9 @@ class TrafficManager:
         user_limiter = self.get_user_limiter(api_name, user)
         return user_limiter.time_until_reset()
 
-    async def acquire_key(self, api_name: str) -> Tuple[Union[str, None], float]:
+    async def acquire_key(
+        self, api_name: str, *, enforce_rate_limits: bool = True
+    ) -> Tuple[Union[str, None], float]:
         """
         Atomically acquire a key if both the endpoint and key are available.
 
@@ -186,10 +191,16 @@ class TrafficManager:
             api_name: The name of the API to acquire a key for.
         """
         async with self._lock:
-            endpoint_limiter = self.get_endpoint_limiter(api_name)
+            endpoint_limiter = (
+                self.get_endpoint_limiter(api_name) if enforce_rate_limits else None
+            )
 
-            endpoint_wait_time = endpoint_limiter.time_until_reset()
-            key_wait_time = self.time_to_key_ready(api_name)
+            endpoint_wait_time = (
+                endpoint_limiter.time_until_reset() if endpoint_limiter else 0.0
+            )
+            key_wait_time = self.time_to_key_ready(
+                api_name, enforce_rate_limits=enforce_rate_limits
+            )
 
             # If endpoint or key is not available, return None and wait time
             if endpoint_wait_time > 0 or key_wait_time > 0:
@@ -200,11 +211,16 @@ class TrafficManager:
                 key = lb.next()
                 key_limiter = self.get_key_limiter(api_name, key)
 
-                if key_limiter.is_limited():
+                if self._key_is_unavailable(
+                    key_limiter, enforce_rate_limits=enforce_rate_limits
+                ):
                     continue
 
-                self.record_key_usage(api_name, key)
-                endpoint_limiter.record()
+                self.record_key_usage(
+                    api_name, key, enforce_rate_limit=enforce_rate_limits
+                )
+                if endpoint_limiter:
+                    endpoint_limiter.record()
                 return key, 0
 
             return None, 1.0
@@ -228,12 +244,15 @@ class TrafficManager:
 
         return key
 
-    def release_key(self, api_name: str, key: str) -> None:
+    def release_key(
+        self, api_name: str, key: str, *, refund_rate_limit: bool = True
+    ) -> None:
         """
         Release a key that was previously used.
         """
         key_limiter = self.get_key_limiter(api_name, key)
-        key_limiter.release()
+        if refund_rate_limit:
+            key_limiter.release()
         key_limiter.unlock()
 
     def release_ip(self, api_name: str, ip: str) -> None:
@@ -271,7 +290,16 @@ class TrafficManager:
         key_limiter = self.get_key_limiter(api_name, key)
         key_limiter.unlock()
 
-    def time_to_key_ready(self, api_name: str) -> float:
+    @staticmethod
+    def _key_is_unavailable(key_limiter, *, enforce_rate_limits: bool) -> bool:
+        """Check concurrency/cool-down state and, optionally, window quota."""
+        if key_limiter.locked or time.time() < key_limiter.blocked_until:
+            return True
+        return enforce_rate_limits and key_limiter.is_limited()
+
+    def time_to_key_ready(
+        self, api_name: str, *, enforce_rate_limits: bool = True
+    ) -> float:
         """
         Get time until next key becomes available.
         """
@@ -285,11 +313,12 @@ class TrafficManager:
             if not key_limiter:
                 continue
 
-            reset_time = (
-                key_limiter.time_until_reset()
-                if not key_limiter.locked
-                else float("inf")
-            )
+            if key_limiter.locked:
+                reset_time = float("inf")
+            elif enforce_rate_limits:
+                reset_time = key_limiter.time_until_reset()
+            else:
+                reset_time = max(0.0, key_limiter.blocked_until - time.time())
             # return 0 immediately if any key is available
             if reset_time == 0:
                 return 0

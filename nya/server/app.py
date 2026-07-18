@@ -229,7 +229,6 @@ class NyaProxyApp:
         Initialize services for NyaProxy
         """
         try:
-
             self.init_logging()
             self._warn_if_unauthenticated()
             # Create FastAPI app with middleware pre-configured
@@ -256,6 +255,9 @@ class NyaProxyApp:
         """
         log_config = self.config.get_logging_config()
         logger.remove()  # Remove default logger
+        if not log_config.get("enabled", True):
+            return
+
         logger.add(
             sys.stderr,
             level=log_config.get("level", "INFO").upper(),
@@ -368,28 +370,12 @@ class NyaProxyApp:
         if logger:
             logger.info("Setting up generic proxy routes")
 
-        @self.app.get("/api/{path:path}", name="proxy_get")
-        async def proxy_get_request(request: Request):
-            return await self.generic_proxy_request(request)
-
-        @self.app.post("/api/{path:path}", name="proxy_post")
-        async def proxy_post_request(request: Request):
-            return await self.generic_proxy_request(request)
-
-        @self.app.put("/api/{path:path}", name="proxy_put")
-        async def proxy_put_request(request: Request):
-            return await self.generic_proxy_request(request)
-
-        @self.app.delete("/api/{path:path}", name="proxy_delete")
-        async def proxy_delete_request(request: Request):
-            return await self.generic_proxy_request(request)
-
-        @self.app.patch("/api/{path:path}", name="proxy_patch")
-        async def proxy_patch_request(request: Request):
-            return await self.generic_proxy_request(request)
-
-        @self.app.head("/api/{path:path}", name="proxy_head")
-        async def proxy_head_request(request: Request):
+        @self.app.api_route(
+            "/api/{path:path}",
+            methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
+            name="proxy_request",
+        )
+        async def proxy_request(request: Request):
             return await self.generic_proxy_request(request)
 
     async def shutdown(self):
@@ -445,6 +431,11 @@ def parse_args():
         help="Disable the file-watch supervisor; config changes then require a manual restart",
     )
     parser.add_argument(
+        "--check-config",
+        action="store_true",
+        help="Validate configuration and exit without starting the server",
+    )
+    parser.add_argument(
         "--version", action="version", version=f"NyaProxy {__version__}"
     )
     return parser.parse_args()
@@ -479,18 +470,16 @@ def main():
     """
     args = parse_args()
 
-    # Priority order for configuration:
-    # 1. Command line arguments (--host, --port, --config)
-    # 2. Environment variables (CONFIG_PATH, SERVER_HOST, SERVER_PORT)
-    # 3. Configuration file (DEFAULT_CONFIG_PATH)
-    # 4. Default values (DEFAULT_HOST, DEFAULT_PORT)
+    # Bind address priority: CLI, environment, built-in loopback default.
+    # The configuration source is selected independently by CLI/environment.
 
-    config_path = args.config or os.environ.get("CONFIG_PATH")
+    requested_config = args.config or os.environ.get("CONFIG_PATH")
     host = args.host or os.environ.get("SERVER_HOST") or DEFAULT_HOST
     port = args.port or os.environ.get("SERVER_PORT") or DEFAULT_PORT
     remote_url = args.remote_url or os.environ.get("REMOTE_CONFIG_URL")
     remote_api_key = args.remote_api_key or os.environ.get("REMOTE_CONFIG_API_KEY")
     remote_app_name = args.remote_app_name or os.environ.get("REMOTE_CONFIG_APP_NAME")
+    config_path = requested_config
     schema_path = None
 
     import importlib.resources as pkg_resources
@@ -500,8 +489,21 @@ def main():
     with pkg_resources.path(nya, DEFAULT_SCHEMA_NAME) as default_schema:
         schema_path = str(default_schema)
 
-    # Create copy of the default config to the current directory
-    if (not config_path or not os.path.exists(config_path)) and not remote_url:
+    check_config = getattr(args, "check_config", False)
+
+    if requested_config and not os.path.isfile(requested_config) and not remote_url:
+        raise SystemExit(f"Configuration file not found: {requested_config}")
+
+    if check_config and not config_path and not remote_url:
+        candidate = os.path.join(os.getcwd(), DEFAULT_CONFIG_NAME)
+        if not os.path.isfile(candidate):
+            raise SystemExit(
+                "No configuration file to validate; pass --config or create config.yaml"
+            )
+        config_path = candidate
+
+    # Create a starter config only for a normal first run with no source selected.
+    if not check_config and not config_path and not remote_url:
         cwd = os.getcwd()
         config_path = os.path.join(cwd, DEFAULT_CONFIG_NAME)
 
@@ -531,6 +533,18 @@ def main():
     if args.no_reload:
         os.environ["DISABLE_HOT_RELOAD"] = "1"
 
+    if check_config:
+        ConfigManager(
+            config_path=config_path,
+            schema_path=schema_path,
+            remote_url=remote_url or None,
+            remote_api_key=remote_api_key or None,
+            remote_app_name=remote_app_name or None,
+        )
+        source = remote_url or config_path
+        print(f"Configuration valid: {source}")
+        return
+
     uvicorn.run(
         "nya.server.app:create_app",
         host=host,
@@ -539,6 +553,10 @@ def main():
         reload_includes=None if args.no_reload else [WATCH_FILE],
         timeout_keep_alive=30,
         server_header=False,
+        # Forwarded client addresses are resolved by NyaProxy after checking
+        # server.trusted_proxies. Letting Uvicorn do this first would allow a
+        # direct client to influence request.client.host.
+        proxy_headers=False,
     )
 
 

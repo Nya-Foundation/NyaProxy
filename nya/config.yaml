@@ -1,11 +1,9 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Nya-Foundation/NyaProxy/main/nya/schema.json
-# NyaProxy Configuration File
-# This file contains server settings and API endpoint configurations
+# Safe starter configuration. Replace both placeholder keys before proxying.
 
 server:
-  # WARNING: leaving api_key empty disables authentication entirely — anyone
-  # who can reach NyaProxy can use the proxy, dashboard, and config UI.
-  # Set one key (or a list; the first entry is the master key).
+  # Authentication is disabled until a key is set. First run binds to
+  # 127.0.0.1; set a strong key before using --host 0.0.0.0.
   api_key:
   logging:
     enabled: true
@@ -16,18 +14,18 @@ server:
     address: socks5://username:password@proxy.example.com:1080
   dashboard:
     enabled: true
+  trusted_proxies: []
   cors:
-    # Allow all origins with "*", but specify exact origins when allow_credentials is true for security
     allow_origins: ["*"]
-    allow_credentials: true
-    allow_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    allow_credentials: false
+    allow_methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
     allow_headers: ["*"]
 
 # Default configuration applied to all API endpoints unless overridden
 default_settings:
   key_variable: keys
-  key_concurrency: true # mark it as true if each key can handle multiple concurrent requests, otherwise the key will be locked until the request completes
-  randomness: 0.0 # Random delay of (0.0-x)s to introduce variability in request timing and avoid detection due to consistent request patterns due to rate limits
+  key_concurrency: true
+  randomness: 0.0
   load_balancing_strategy: round_robin
   # Path and method filtering
   allowed_paths:
@@ -35,108 +33,43 @@ default_settings:
     mode: whitelist # if "whitelist", only allow listed paths; if "blacklist", block listed paths
     paths:
       - "*"
-  allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"] # Allowed HTTP methods for the API
+  allowed_methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
   queue:
     max_size: 200
-    max_workers: 10 # Maximum number of concurrent workers for processing requests
+    max_workers: 10
     expiry_seconds: 300
   rate_limit:
-    enabled: true
-    endpoint_rate_limit: 10/s # Default endpoint rate limit - can be overridden per API
-    key_rate_limit: 10/m # Default key rate limit - can be overridden per API
-    ip_rate_limit: 5000/d # IP-based rate limit to protect against abuse and key redistribution
-    user_rate_limit: 5000/d # User-based rate limit per proxy API key defined in server section
-    rate_limit_paths: 
+    enabled: false
+    endpoint_rate_limit: "0"
+    key_rate_limit: "0"
+    ip_rate_limit: "0"
+    user_rate_limit: "0"
+    rate_limit_paths:
       - "*"
   retry:
     enabled: true
     attempts: 3
     retry_after_seconds: 1
-    retry_request_methods: [ POST, GET, PUT, DELETE, PATCH, OPTIONS ]
-    retry_status_codes: [ 429, 500, 502, 503, 504 ]
+    retry_request_methods: [POST, GET, PUT, DELETE, PATCH]
+    retry_status_codes: [429, 500, 502, 503, 504]
+  # Optional credential quarantine. This is independent of retry: add a
+  # matching status to retry.retry_status_codes if the current request should
+  # also rotate immediately to another key.
+  key_blocking:
+    enabled: false
+    status_codes: [403]
+    duration_seconds: 300
   timeouts:
     request_timeout_seconds: 300
 
 apis:
-  gemini:
-    # Example for OpenAI-compatible API endpoint
-    name: Google Gemini API
-    # Supported endpoints:
-    # Gemini: https://generativelanguage.googleapis.com/v1beta/openai
-    # OpenAI: https://api.openai.com/v1
-    # Anthropic: https://api.anthropic.com/v1
-    # DeepSeek: https://api.deepseek.com/v1
-    # Mistral: https://api.mistral.ai/v1
-    # OpenRouter: https://api.openrouter.ai/v1
-    # Ollama: http://localhost:11434/v1
-    endpoint: https://generativelanguage.googleapis.com/v1beta/openai
+  example_service:
+    name: Example Service
+    endpoint: https://api.example.com/v1
     aliases:
-    - /gemini
-    key_variable: keys
+      - example
     headers:
       Authorization: 'Bearer ${{keys}}'
     variables:
       keys:
-      - your_gemini_key_1
-      - your_gemini_key_2
-      - your_gemini_key_3
-    load_balancing_strategy: least_requests
-    # For the "weighted" strategy, assign per-key weights (same order as variables.keys):
-    # load_balancing_strategy: weighted
-    # key_weights: [3, 1, 1]
-    rate_limit:
-      enabled: true
-      # For Gemini-2.5-pro-exp-03-25, rate limits per key are 5 RPM and 25 RPD
-      # Endpoint rate limit should be n × per-key-RPD, where n is the number of keys
-      endpoint_rate_limit: 75/d
-      key_rate_limit: 5/m
-      # Paths to apply rate limits (prefix match, trailing * wildcard) - defaults to all paths "*"
-      rate_limit_paths:
-        - "/chat/*"
-        - "/images/*"
-
-    # Request body substitution settings
-    request_body_substitution:
-      enabled: false
-      # Substitution rules for request body with JMEPath
-      rules:
-        # Since Gemini API doesn't support frequency_penalty and presence_penalty, we remove them with these rules
-        - name: "Remove frequency_penalty"
-          operation: remove
-          path: "frequency_penalty"
-          conditions:
-            - field: "frequency_penalty"
-              operator: "exists"
-        - name: "Remove presence_penalty"
-          operation: remove
-          path: "presence_penalty"
-          conditions:
-            - field: "presence_penalty"
-              operator: "exists"
-
-  test:
-    name: Test API
-    endpoint: http://127.0.0.1:8082
-    key_variable: keys
-    randomness: 5
-    headers:
-      Authorization: 'Bearer ${{keys}}'
-      User-Agent: ${{agents}} # flexible headers customization with template variables supported
-    variables:
-      keys:
-      - your_test_key_1
-      - your_test_key_2
-      - your_test_key_3
-      agents:
-      - test_agent_1
-      - test_agent_2
-      - test_agent_3
-    load_balancing_strategy: least_requests
-    rate_limit:
-      enabled: true
-      endpoint_rate_limit: 20/m
-      key_rate_limit: 5/m
-      ip_rate_limit: 5000/d
-      user_rate_limit: 5000/d
-      rate_limit_paths:
-        - "/v1/*"
+        - replace-with-upstream-key

@@ -11,8 +11,8 @@ class NyaProxyStatus(Exception):
     """
 
     def __init__(self, message: str = None):
-        super().__init__()
         self.message = message or "An event occurred in NyaProxy"
+        super().__init__(self.message)
 
 
 class ConfigurationError(NyaProxyStatus):

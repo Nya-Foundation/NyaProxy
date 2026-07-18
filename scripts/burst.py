@@ -124,8 +124,7 @@ async def _run_burst(args: argparse.Namespace) -> None:
             return await _one_request(client, url, headers)
 
     print(
-        f"[burst] {args.count} requests, concurrency={args.concurrency}, "
-        f"target={url}"
+        f"[burst] {args.count} requests, concurrency={args.concurrency}, target={url}"
     )
 
     timeout = httpx.Timeout(args.timeout, connect=2.0)
@@ -153,7 +152,7 @@ def _print_burst_summary(
 
     total = len(results)
     print()
-    print(f"  Total:     {total}  ({total/elapsed:.1f} req/s, {elapsed:.2f}s wall)")
+    print(f"  Total:     {total}  ({total / elapsed:.1f} req/s, {elapsed:.2f}s wall)")
     print("  By status:")
     for code in sorted(by_status):
         bar = "█" * int(40 * by_status[code] / total)

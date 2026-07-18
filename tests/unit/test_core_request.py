@@ -27,7 +27,7 @@ async def test_request_executor_normal_streaming_proxy_and_metrics_paths(monkeyp
     request.api_name = "mock"
     request.api_key = "key-a"
     request.url = "https://upstream.test/v1"
-    request._rate_limited = True
+    request._rate_limited = False
 
     async def fake_execute_request(request, timeout):
         return FakeHttpxResponse(
@@ -39,6 +39,17 @@ async def test_request_executor_normal_streaming_proxy_and_metrics_paths(monkeyp
     assert response.body == b"hello"
     assert metrics.requests == [("mock", "key-a")]
     assert metrics.responses[0][:3] == ("mock", "key-a", 200)
+
+    async def fake_stream(request, timeout):
+        return FakeHttpxResponse(
+            [b"data: ok\n\n"], headers={"content-type": "text/event-stream"}
+        )
+
+    executor.execute_request = fake_stream
+    streaming = await executor.execute(request)
+    assert len(metrics.responses) == 1
+    assert [chunk async for chunk in streaming.body_iterator] == [b"data: ok\n\n"]
+    assert metrics.responses[-1][:3] == ("mock", "key-a", 200)
 
     async def boom(request, timeout):
         raise RuntimeError("network")
@@ -81,6 +92,35 @@ async def test_request_executor_close_is_noop_without_client():
     executor = object.__new__(RequestExecutor)
     executor.client = None
 
+    await executor.close()
+
+
+@pytest.mark.asyncio
+async def test_response_headers_preserve_duplicates_and_strip_hop_by_hop():
+    config = CoreConfig()
+    executor = RequestExecutor(config)
+    upstream = FakeHttpxResponse(
+        [b"ok"],
+        headers=[
+            ("content-type", "text/plain"),
+            ("content-length", "2"),
+            ("set-cookie", "a=1; Path=/"),
+            ("set-cookie", "b=2; Path=/"),
+            ("connection", "keep-alive, x-private"),
+            ("keep-alive", "timeout=5"),
+            ("x-private", "remove-me"),
+        ],
+    )
+
+    response = await executor.handle_normal_response(upstream)
+    raw = response.raw_headers
+    assert [value for name, value in raw if name == b"set-cookie"] == [
+        b"a=1; Path=/",
+        b"b=2; Path=/",
+    ]
+    assert b"connection" not in {name for name, _ in raw}
+    assert b"keep-alive" not in {name for name, _ in raw}
+    assert b"x-private" not in {name for name, _ in raw}
     await executor.close()
 
 

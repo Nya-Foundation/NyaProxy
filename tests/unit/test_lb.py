@@ -5,8 +5,6 @@ Each strategy is exercised for its selection rule plus the bookkeeping
 helpers (request counts, response times, weights).
 """
 
-import pytest
-
 from nya.services.lb import LoadBalancer
 
 # --------------------------------------------------------------------------

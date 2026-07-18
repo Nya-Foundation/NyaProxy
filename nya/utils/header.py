@@ -4,7 +4,7 @@ Header processing utilities for NyaProxy.
 
 import ipaddress
 import re
-from typing import Any, Dict, Optional, Set, Union
+from typing import Any, Dict, Iterable, Optional, Set, Union
 
 from httpx import Headers
 from loguru import logger
@@ -64,6 +64,31 @@ class HeaderUtils:
         return None
 
     @staticmethod
+    def is_trusted_proxy(
+        peer_ip: Optional[str], trusted_proxies: Iterable[str]
+    ) -> bool:
+        """Return whether the direct socket peer may supply forwarding headers.
+
+        Entries may be individual IPv4/IPv6 addresses or CIDR networks. Invalid
+        configured entries are ignored; schema/semantic validation is expected
+        to report them at startup.
+        """
+        if not peer_ip:
+            return False
+        try:
+            peer = ipaddress.ip_address(peer_ip)
+        except ValueError:
+            return False
+
+        for entry in trusted_proxies or ():
+            try:
+                if peer in ipaddress.ip_network(str(entry), strict=False):
+                    return True
+            except ValueError:
+                continue
+        return False
+
+    @staticmethod
     def _is_valid_ip(value: str) -> bool:
         """
         Return True if the value parses as an IPv4/IPv6 address.
@@ -121,7 +146,13 @@ class HeaderUtils:
         # Start with original headers, filtering out excluded ones
         if original_headers:
             for k, v in original_headers.items():
-                if k.lower() not in HeaderUtils._EXCLUDED_HEADERS:
+                # Authorization authenticates the caller *to NyaProxy*. Never
+                # pass it through implicitly: APIs that use upstream bearer
+                # auth add a fresh Authorization value via ``header_templates``.
+                if (
+                    k.lower() not in HeaderUtils._EXCLUDED_HEADERS
+                    and k.lower() != "authorization"
+                ):
                     final_headers[k] = v  # This preserves the original case
 
         # Process each header template

@@ -3,6 +3,7 @@ Configuration manager for NyaProxy using Nacho.
 """
 
 import os
+import re
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
 from loguru import logger
@@ -12,6 +13,37 @@ from nya.common.constants import DEFAULT_HOST, DEFAULT_PORT
 from nya.common.exceptions import ConfigurationError
 
 T = TypeVar("T")
+
+BUILTIN_API_DEFAULTS: Dict[str, Any] = {
+    "key_variable": "keys",
+    "key_concurrency": True,
+    "randomness": 0.0,
+    "load_balancing_strategy": "round_robin",
+    "allowed_paths.enabled": False,
+    "allowed_paths.mode": "whitelist",
+    "allowed_paths.paths": ["*"],
+    "allowed_methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
+    "queue.max_size": 200,
+    "queue.max_workers": 10,
+    "queue.expiry_seconds": 300,
+    "rate_limit.enabled": False,
+    "rate_limit.endpoint_rate_limit": "0",
+    "rate_limit.key_rate_limit": "0",
+    "rate_limit.ip_rate_limit": "0",
+    "rate_limit.user_rate_limit": "0",
+    "rate_limit.rate_limit_paths": ["*"],
+    "retry.enabled": True,
+    "retry.attempts": 3,
+    "retry.retry_after_seconds": 1.0,
+    "retry.retry_status_codes": [429, 500, 502, 503, 504],
+    "retry.retry_request_methods": ["GET", "POST", "PUT", "DELETE", "PATCH"],
+    "key_blocking.enabled": False,
+    "key_blocking.status_codes": [403],
+    "key_blocking.duration_seconds": 300.0,
+    "timeouts.request_timeout_seconds": 300,
+    "request_body_substitution.enabled": False,
+    "request_body_substitution.rules": [],
+}
 
 
 class ConfigManager:
@@ -50,7 +82,7 @@ class ConfigManager:
         self.remote_app_name = remote_app_name
         self.callback = callback
 
-        if config_path and not os.path.exists(config_path):
+        if config_path and not remote_url and not os.path.exists(config_path):
             raise ConfigurationError(f"Configuration file not found: {config_path}")
 
         self.config = self.init_config_client()
@@ -96,6 +128,8 @@ class ConfigManager:
 
         # Validate against the schema
         results = client.validate()
+        if not results:
+            results = self._semantic_validation_errors(client)
         if results:
             logger.error("[NyaProxy] Configuration validation failed:")
             for error in results:
@@ -105,6 +139,117 @@ class ConfigManager:
 
         logger.info("[NyaProxy] Nacho client configuration validated successfully")
         return client
+
+    @staticmethod
+    def _semantic_validation_errors(client: Nacho) -> List[str]:
+        """Validate relationships that JSON Schema cannot express cleanly."""
+        if not hasattr(client, "get_dict"):
+            # Some lightweight integrations expose only Nacho's validation API.
+            return []
+
+        errors: List[str] = []
+        server = client.get_dict("server", {})
+        defaults = client.get_dict("default_settings", {})
+        apis = client.get_dict("apis", {})
+
+        cors = server.get("cors", {})
+        if cors.get("allow_credentials") and "*" in cors.get("allow_origins", []):
+            errors.append(
+                "server.cors.allow_origins: wildcard origin cannot be used when "
+                "allow_credentials is true"
+            )
+
+        claimed_routes = {route: route for route in apis}
+        settings_scopes = [
+            ("default_settings", defaults),
+            *((f"apis.{api_name}", api) for api_name, api in apis.items()),
+        ]
+        for scope_name, settings in settings_scopes:
+            key_blocking = settings.get("key_blocking", {})
+            if not isinstance(key_blocking, dict):
+                continue
+
+            status_codes = key_blocking.get("status_codes")
+            if status_codes is not None and (
+                not isinstance(status_codes, list)
+                or not status_codes
+                or any(
+                    isinstance(code, bool)
+                    or not isinstance(code, int)
+                    or not 400 <= code <= 599
+                    for code in status_codes
+                )
+            ):
+                errors.append(
+                    f"{scope_name}.key_blocking.status_codes: use one or more "
+                    "HTTP error statuses from 400 through 599"
+                )
+
+            duration = key_blocking.get("duration_seconds")
+            if duration is not None and (
+                isinstance(duration, bool)
+                or not isinstance(duration, (int, float))
+                or duration <= 0
+            ):
+                errors.append(
+                    f"{scope_name}.key_blocking.duration_seconds: must be greater than 0"
+                )
+
+        for api_name, api in apis.items():
+            variables = api.get("variables", {})
+            key_variable = api.get("key_variable", defaults.get("key_variable", "keys"))
+            if not key_variable:
+                errors.append(
+                    f"apis.{api_name}.key_variable: set it here or in default_settings"
+                )
+            elif key_variable not in variables:
+                errors.append(
+                    f"apis.{api_name}.variables: missing key variable '{key_variable}'"
+                )
+            elif not variables.get(key_variable):
+                errors.append(
+                    f"apis.{api_name}.variables.{key_variable}: add at least one value"
+                )
+
+            for header_name, template in api.get("headers", {}).items():
+                if not isinstance(template, str):
+                    continue
+                for variable in re.findall(r"\$\{\{([^}]+)\}\}", template):
+                    variable = variable.strip()
+                    if variable not in variables:
+                        errors.append(
+                            f"apis.{api_name}.headers.{header_name}: references undefined "
+                            f"variable '{variable}'"
+                        )
+
+            strategy = api.get(
+                "load_balancing_strategy",
+                defaults.get("load_balancing_strategy", "round_robin"),
+            )
+            if strategy == "weighted" and key_variable in variables:
+                keys = variables[key_variable]
+                weights = api.get("key_weights", [])
+                if len(weights) != len(keys):
+                    errors.append(
+                        f"apis.{api_name}.key_weights: expected {len(keys)} weights, "
+                        f"got {len(weights)}"
+                    )
+                elif not any(weight > 0 for weight in weights):
+                    errors.append(
+                        f"apis.{api_name}.key_weights: at least one weight must be positive"
+                    )
+
+            for alias in api.get("aliases", []):
+                normalized = alias.removeprefix("/")
+                owner = claimed_routes.get(normalized)
+                if owner is not None and owner != api_name:
+                    errors.append(
+                        f"apis.{api_name}.aliases: route '{normalized}' is already "
+                        f"claimed by '{owner}'"
+                    )
+                claimed_routes[normalized] = api_name
+
+        return errors
 
     def init_config_server(self) -> NachoOrchestrator:
         """
@@ -228,6 +373,10 @@ class ConfigManager:
         """
         return self.config.get_str("server.proxy.address", "")
 
+    def get_trusted_proxies(self) -> List[str]:
+        """Get proxy addresses/networks trusted to supply client IP headers."""
+        return self.config.get_list("server.trusted_proxies", [])
+
     def get_cors_allow_origins(self) -> List[str]:
         """
         Get the CORS allow origin for the proxy.
@@ -260,13 +409,14 @@ class ConfigManager:
         """
         Get the default timeout for API requests.
         """
-        return self.config.get_int("server.timeouts.request_timeout_seconds", 30)
+        return self.config.get_int("server.timeouts.request_timeout_seconds", 300)
 
     def get_default_setting(self, setting_path: str, default_value: Any = None) -> Any:
         """
         Get a default setting value.
         """
-        return self.config.get(f"default_settings.{setting_path}", default_value)
+        fallback = BUILTIN_API_DEFAULTS.get(setting_path, default_value)
+        return self.config.get(f"default_settings.{setting_path}", fallback)
 
     def get_api_setting(
         self, api_name: str, setting_path: str, value_type: str = "str"
@@ -458,6 +608,18 @@ class ConfigManager:
         """
         return self.get_api_setting(api_name, "retry.retry_request_methods", "list")
 
+    def get_api_key_blocking_enabled(self, api_name: str) -> bool:
+        """Return whether configured upstream statuses quarantine API keys."""
+        return self.get_api_setting(api_name, "key_blocking.enabled", "bool")
+
+    def get_api_key_blocking_status_codes(self, api_name: str) -> List[int]:
+        """Return upstream response statuses that quarantine their API key."""
+        return self.get_api_setting(api_name, "key_blocking.status_codes", "list")
+
+    def get_api_key_blocking_duration_seconds(self, api_name: str) -> float:
+        """Return how long a key remains quarantined after a matching status."""
+        return self.get_api_setting(api_name, "key_blocking.duration_seconds", "float")
+
     def get_api_rate_limit_paths(self, api_name: str) -> List[str]:
         """
         Get rate limit path patterns.
@@ -472,9 +634,12 @@ class ConfigManager:
 
     def get_api_aliases(self, api_name: str) -> List[str]:
         """
-        Get the aliases defined for an API.
+        Get route-segment aliases, accepting the legacy leading-slash form.
         """
-        return self.get_api_config(api_name).get("aliases", [])
+        return [
+            alias.removeprefix("/")
+            for alias in self.get_api_config(api_name).get("aliases", [])
+        ]
 
     def get_api_variable_values(self, api_name: str, variable_name: str) -> List[Any]:
         """

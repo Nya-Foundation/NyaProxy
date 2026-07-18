@@ -43,6 +43,7 @@ NyaProxy 是一个小型 API 网关，适用于使用 API Key、Bearer Token 或
 | 频率限制 | 支持端点、上游凭证、客户端 IP 和代理用户维度 | `rate_limit` |
 | 请求队列 | 在配额可用前暂存请求 | `queue` |
 | 重试与故障转移 | 对指定状态码重试，并临时冷却不可用凭证 | `retry` |
+| 凭证隔离 | 上游返回指定错误状态码时，暂时停止选择对应凭证 | `key_blocking` |
 | 请求策略 | 转发前限制允许的路径和 HTTP 方法 | `allowed_paths`, `allowed_methods` |
 | 请求体转换 | 使用带条件的 JMESPath 规则设置或删除 JSON 字段 | `request_body_substitution` |
 | 可观测性 | 仪表板、请求历史、队列状态和凭证使用统计 | `dashboard` |
@@ -94,9 +95,8 @@ nyaproxy
 ```bash
 docker run -d \
   -p 8080:8080 \
-  -v ${PWD}/config.yaml:/app/config.yaml \
-  -v ${PWD}/app.log:/app/app.log \
-  k3scat/nya-proxy:latest
+  -v ${PWD}/config.yaml:/app/config.yaml:ro \
+  k3scat/nya-proxy:latest --config config.yaml --host 0.0.0.0 --no-reload
 ```
 
 ## 配置
@@ -144,11 +144,14 @@ default_settings:
       - "*"
   retry:
     enabled: true
-    mode: key_rotation
     attempts: 3
     retry_after_seconds: 1
     retry_request_methods: [POST, GET, PUT, DELETE, PATCH, OPTIONS]
     retry_status_codes: [429, 500, 502, 503, 504]
+  key_blocking:
+    enabled: true
+    status_codes: [401, 403]
+    duration_seconds: 300
   timeouts:
     request_timeout_seconds: 300
 

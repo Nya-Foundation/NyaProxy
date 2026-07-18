@@ -51,8 +51,10 @@ class RequestQueue:
         # Worker tasks for concurrent processing
         self._worker_tasks: Dict[str, List[asyncio.Task]] = {}
 
-        # Pending delayed-retry tasks, held so they are not garbage collected
-        self._retry_tasks: set = set()
+        # Pending delayed retries and their requests. Keeping the association
+        # lets queue-control and shutdown cancel retries that are not currently
+        # visible in the priority queue.
+        self._retry_tasks: Dict[asyncio.Task, "ProxyRequest"] = {}
 
         # Registered processor
         self._processor: Optional[Callable[["ProxyRequest"], Awaitable["Response"]]] = (
@@ -74,25 +76,6 @@ class RequestQueue:
         # Check queue size
         if self._queues[api_name].qsize() >= self.config.get_api_queue_size(api_name):
             raise QueueFullError(api_name=api_name)
-
-        # Check resource availability
-        wait_time = await self._check_for_proxy_limit(api_name, request)
-
-        if wait_time > self.config.get_api_queue_expiry(api_name):
-            raise ReachedMaxQuotaError(api_name, wait_time)
-
-        # Wait until proxy resources are available for this request
-        if wait_time > 0:
-            if self.metrics_collector:
-                self.metrics_collector.record_rate_limit_hit(api_name)
-            wait_time = max(wait_time, 0.1)
-            logger.debug(
-                f"Resource Unavailable for {api_name} (IP: {request.ip}, User: {request.user}) - wait time: {wait_time:.2f}s"
-            )
-            await asyncio.sleep(wait_time)
-
-        self.control.record_ip_request(api_name, request.ip)
-        self.control.record_user_request(api_name, request.user)
 
         # Create future and attach to request
         request.future = asyncio.Future()
@@ -140,14 +123,10 @@ class RequestQueue:
                 # Drop requests the client no longer waits for (timeout or
                 # disconnect cancelled the future) before spending quota.
                 if request.future.done():
-                    self.control.release_ip(api_name, request.ip)
-                    self.control.release_user(api_name, request.user)
                     continue
 
                 # Check if request expired
                 if self._is_request_expired(request):
-                    self.control.release_ip(api_name, request.ip)
-                    self.control.release_user(api_name, request.user)
                     request.future.set_exception(
                         RequestExpiredError(
                             api_name=api_name, wait_time=time.time() - request.added_at
@@ -177,8 +156,33 @@ class RequestQueue:
         """
         recorded_hit = False
         while True:
-            key, wait_time = await self._check_for_resource_limit(api_name)
+            proxy_wait = (
+                await self._check_for_proxy_limit(api_name, request)
+                if request._rate_limited
+                else 0.0
+            )
+            remaining = self.config.get_api_queue_expiry(api_name) - (
+                time.time() - request.added_at
+            )
+            if proxy_wait > max(remaining, 0.0):
+                if not request.future.done():
+                    request.future.set_exception(
+                        ReachedMaxQuotaError(api_name, proxy_wait)
+                    )
+                return None
+
+            if proxy_wait <= 0:
+                key, resource_wait = await self._check_for_resource_limit(
+                    api_name, enforce_rate_limits=request._rate_limited
+                )
+            else:
+                key, resource_wait = None, 0.0
+
+            wait_time = max(proxy_wait, resource_wait)
             if key is not None and wait_time <= 0:
+                if request._rate_limited:
+                    self.control.record_ip_request(api_name, request.ip)
+                    self.control.record_user_request(api_name, request.user)
                 return key
 
             # Count one rate-limit hit per request that has to wait, not one
@@ -188,8 +192,6 @@ class RequestQueue:
                 recorded_hit = True
 
             if request.future.done() or self._is_request_expired(request):
-                self.control.release_ip(api_name, request.ip)
-                self.control.release_user(api_name, request.user)
                 if not request.future.done():
                     request.future.set_exception(
                         RequestExpiredError(
@@ -223,21 +225,33 @@ class RequestQueue:
             started_at = time.time()
             response = await self._processor(request)
 
-            # Feed the fastest_response load-balancing strategy
-            self.control.get_load_balancer(api_name).record_response_time(
-                request.api_key, time.time() - started_at
-            )
-
-            # unlock the key after being processed
-            self.control.unlock_key(request.api_name, request.api_key)
+            if request.future.done():
+                self._free_resources_on_failure(request, 0)
+                await self._close_response(response)
+                return
 
             # Release resources if response indicates failure
             if response.status_code >= 400:
                 self._free_resources_on_failure(request, response.status_code)
+                self._block_key_for_status(request, response.status_code)
 
             # If status code requires retry, handle it
             if await self._handle_user_defined_retry(request, response.status_code):
+                await self._close_response(response)
                 return
+
+            if response.status_code < 400:
+                add_finalizer = getattr(response, "_nya_add_finalizer", None)
+                if add_finalizer:
+                    add_finalizer(
+                        lambda: self._finish_streaming_request(
+                            api_name, request.api_key, started_at
+                        )
+                    )
+                else:
+                    self._finish_streaming_request(
+                        api_name, request.api_key, started_at
+                    )
 
             if not request.future.done():
                 request.future.set_result(response)
@@ -256,13 +270,35 @@ class RequestQueue:
         """
         api_name = request.api_name
 
-        self.control.release_ip(api_name, request.ip)
-        self.control.release_user(api_name, request.user)
-        self.control.release_endpoint(api_name)
-        self.control.release_key(api_name, request.api_key)
+        if request._rate_limited:
+            self.control.release_ip(api_name, request.ip)
+            self.control.release_user(api_name, request.user)
+            self.control.release_endpoint(api_name)
+        self.control.release_key(
+            api_name,
+            request.api_key,
+            refund_rate_limit=request._rate_limited,
+        )
 
         logger.debug(
             f"Released resources for {api_name} after status code {status_code}"
+        )
+
+    def _block_key_for_status(self, request: "ProxyRequest", status_code: int) -> None:
+        """Temporarily quarantine a key after a configured upstream failure."""
+        api_name = request.api_name
+        if not self.config.get_api_key_blocking_enabled(api_name):
+            return
+
+        status_codes = self.config.get_api_key_blocking_status_codes(api_name)
+        if status_code not in status_codes:
+            return
+
+        duration = self.config.get_api_key_blocking_duration_seconds(api_name)
+        self.control.block_key(api_name, request.api_key, duration)
+        logger.info(
+            f"[Key Blocking] Quarantined key {mask_secret(request.api_key)} "
+            f"for {duration}s after upstream status {status_code}"
         )
 
     async def _handle_user_defined_retry(
@@ -311,18 +347,21 @@ class RequestQueue:
         return max(ip_wait, user_wait)
 
     async def _check_for_resource_limit(
-        self, api_name: str
+        self, api_name: str, *, enforce_rate_limits: bool = True
     ) -> Tuple[Optional[str], float]:
         """
         Wait for resources to become available before processing the request.
         """
         # Check endpoint availability
-        endpoint_wait = self.control.time_to_endpoint_ready(api_name)
-        if endpoint_wait > 0:
-            return None, endpoint_wait  # Endpoint not ready
+        if enforce_rate_limits:
+            endpoint_wait = self.control.time_to_endpoint_ready(api_name)
+            if endpoint_wait > 0:
+                return None, endpoint_wait  # Endpoint not ready
 
         # Check key availability
-        key, key_wait = await self.control.acquire_key(api_name)
+        key, key_wait = await self.control.acquire_key(
+            api_name, enforce_rate_limits=enforce_rate_limits
+        )
         if key_wait > 0:
             return None, key_wait  # Key not available
 
@@ -352,8 +391,8 @@ class RequestQueue:
             )
             delay = random.uniform(0.8 * retry_delay, 1.6 * retry_delay)
             task = asyncio.create_task(self._requeue_after_delay(request, delay))
-            self._retry_tasks.add(task)
-            task.add_done_callback(self._retry_tasks.discard)
+            self._retry_tasks[task] = request
+            task.add_done_callback(self._retry_tasks.pop)
         else:
             # Max retries reached, fail the request
             request.future.set_exception(ReachedMaxRetriesError(api_name, max_retries))
@@ -403,6 +442,22 @@ class RequestQueue:
 
             logger.info(f"Cleared queue for {api_name}: {count} requests cancelled")
 
+        retry_tasks = [
+            task
+            for task, request in list(self._retry_tasks.items())
+            if request.api_name == api_name
+        ]
+        for task in retry_tasks:
+            request = self._retry_tasks.get(task)
+            if request and not request.future.done():
+                request.future.set_exception(
+                    RuntimeError(f"Request cancelled: queue cleared for {api_name}")
+                )
+                count += 1
+            task.cancel()
+        if retry_tasks:
+            await asyncio.gather(*retry_tasks, return_exceptions=True)
+
         return count
 
     async def clear_all_queues(self) -> int:
@@ -428,3 +483,33 @@ class RequestQueue:
         """
         self._processor = processor
         logger.debug("Queue processor registered")
+
+    def _finish_streaming_request(
+        self, api_name: str, api_key: str, started_at: float
+    ) -> None:
+        """Release a successful request once its response body is complete."""
+        self.control.get_load_balancer(api_name).record_response_time(
+            api_key, time.time() - started_at
+        )
+        self.control.unlock_key(api_name, api_key)
+
+    @staticmethod
+    async def _close_response(response: "Response") -> None:
+        """Close a streaming upstream response that will not reach the client."""
+        close = getattr(response, "_nya_close", None)
+        if close:
+            await close()
+
+    async def close(self) -> None:
+        """Cancel workers/retries and fail every pending request."""
+        await self.clear_all_queues()
+        tasks = [
+            *(task for workers in self._worker_tasks.values() for task in workers),
+            *self._retry_tasks.keys(),
+        ]
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self._worker_tasks.clear()
+        self._retry_tasks.clear()

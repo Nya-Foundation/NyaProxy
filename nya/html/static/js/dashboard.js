@@ -54,6 +54,14 @@ const confirmReverters = {}; // key -> () => void  (static two-step buttons)
 
 const $ = (id) => document.getElementById(id);
 
+function setCount(id, value, title) {
+  const el = $(id);
+  if (!el) return;
+  el.textContent = fmt.compact(value);
+  el.hidden = false;
+  if (title) el.title = title;
+}
+
 /* --- formatting ----------------------------------------------------------- */
 
 const fmt = {
@@ -216,6 +224,9 @@ function writeHash(push = false) {
 }
 
 function onHashChange() {
+  // Section navigation shares the URL fragment with dashboard deep links.
+  // Scrolling between sections must not clear active API/status filters.
+  if (["#overview", "#apis", "#activity"].includes(window.location.hash)) return;
   const h = readHash();
   let apisDirty = false;
   let historyDirty = false;
@@ -334,9 +345,9 @@ function renderHorizon() {
   legend.innerHTML = parts
     .map(
       (p) =>
-        `<span title="${p.count} responses">${p.cls} ${p.pct}%</span>`
+        `<span class="hz-key c${p.cls}" title="${p.count} responses"><i aria-hidden="true"></i>${p.cls}<strong>${p.pct}%</strong></span>`
     )
-    .join('<span aria-hidden="true">·</span>');
+    .join("");
 }
 
 /* --- Band D: APIs ledger ----------------------------------------------------- */
@@ -406,6 +417,7 @@ function renderApis() {
   }
 
   const allNames = Object.keys(apis).sort((a, b) => a.localeCompare(b));
+  setCount("api-count", allNames.length, `${fmt.int(allNames.length)} APIs`);
   if (allNames.length === 0) {
     body.innerHTML = `<tr class="empty-row"><td colspan="7"><div class="empty-state">${COIN_GLYPH}No traffic yet — requests will appear here.</div></td></tr>`;
     return;
@@ -487,8 +499,8 @@ function queueChipHtml(name, size, controlEnabled) {
            aria-label="Clear ${escapeHtml(name)} queue">clear</button>`;
   }
   return `<span class="chip" title="${size} requests queued">
-    <span class="dot dot-warn" aria-hidden="true"></span>${escapeHtml(name)}
-    <span class="chip-count">${fmt.int(size)}</span>${controls}</span>`;
+    <span class="dot dot-warn" aria-hidden="true"></span><span class="chip-name">${escapeHtml(name)}</span>
+    <span class="chip-count">${fmt.int(size)}</span><span class="chip-actions">${controls}</span></span>`;
 }
 
 function renderQueues() {
@@ -506,6 +518,8 @@ function renderQueues() {
   }
 
   const names = Object.keys(q).sort((a, b) => a.localeCompare(b));
+  const queued = names.reduce((sum, name) => sum + Math.max(0, Number(q[name]) || 0), 0);
+  setCount("queue-count", queued, `${fmt.int(queued)} requests queued`);
   if (names.length === 0) {
     wrap.innerHTML = `<div class="empty-state">${COIN_GLYPH}No queues configured.</div>`;
     return;
@@ -562,6 +576,7 @@ function renderHistory() {
   }
 
   const responses = (state.history || []).filter((e) => e.type === "response");
+  setCount("history-count", responses.length, `${fmt.int(responses.length)} recent responses`);
 
   const counts = { "2xx": 0, "4xx": 0, "5xx": 0, other: 0 };
   for (const e of responses) counts[statusClass(e.status_code)] += 1;
@@ -621,10 +636,15 @@ function renderHistory() {
 
 function renderStamp() {
   const el = $("last-updated");
+  const connection = $("connection-status");
+  const connectionLabel = $("connection-label");
   const secs = Object.values(state.sections);
   const succeeded = secs.map((s) => s.lastSuccess).filter(Boolean);
   if (!succeeded.length) {
     el.textContent = "";
+    connection.className = "status-pill is-stale";
+    connection.querySelector(".dot").className = "dot dot-warn";
+    connectionLabel.textContent = "Connecting";
     return;
   }
   const worst = Math.min(...succeeded);
@@ -635,11 +655,17 @@ function renderStamp() {
   if (stale) {
     el.className = "stamp is-stale";
     el.innerHTML = `<span class="dot dot-warn" aria-hidden="true"></span>stale — last data ${rel}`;
+    connection.className = "status-pill is-stale";
+    connection.querySelector(".dot").className = "dot dot-warn";
+    connectionLabel.textContent = "Degraded";
     if (!state.wasStale) announce("Dashboard data is stale");
     state.wasStale = true;
   } else {
     el.className = "stamp";
     el.textContent = `updated ${rel}`;
+    connection.className = "status-pill";
+    connection.querySelector(".dot").className = "dot dot-ok";
+    connectionLabel.textContent = "Live";
     state.wasStale = false;
   }
 }

@@ -43,6 +43,7 @@ Use NyaProxy only with credentials and traffic patterns that are allowed by the 
 | Rate limiting | Endpoint, upstream key, client IP, and proxy user limits | `rate_limit` |
 | Queueing | Hold requests until configured quota becomes available | `queue` |
 | Retry and failover | Retry selected status codes, cool down the failing key, and rotate to the next one | `retry` |
+| Key quarantine | Temporarily remove credentials that return configured upstream error statuses | `key_blocking` |
 | Request policy | Allow or block paths and methods before forwarding | `allowed_paths`, `allowed_methods` |
 | Body transformation | Set or remove JSON fields with conditional JMESPath rules | `request_body_substitution` |
 | Observability | Web dashboard plus a Prometheus `/metrics` endpoint | `dashboard` |
@@ -57,9 +58,9 @@ pip install nya-proxy
 nyaproxy
 ```
 
-On first run, NyaProxy creates a default `config.yaml` in the current directory and listens on port `8080`, bound to **all interfaces** (`0.0.0.0`).
+On first run, NyaProxy creates a starter `config.yaml` in the current directory and listens on `127.0.0.1:8080`.
 
-> **Important:** the generated default config has no `server.api_key`, which means **authentication is disabled** — anyone who can reach the port can use the proxy, dashboard, and config UI. NyaProxy logs a warning at startup in this state. Set `server.api_key` (or bind to `127.0.0.1` with `--host`) before doing anything else.
+> **Important:** the starter config has no `server.api_key`, so authentication is disabled. This is safe only while bound to loopback. Set `server.api_key` before using `--host 0.0.0.0` or otherwise exposing the service.
 
 Then open:
 
@@ -87,19 +88,23 @@ nyaproxy          # or: python -m nya
 ### Docker
 
 ```bash
+cp configs/openai.yaml config.yaml  # then replace every placeholder key
 docker run -d \
   -p 8080:8080 \
-  -v ${PWD}/config.yaml:/app/config.yaml \
-  k3scat/nya-proxy:latest
+  -v ${PWD}/config.yaml:/app/config.yaml:ro \
+  k3scat/nya-proxy:latest --config config.yaml --host 0.0.0.0 --no-reload
 ```
+
+The bind-mounted file is the persistent source of truth. Edit it on the host and restart the container. Do not publish the port until `server.api_key` is set.
 
 ### CLI Reference
 
 | Flag | Description |
 | --- | --- |
 | `--config`, `-c` | Path to the configuration file |
-| `--host`, `-H` / `--port`, `-p` | Bind address and port (defaults: `0.0.0.0` / `8080`) |
+| `--host`, `-H` / `--port`, `-p` | Bind address and port (defaults: `127.0.0.1` / `8080`; environment: `SERVER_HOST` / `SERVER_PORT`) |
 | `--no-reload` | Disable the config file-watch supervisor; config changes then require a manual restart |
+| `--check-config` | Validate schema and cross-field configuration, then exit |
 | `--remote-url`, `-r` / `--remote-api-key`, `-k` / `--remote-app-name`, `-a` | Pull configuration from a remote config server instead of a local file (disables the local `/config` UI) |
 | `--version` | Print the version and exit |
 
@@ -145,6 +150,10 @@ default_settings:
     attempts: 3
     retry_after_seconds: 1
     retry_status_codes: [429, 500, 502, 503, 504]
+  key_blocking:
+    enabled: true
+    status_codes: [401, 403]
+    duration_seconds: 300
   timeouts:
     request_timeout_seconds: 300
 
@@ -153,7 +162,7 @@ apis:
     name: Example Service
     endpoint: https://api.example.com/v1
     aliases:
-      - /example
+      - example
     key_variable: keys
     headers:
       Authorization: "Bearer ${{keys}}"
@@ -165,7 +174,7 @@ apis:
 
 ### Request Format
 
-Requests are forwarded through `/api/<api_name>/<path>` — or `/api/<alias>/<path>` for any alias listed under `aliases`.
+Requests are forwarded through `/api/<api_name>/<path>` — or `/api/<alias>/<path>` for an alias. Aliases are route segments such as `example`, not paths such as `/example`.
 
 With the config above, this proxy request:
 
@@ -216,6 +225,10 @@ Formats: `10/s`, `60/m`, `1000/h`, `5000/d`, `1/15s` (one request per 15 seconds
 ## Retries and Failover
 
 When an upstream response matches `retry_status_codes` (and the method is in `retry_request_methods`), NyaProxy cools the failing key down for `retry_after_seconds`, rotates to the next available key, and retries up to `attempts` times — without blocking other traffic on the same API. If every attempt fails, the client receives `429`; upstream connection failures and timeouts surface as `502` and `504` respectively.
+
+## Key Quarantine
+
+`key_blocking` can temporarily remove a credential from selection when the upstream returns any configured HTTP error status. It is disabled by default; a common setup enables it for `401` and `403` so an expired or revoked credential is not selected again for `duration_seconds`. This policy is independent of retries: add the same status to `retry.retry_status_codes` only when the current request should also fail over to another credential.
 
 ## API Examples
 
@@ -322,13 +335,14 @@ See [Request Body Substitution](docs/request_body_substitution.md) for the full 
 
 ## Operations
 
-- **Logging** — configured under `server.logging`; the log file rotates at 10 MB with the last 5 files retained. `debug` level logs request/response metadata (with secrets redacted) — treat debug logs as sensitive and prefer `info` in production.
+- **Logging** — configured under `server.logging`; `enabled: false` disables both console and file sinks. The log file rotates at 10 MB with the last 5 files retained. `debug` logs request/response metadata (with secrets redacted).
 - **Config reload** — a config change triggers a full process restart via the file-watch supervisor. In-flight requests are dropped and in-memory state (queues, rate-limit windows, metrics) resets. Use `--no-reload` if you'd rather restart explicitly.
 - **State** — all rate limiting, queueing, and metrics state is in-memory and per-process. Run a single instance per credential pool; running replicas would give each its own independent limits.
 
 ## Security Notes
 
-- **If `server.api_key` is not set, authentication is disabled entirely** — every endpoint (including the config UI) is open to anyone who can reach the port. NyaProxy warns at startup when this is combined with a non-loopback bind. Always set a key before exposing NyaProxy beyond localhost.
+- **If `server.api_key` is not set, authentication is disabled entirely** — every endpoint (including the config UI) is open to anyone who can reach the port. The default bind is loopback; always set a key before selecting a public bind with `--host` or `SERVER_HOST`.
+- `server.trusted_proxies` controls which proxy IPs or CIDR networks may supply client-IP forwarding headers. Leave it empty unless NyaProxy is behind a proxy you control.
 - The first key in `server.api_key` is the master key, required for the dashboard and configuration UI. Additional keys can be handed to applications for proxy traffic only.
 - Do not share upstream provider credentials with clients — keep them in the NyaProxy config or your deployment's secret manager.
 - Restrict `server.cors.allow_origins` to trusted origins when browsers call the proxy with credentials.

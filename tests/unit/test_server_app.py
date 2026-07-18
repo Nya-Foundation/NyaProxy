@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI, Request
-from starlette.responses import JSONResponse, Response
+from starlette.responses import JSONResponse
 from starlette.testclient import TestClient
 
 from nya.server import app as server_app
@@ -472,6 +472,7 @@ def test_main_sets_environment_and_runs_uvicorn(monkeypatch, tmp_path):
     assert os.environ["REMOTE_CONFIG_URL"] == "https://remote.test"
     assert captured["host"] == "127.0.0.2"
     assert captured["port"] == 9911
+    assert captured["proxy_headers"] is False
 
 
 def test_main_copies_default_config_when_no_config_is_available(monkeypatch, tmp_path):
