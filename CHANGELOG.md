@@ -1,7 +1,72 @@
 # CHANGELOG
 
 
+## v0.7.0 (2026-07-18)
+
+### Bug Fixes
+
+- Restore the nyaproxy console script and project URLs
+  ([`cdc4d5e`](https://github.com/Nya-Foundation/NyaProxy/commit/cdc4d5e0cb00454c7fb070456e58deabe8ac5e0a))
+
+The merge f2ff54e ("Merge branch 'main' into dev") dropped [project.scripts] and [project.urls] from
+  pyproject.toml. Both parents of that merge still contained the tables, so this was not something
+  git resolved badly on its own — the conflict on the version line (0.4.6 on dev against the 0.6.0
+  release bump on main) was resolved by hand and the two tables were deleted along with the markers.
+
+Without [project.scripts] the wheel carries no entry_points.txt, so the `nyaproxy` command does not
+  exist and the Docker image, whose ENTRYPOINT is that script, cannot start at all. Restore both
+  tables verbatim.
+
+Published artifacts are unaffected: v0.6.0 was built from 2595a47, which predates the bad merge, and
+  its wheel on PyPI does contain the console script. The quality gate blocked every release attempt
+  after the merge, so no broken artifact ever reached PyPI or the registries.
+
+Verified: the wheel now ships entry_points.txt, the CI smoke gate exits 0 printing "NyaProxy 0.6.0",
+  and the container starts and reports the same version.
+
+### Continuous Integration
+
+- Smoke-test the wheel in an isolated venv
+  ([`d4a588a`](https://github.com/Nya-Foundation/NyaProxy/commit/d4a588aeb0594fc067afe460f3243b48fe90218a))
+
+The smoke test installed the freshly built wheel over the editable install that lint and typecheck
+  ran against. That editable install owns the `nyaproxy` script, so the test could not distinguish a
+  working wheel from one whose console script was missing: either way the script was present until
+  the reinstall, and its absence afterwards surfaced only as a bare "nyaproxy: command not found"
+  with nothing naming the cause.
+
+Install into a throwaway venv instead, which is what a user gets from PyPI, and assert the entry
+  point through importlib.metadata before invoking it so a missing console script reports itself.
+  Installing with dependencies rather than --no-deps also covers the declared runtime requirements,
+  which previously rode on the dev environment and were never actually exercised.
+
+Also: - rm -rf dist first; `make build` does not clean, so a stale artifact makes the dist/*.whl
+  glob ambiguous. - Assert the packaged dashboard assets. They are data files, so no import failure
+  would catch their loss, and the service 404s at runtime if they are dropped.
+
+Verified by rebuilding with [project.scripts] removed: the new assertion fails with "wheel is
+  missing the nyaproxy console script" instead of the old opaque shell error.
+
+- Start the image before publishing it
+  ([`85236fa`](https://github.com/Nya-Foundation/NyaProxy/commit/85236fa179e9069e438d8eb6c4f4ee30bbde6a5a))
+
+`docker build` never validates ENTRYPOINT, so an image whose console script is missing builds
+  cleanly, pushes to both registries, takes the :latest tag, and passes the Trivy scan — then dies
+  on `docker run` with "exec: nyaproxy: not found". Nothing in the release path ever ran the
+  container, so that failure could only be discovered by a user pulling it.
+
+Build a single-arch image and start it before the publishing steps. The amd64 layers are reused from
+  the gha cache by the multi-arch build that follows, so the extra build is close to free.
+
+Verified both ways: the image built from this tree prints its version, and an image built with
+  [project.scripts] removed builds successfully but exits 127 at the new step, before anything is
+  pushed.
+
+
 ## v0.6.0 (2026-07-18)
+
+
+## v0.5.0 (2026-05-22)
 
 ### Bug Fixes
 
@@ -80,6 +145,9 @@ Tests: 12 new regressions covering non-master denial on each admin surface, mast
 
 ### Chores
 
+- Drop python 3.10 support
+  ([`5b62536`](https://github.com/Nya-Foundation/NyaProxy/commit/5b6253655dae3374a3d955ac711531350d1efb48))
+
 - **deps**: Bump dependencies and adopt nacho-python 0.1.0
   ([`bec6f29`](https://github.com/Nya-Foundation/NyaProxy/commit/bec6f2994d0b2cf1c1d0609500084c1f9468ef3d))
 
@@ -105,6 +173,9 @@ Verified live against nacho 0.1.0: sign-in -> config editor loads authenticated,
   tests pass; mypy clean.
 
 ### Features
+
+- Force version bump
+  ([`f8020fe`](https://github.com/Nya-Foundation/NyaProxy/commit/f8020fe7fbc2acd85742504620630531fd743ae9))
 
 - Harden defaults, map upstream failures to 502/504, close e2e gaps, trim dead code
   ([`bee0207`](https://github.com/Nya-Foundation/NyaProxy/commit/bee02071fcaeec06f593edfaadcc4d8a3d9d316c))
@@ -137,6 +208,13 @@ Tests: - split the 887-line test_core_components.py into per-module files with s
 docs: README rewritten around accurate auth/bind behavior, all five LB strategies, aliases, retries,
   endpoints table incl. /health and /metrics, CLI reference, and operational notes (reload
   semantics, in-memory state)
+
+- Harden gateway and add credential quarantine
+  ([`71d54ef`](https://github.com/Nya-Foundation/NyaProxy/commit/71d54ef45aec5864bd1b2778b7477ffb891d6024))
+
+Improve proxy fidelity, queue lifecycle, trusted-client handling, configuration validation,
+  dashboard UX, documentation, packaging, and CI. Replace Black/isort with Ruff, add configurable
+  upstream-status key quarantine, expand E2E coverage, and upgrade nacho-python to 1.0.0.
 
 - Harden rate limiting and retry pipeline, wire weighted LB, sweep dead code
   ([`382c9f6`](https://github.com/Nya-Foundation/NyaProxy/commit/382c9f62978ec103ab5c87f953aca742d18798b5))
@@ -212,21 +290,33 @@ Hardening (auth.py): - return_path is substituted as a JSON-escaped literal (clo
   Secure flag added on https - login-page assets (logo, favicon, font) excluded from auth by suffix
   so they resolve behind reverse-proxy path prefixes
 
-
-## v0.5.0 (2026-05-22)
-
-### Chores
-
-- Drop python 3.10 support
-  ([`5b62536`](https://github.com/Nya-Foundation/NyaProxy/commit/5b6253655dae3374a3d955ac711531350d1efb48))
-
-### Features
-
-- Force version bump
-  ([`f8020fe`](https://github.com/Nya-Foundation/NyaProxy/commit/f8020fe7fbc2acd85742504620630531fd743ae9))
-
 - Update default passwd... doc update
   ([`b71b20b`](https://github.com/Nya-Foundation/NyaProxy/commit/b71b20b5423d065aac477be9a4a5730cf8920ece))
+
+- **dashboard**: Surface latency, trends, and credential health
+  ([`6561776`](https://github.com/Nya-Foundation/NyaProxy/commit/656177666de94ba35fd60a2b82c2c706d3aa2ada))
+
+The dashboard fetched up to 2000 timestamped responses every cycle and used almost none of them: no
+  time dimension, no latency distribution, and no per-credential view — on a gateway whose main job
+  is rotating credentials. Everything added here is folded out of that existing sample in one pass,
+  so it costs no extra requests and no new endpoints.
+
+Close the gaps against the metrics API: - Latency, previously absent from the overview entirely: a
+  p95 tile, and a distribution chart with p50/p95/p99 pinned under a shared 0→p99 axis. Percentiles
+  come from the response sample and are labelled "recent"; the counters stay authoritative for
+  all-time totals. - Per-bucket trend sparklines on the tiles and in the API ledger. - A credential
+  board: share of pool, recent error rate, and last use per key, with a concentration note — an
+  unevenly rotated or failing key is the operational signal this product exists to expose. - p95 per
+  API in the ledger and its detail band.
+
+Interaction and layout: - Sortable ledger columns, with aria-sort. - Cross-filtering: any API or key
+  in the traffic log, the credential board, or a detail band narrows the log; filters stack, show as
+  removable tags, and clear with Escape. - Rebuild the overview as a four-tile pulse row over a
+  health/credentials pair; uptime moves to the page header, freeing a tile for latency. - Raise the
+  traffic log from 60 to 200 rows and add in-view latency bars.
+
+Charts are inline SVG on the existing horizon rule, so the new surfaces read as part of the Coin Cat
+  system rather than a charting library bolted on. No new dependencies.
 
 
 ## v0.4.6 (2025-07-07)
