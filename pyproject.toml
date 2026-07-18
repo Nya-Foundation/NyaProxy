@@ -101,6 +101,14 @@ exclude_lines = [
 ]
 
 
+[project.urls]
+"Homepage" = "https://github.com/Nya-Foundation/nyaproxy"
+"Bug Tracker" = "https://github.com/Nya-Foundation/nyaproxy/issues"
+
+[project.scripts]
+nyaproxy = "nya.server.app:main"
+
+
 [tool.setuptools]
 package-dir = {"" = "."}  # Use current directory as source root
 include-package-data = true
