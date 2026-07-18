@@ -124,12 +124,15 @@ class AuthManager:
         # Verify the cookie key against the configured master key only
         return self.verify_api_key(cookie_key, verify_master=True)
 
-    def verify_api_key_header(self, request: Request):
+    def verify_api_key_header(self, request: Request, verify_master: bool = False):
         """
         Verify the API key from the Authorization header.
 
         Args:
             request: The FastAPI request
+            verify_master: If True, only the master key is accepted. Admin
+                surfaces (dashboard, config UI) pass True; proxy traffic
+                accepts any configured key.
 
         Returns:
             bool: True if valid, False otherwise
@@ -138,7 +141,7 @@ class AuthManager:
         if api_key.startswith("Bearer "):
             api_key = api_key[7:]
 
-        return self.verify_api_key(api_key)
+        return self.verify_api_key(api_key, verify_master=verify_master)
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -181,26 +184,45 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if self.auth.is_auth_disabled():
             return await call_next(request)
 
-        # First, check for valid session cookie
+        # The dashboard and the config UI are administrative surfaces: only the
+        # master key reaches them. Every other path is proxy traffic, which any
+        # configured key may use.
+        is_admin_surface = self._is_admin_surface(request)
+
+        # First, check for valid session cookie (master key only)
         if self.auth.verify_session_cookie(request):
             return await call_next(request)
 
         # Then, check for valid Authorization header
-        if self.auth.verify_api_key_header(request):
+        if self.auth.verify_api_key_header(request, verify_master=is_admin_surface):
             return await call_next(request)
 
-        # If no valid auth found, determine response based on path
-        is_dashboard = request.url.path.startswith("/dashboard")
-        is_config = request.url.path.startswith("/config")
-
         # For dashboard and config paths, redirect to login page
-        if is_dashboard or is_config:
+        if is_admin_surface:
             return self._generate_login_page(request)
 
         # For API and other paths, return JSON error
         return JSONResponse(
             status_code=403,
             content={"error": "Unauthorized: NyaProxy - Invalid API key"},
+        )
+
+    @staticmethod
+    def _is_admin_surface(request: Request) -> bool:
+        """
+        True for the dashboard and config UI, which require the master key.
+
+        The mount prefix is stripped first so the check still holds when the
+        app is served under a reverse-proxy path prefix.
+        """
+        path = request.url.path
+        root_path = request.scope.get("root_path", "")
+        if root_path and path.startswith(root_path):
+            path = path[len(root_path) :] or "/"
+
+        return any(
+            path == prefix or path.startswith(f"{prefix}/")
+            for prefix in ("/dashboard", "/config")
         )
 
     def _generate_login_page(self, request: Request):

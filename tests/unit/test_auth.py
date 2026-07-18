@@ -8,6 +8,7 @@ configured-key handling is exercised explicitly.
 
 import pytest
 from starlette.applications import Starlette
+from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
@@ -137,7 +138,9 @@ def build_client(api_key):
         Route("/", ok),
         Route("/api/v1/thing", ok),
         Route("/dashboard", ok),
+        Route("/dashboard/api/metrics", ok),
         Route("/config", ok),
+        Route("/config/api/apps", ok),
     ]
     app = Starlette(routes=routes)
     app.add_middleware(AuthMiddleware, auth=make_manager(api_key))
@@ -191,6 +194,100 @@ def test_middleware_redirects_config_to_login_page():
     resp = client.get("/config")
     assert resp.status_code == 401
     assert resp.headers["content-type"].startswith("text/html")
+
+
+# --------------------------------------------------------------------------
+# Master-key separation: only the first configured key reaches the admin
+# surfaces (dashboard, config UI); every configured key may use the proxy.
+# --------------------------------------------------------------------------
+
+
+ADMIN_PATHS = ["/dashboard", "/dashboard/api/metrics", "/config", "/config/api/apps"]
+
+
+@pytest.mark.parametrize("path", ADMIN_PATHS)
+def test_non_master_key_cannot_reach_admin_surfaces(path):
+    """Regression: a proxy-only key must not open the dashboard or config UI."""
+    client = build_client(["master", "app-key"])
+    resp = client.get(path, headers={"Authorization": "Bearer app-key"})
+    assert resp.status_code == 401
+    assert resp.headers["content-type"].startswith("text/html")  # login page
+
+
+@pytest.mark.parametrize("path", ADMIN_PATHS)
+def test_master_key_reaches_admin_surfaces(path):
+    client = build_client(["master", "app-key"])
+    resp = client.get(path, headers={"Authorization": "Bearer master"})
+    assert resp.status_code == 200
+    assert resp.text == "ok"
+
+
+def test_non_master_key_still_allowed_for_proxy_traffic():
+    """The whole point of the extra keys: proxying, just not administration."""
+    client = build_client(["master", "app-key"])
+    resp = client.get("/api/v1/thing", headers={"Authorization": "Bearer app-key"})
+    assert resp.status_code == 200
+    assert resp.text == "ok"
+
+
+def test_non_master_session_cookie_cannot_reach_admin_surfaces():
+    client = build_client(["master", "app-key"])
+    client.cookies.set("nyaproxy_api_key", "app-key")
+    assert client.get("/dashboard").status_code == 401
+
+
+def test_single_string_key_is_its_own_master():
+    """With one configured key there is no distinction to enforce."""
+    client = build_client("solo")
+    resp = client.get("/dashboard", headers={"Authorization": "Bearer solo"})
+    assert resp.status_code == 200
+
+
+@pytest.mark.parametrize(
+    ("path", "root_path", "expected"),
+    [
+        # ASGI servers disagree on whether `path` includes the mount prefix,
+        # so both conventions must resolve to the same answer.
+        ("/dashboard", "/prefix", True),  # path excludes root_path
+        ("/prefix/dashboard", "/prefix", True),  # path includes root_path
+        ("/config/api/apps", "/prefix", True),
+        ("/prefix/config/api/apps", "/prefix", True),
+        ("/dashboard", "", True),
+        ("/api/svc/thing", "", False),
+        # 'dashboard' appearing inside a proxied upstream path is not admin
+        ("/api/svc/dashboard/widget", "", False),
+        # a sibling path that merely shares the prefix string is not admin
+        ("/dashboard-public", "", False),
+    ],
+)
+def test_is_admin_surface_path_resolution(path, root_path, expected):
+    request = Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": path,
+            "root_path": root_path,
+            "headers": [],
+            "query_string": b"",
+        }
+    )
+    assert AuthMiddleware._is_admin_surface(request) is expected
+
+
+def test_proxy_path_containing_dashboard_segment_is_not_admin():
+    """A proxied upstream path that merely contains 'dashboard' stays open."""
+
+    async def ok(request):
+        return PlainTextResponse("ok")
+
+    app = Starlette(routes=[Route("/api/svc/dashboard/widget", ok)])
+    app.add_middleware(AuthMiddleware, auth=make_manager(["master", "app-key"]))
+    client = TestClient(app)
+
+    resp = client.get(
+        "/api/svc/dashboard/widget", headers={"Authorization": "Bearer app-key"}
+    )
+    assert resp.status_code == 200
 
 
 def test_login_page_returns_500_when_template_missing(monkeypatch):
