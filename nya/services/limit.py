@@ -5,7 +5,7 @@ Simple rate limiting with time-based recovery.
 import re
 import time
 from collections import deque
-from typing import Deque, Optional, Tuple
+from typing import Any, Deque, Dict, Optional, Tuple
 
 from ..common.exceptions import ConfigurationError
 
@@ -183,3 +183,59 @@ class RateLimiter:
         self.touch()
         self.request_timestamps = deque()
         self.blocked_until = 0.0
+
+    def export_state(self) -> Optional[Dict[str, Any]]:
+        """
+        Snapshot the state worth surviving a restart, or ``None`` if there is
+        nothing to keep.
+
+        Only the consumed window and an active cool-down matter. ``locked``
+        is deliberately excluded: it tracks in-flight concurrency for a
+        process that is going away, so restoring it would strand a key.
+        """
+        now = time.time()
+        if self.window_seconds:
+            timestamps = [
+                t for t in self.request_timestamps if now - t < self.window_seconds
+            ]
+        else:
+            timestamps = []
+        blocked_until = self.blocked_until if self.blocked_until > now else 0.0
+        if not timestamps and not blocked_until:
+            return None
+        return {
+            "rate_limit": self.rate_limit,
+            "timestamps": timestamps,
+            "blocked_until": blocked_until,
+        }
+
+    def restore_state(self, state: Dict[str, Any]) -> None:
+        """
+        Re-apply a snapshot from ``export_state``.
+
+        The window is re-filtered against *this* limiter's configuration, so a
+        rate limit edited while the process was down still applies. Timestamps
+        in the future are dropped: a backwards clock change or a hand-edited
+        state file must not be able to hold a limiter shut indefinitely.
+        """
+        now = time.time()
+        timestamps = []
+        for raw in state.get("timestamps") or []:
+            try:
+                value = float(raw)
+            except (TypeError, ValueError):
+                continue
+            if value > now:
+                continue
+            if self.window_seconds and now - value >= self.window_seconds:
+                continue
+            timestamps.append(value)
+
+        self.request_timestamps = deque(sorted(timestamps))
+
+        try:
+            blocked_until = float(state.get("blocked_until") or 0.0)
+        except (TypeError, ValueError):
+            blocked_until = 0.0
+        self.blocked_until = blocked_until if blocked_until > now else 0.0
+        self.touch()

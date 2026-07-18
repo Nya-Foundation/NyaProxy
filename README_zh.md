@@ -93,11 +93,21 @@ nyaproxy
 ### Docker
 
 ```bash
+mkdir -p data
+cp configs/openai.yaml data/config.yaml  # 然后替换其中的占位密钥
+
 docker run -d \
   -p 8080:8080 \
-  -v ${PWD}/config.yaml:/app/config.yaml:ro \
-  k3scat/nya-proxy:latest --config config.yaml --host 0.0.0.0 --no-reload
+  -v ${PWD}/data:/app \
+  --user "$(id -u):$(id -g)" \
+  k3scat/nya-proxy:latest --config /app/config.yaml --host 0.0.0.0
 ```
+
+请挂载**目录**，而不是 `config.yaml` 文件本身。`/config` 界面保存配置时，会先写入临时文件再重命名覆盖目标文件；对于以文件方式绑定挂载的路径，该重命名会因 `EBUSY` 失败，导致每次保存都返回 500。挂载还必须可写，只读挂载会因同样的原因导致保存失败。
+
+镜像以 uid 100 运行，无法写入属于你的目录，因此使用 `--user` 让容器以当前用户身份运行。macOS 与 Windows 上的 Docker Desktop 会自动映射属主，可以省略该参数。
+
+该目录存放 `config.yaml` 与 `.nya_state.json`，后者在重启后保留限流窗口与密钥冷却状态，因此修改配置不会重置配额。你可以在宿主机上编辑配置，也可以通过 `/config` 界面修改，NyaProxy 都会自动重启以应用变更。在设置 `server.api_key` 之前，请勿对外暴露端口。
 
 ## 配置
 
