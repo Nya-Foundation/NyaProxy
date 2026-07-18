@@ -1,6 +1,218 @@
 # CHANGELOG
 
 
+## v0.6.0 (2026-07-18)
+
+### Bug Fixes
+
+- Reject blank API-key entries; adopt nacho-python 0.1.1
+  ([`2ef6eda`](https://github.com/Nya-Foundation/NyaProxy/commit/2ef6eda9665c20a54d7fddbee1f3fc973150bf26))
+
+nacho 0.1.1 validates api_key at construction (both AuthGuard and NachoOrchestrator) instead of
+  failing with a 500 at request time, and closes a hole where a falsy api_key such as [] skipped
+  auth construction entirely and served the config API unauthenticated. Upstream also documented the
+  embedded-UI contract we depend on (localStorage nacho_api_key for REST, NACHO_api_key cookie for
+  the WebSocket) and pinned it with a UI test.
+
+Their release note prompted an audit of our own falsy-key handling, which found an equivalent hole
+  on this side.
+
+A blank first entry — an unset "${MASTER_KEY}" (nacho substitutes env vars), or a stray '-' in YAML
+  — produced a configuration NyaProxy considered authenticated while leaving the master key empty:
+
+api_key: ["", "app-key"] -> is_auth_disabled() False verify_api_key("", verify_master=True) True
+
+so "Authorization: Bearer " with an empty value authenticated as master and opened the dashboard and
+  config UI. A None entry was worse in a different way: configured_key[0].strip() raised
+  AttributeError, 500ing every authenticated request.
+
+Fix: - usable_keys() drops blank and non-str entries, so a blank entry can never authenticate
+  anything and can never be presented as a credential - master_key() resolves the first *configured*
+  entry, not the first usable one: a blank master locks the admin surfaces rather than silently
+  promoting a proxy key to admin - a list holding only blank entries now reads as "no key
+  configured", matching api_key: "" and api_key: [] - an unrecognised config shape still fails
+  closed - ConfigManager mirrors the rule so nacho only ever receives the master key or None, never
+  a blank string - startup warns when auth is on but the master entry is blank, since the admin
+  surfaces then reject every key
+
+Verified live on 0.1.1 with api_key: ["", "app-key-e2e"]: empty-bearer and proxy-key requests to
+  /dashboard and /config all return 401, proxy traffic still returns 200, and the warning fires.
+  With a correct config, the config SSO flow, WebSocket live updates, and config writes all still
+  work.
+
+Tests: 12 further regressions covering blank/None/whitespace entries in every position, the
+  empty-bearer bypass end to end, all-blank lists, and the unexpected-shape case.
+
+- Restrict dashboard and config UI to the master key
+  ([`58739bc`](https://github.com/Nya-Foundation/NyaProxy/commit/58739bca72651f54672ffa06d27feecd1ddcf65d))
+
+server.api_key is a list of two different roles: the first entry is the master key (administers the
+  proxy), and the rest are access keys that may route traffic through the proxy but must not change
+  configuration or read operational data.
+
+AuthMiddleware only enforced that split on the session cookie. verify_api_key_header() called
+  verify_api_key() with the default verify_master=False, so ANY configured key presented as a Bearer
+  token was accepted on EVERY path — including the dashboard and its control actions.
+
+Verified against a running instance before the fix, with a non-master key:
+
+GET /dashboard/api/metrics -> 200 GET /dashboard/ -> 200 POST /dashboard/api/metrics/reset -> 200
+  POST /dashboard/api/queue/clear -> 200
+
+so any client holding a proxy key could read traffic metrics, request history and key usage, and
+  wipe queues and metrics. /config happened to return 401 only because nacho's own guard is
+  configured with the master key alone; NyaProxy's middleware was letting those requests through, so
+  the config UI would have been exposed too had the whole list been passed down.
+
+Fix: classify dashboard and config paths as admin surfaces and require the master key there, for
+  both the cookie and the Authorization header. Proxy traffic is unchanged and still accepts any
+  configured key. The mount prefix is stripped before matching so the rule holds behind a
+  reverse-proxy path prefix, and prefix matching is segment-aware so a proxied upstream path that
+  merely contains "dashboard" is not misclassified.
+
+After the fix, same instance: every admin path returns 401 for a non-master key while
+  /api/test/v1/echo still returns 200 for it; the master key retains full access; /health, /info and
+  /metrics stay public.
+
+Tests: 12 new regressions covering non-master denial on each admin surface, master acceptance, proxy
+  access retained, non-master cookies, the single-string-key case, both ASGI root_path conventions,
+  and the path-containing-"dashboard" false positive.
+
+### Chores
+
+- **deps**: Bump dependencies and adopt nacho-python 0.1.0
+  ([`bec6f29`](https://github.com/Nya-Foundation/NyaProxy/commit/bec6f2994d0b2cf1c1d0609500084c1f9468ef3d))
+
+Raise version floors to current releases: fastapi 0.139, uvicorn 0.51, httpx 0.28, orjson 3.11,
+  prometheus-client 0.25, plus dev/lint tooling (pytest 8.3, black 25, isort 6, mypy 1.14). Lockfile
+  regenerated.
+
+nacho-python 0.0.3 -> 0.1.0 (major refactor). The public API NyaProxy relies on (Nacho,
+  FileStorageBackend, RemoteStorageBackend, NachoOrchestrator, the get_* getters, on_change,
+  validate) survived the refactor, with one behavioural change:
+
+- NachoOrchestrator's auth guard now compares the api_key via hmac.compare_digest, which requires a
+  str. NyaProxy configures api_key as a list (first entry = master key), so pass the master key
+  rather than the list — otherwise config-UI auth raises TypeError on first request.
+
+Config-UI single sign-on: the Nacho SPA reads its key from localStorage (nacho_api_key) and sends it
+  as a Bearer header, while its live-update WebSocket authenticates from the NACHO_api_key cookie.
+  The NyaProxy login page now seeds both on sign-in (and clears them on rejection), so one sign-in
+  unlocks /config without a second Nacho login.
+
+Verified live against nacho 0.1.0: sign-in -> config editor loads authenticated, full config
+  renders, WebSocket connects ("live"), and an edit round-trips to disk and triggers reload. All 279
+  tests pass; mypy clean.
+
+### Features
+
+- Harden defaults, map upstream failures to 502/504, close e2e gaps, trim dead code
+  ([`bee0207`](https://github.com/Nya-Foundation/NyaProxy/commit/bee02071fcaeec06f593edfaadcc4d8a3d9d316c))
+
+Security / operational fixes: - startup warning when server.api_key is unset while bound to a
+  non-loopback host (unset key disables auth entirely); consolidated the "auth disabled" logic into
+  AuthManager.is_auth_disabled() - README (all languages) falsely claimed a SUPER_SECURE_PASSWORD!!!
+  fallback when api_key is unset — the real behavior is "no auth"; docs now say so - upstream
+  connection failures now return 502 and upstream timeouts 504 (previously both surfaced as generic
+  500 "Internal proxy error") - /metrics no longer raises AttributeError when hit before startup
+  completes - log file now rotates at 10 MB, keeping 5 files (was unbounded) - new --no-reload flag
+  disables the file-watch supervisor for deployments where restarts should be explicit; config
+  templates ship info-level logging, an auth warning comment, and placeholder proxy keys instead of
+  a shared literal password
+
+UX: - /health liveness endpoint (auth-excluded), python -m nya entry point - yaml-language-server
+  $schema modelines in shipped configs for IDE autocomplete; key_weights example; schema marks
+  retry.mode deprecated (accepted for compatibility, never read)
+
+Cleanup: - removed dead code: ConfigManager.{get_default_settings,reload} (reload was an unused
+  second reload mechanism), RateLimiter.{can_proceed,remaining_quota}, RequestQueue.get_queue_size,
+  dashboard get_metrics hasattr dead branch, duplicate substitution-rules getter (merged into
+  get_api_request_subst_rules), stale "singleton" docstrings, triplicated host/port resolution
+
+Tests: - split the 887-line test_core_components.py into per-module files with shared fakes in
+  core_helpers.py - new e2e suite for upstream failure modes: dead upstream -> 502, slow upstream ->
+  504 within the proxy's own budget, mid-stream upstream error does not wedge subsequent buffered or
+  streaming requests - coverage ratchet raised 60 -> 90 (actual: 95); tracked scripts/burst.py
+
+docs: README rewritten around accurate auth/bind behavior, all five LB strategies, aliases, retries,
+  endpoints table incl. /health and /metrics, CLI reference, and operational notes (reload
+  semantics, in-memory state)
+
+- Harden rate limiting and retry pipeline, wire weighted LB, sweep dead code
+  ([`382c9f6`](https://github.com/Nya-Foundation/NyaProxy/commit/382c9f62978ec103ab5c87f953aca742d18798b5))
+
+Correctness fixes: - key cool-down (block_for) now works when key_rate_limit is "0"/unlimited, using
+  an explicit blocked_until deadline instead of the timestamp-fill hack - retry delays run as
+  detached tasks so a retrying request no longer stalls the per-API worker pipeline under concurrent
+  429/5xx responses - requests whose client already timed out or disconnected are dropped before
+  spending upstream quota; their resources are released - dashboard "clear all queues" no longer
+  500s (RequestQueue.clear_all_queues was never implemented; the unit test passed against a drifted
+  mock) - malformed x-forwarded-for/forwarded headers are ignored instead of raising ValueError and
+  turning into 500s - queued-request expiry maps to 504 (was generic 500), blocked paths return 403
+  (405 is now method-only), and quota 429s carry a Retry-After header - request path is parsed once
+  per request instead of twice
+
+Features: - weighted load balancing is configurable via new per-API key_weights; fastest_response
+  now receives real per-key latencies from the queue - schema accepts "0" (unlimited) rate limits
+  and the HEAD method, matching what the code already supports
+
+Cleanup (~350 lines removed): - unused RootPathMiddleware, _init_auth, 8 never-raised exception
+  classes, dead config getters, dashboard uvicorn runners, redundant worker semaphore, misnamed
+  MAX_QUEUE_SIZE constant, no-op retry.mode config knob
+
+Tests: - new unit regressions for cool-down, forwarded-header parsing, weighted wiring,
+  clear_all_queues, and non-blocking retry - new e2e suite covering rate limiting under load (burst
+  throttling, queue overflow 503/504, IP quota 429 + Retry-After) and the retry strategy (429/5xx
+  key rotation, single-key cool-down, retries not blocking traffic), plus dashboard controls,
+  aliases, HEAD, and auth rejection - coverage ratchet raised 42 -> 60 (actual: 95%)
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+- Rebrand to the Coin Cat identity
+  ([`f9e7013`](https://github.com/Nya-Foundation/NyaProxy/commit/f9e70130dbeadb085ae6bb4d4e5a28f8ebfea0ee))
+
+New visual identity: a cat's head as negative space in a solid disc, closed by a horizon line. Flat,
+  geometric, two colors (midnight #23264B, indigo #6C6FE0) plus neutrals. Wordmark set in Space
+  Grotesk Medium, outlined to paths so the SVGs embed no fonts.
+
+- assets/brand/: horizontal lockups (light/dark), standalone marks, square icon (SVG + 512px PNG,
+  legible at 16px), GitHub social banner (1280x640 PNG + SVG source), and a usage README with the
+  palette - nya/html/static/logo.svg: replaced the auto-traced 400-line raster trace with the new
+  mark in accent indigo (holds on both dashboard themes) - nya/html/favicon.ico: regenerated at
+  16/32/48 from the new icon - assets/banner.png removed; READMEs (en/zh/ja) now point at
+  assets/brand/banner-1280x640.png
+
+Mockups for direction review were generated via codex image tooling; final assets are precise
+  generated geometry.
+
+- Redesign dashboard and login UI around the Coin Cat identity
+  ([`5b3310f`](https://github.com/Nya-Foundation/NyaProxy/commit/5b3310f3dc5653d3a551903be7bc5193f407e178))
+
+Complete rewrite of the web UI (index.html, login.html, styles.css, dashboard.js) designed by a UX
+  panel (information architecture, visual language, interaction) and verified by adversarial parity
+  + design review, then exercised live in both themes at desktop and mobile widths.
+
+Design: - Coin Cat token system: midnight/indigo palette with equal-care light and dark themes
+  (data-theme + prefers-color-scheme, pre-paint anti-flash) - self-hosted Space Grotesk variable
+  font (woff2 + OFL license, no CDN) - brand motifs applied sparingly: the horizon status bar and
+  the coin mark resting on the login page's horizon rule - flat, minimalist: tabular numerals for
+  metrics, quiet status pills, visible focus states, prefers-reduced-motion respected
+
+Functionality (full parity plus enhancements): - overview tiles (error rate, requests, pressure,
+  uptime) with a 2xx/5xx ratio bar; expandable per-API rows; key-usage detail; queue state;
+  recent-request table with status filter chips, text search (rendered fields only), and a 60-row
+  cap; API name filter - refresh model: adaptive polling with backoff, manual refresh, last-updated
+  stamp, per-section failure indicators - control actions (clear queue per-API/all, reset metrics)
+  gated by enable_control with inline non-blocking confirmation - login: show-password toggle,
+  inline error state, theme toggle
+
+Hardening (auth.py): - return_path is substituted as a JSON-escaped literal (closes a reflected XSS
+  on the pre-auth login page via percent-encoded paths; <> \u-escaped) - session cookie value is
+  URI-encoded client-side and decoded server-side so keys with cookie-grammar characters survive;
+  Secure flag added on https - login-page assets (logo, favicon, font) excluded from auth by suffix
+  so they resolve behind reverse-proxy path prefixes
+
+
 ## v0.5.0 (2026-05-22)
 
 ### Chores
