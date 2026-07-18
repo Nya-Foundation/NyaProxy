@@ -586,7 +586,7 @@ server = [
 
 [[package]]
 name = "nya-proxy"
-version = "0.4.6"
+version = "0.6.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
