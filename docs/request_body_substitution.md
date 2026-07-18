@@ -19,7 +19,7 @@ request_body_substitution:
   rules:         # List of substitution rules to apply
     - name: "Rule name"              # Human-readable name for the rule
       operation: "set|remove"        # Type of operation to perform
-      path: "path.to.field"     # JMESPath expression targeting the field
+      path: "path.to.field"          # Dot path; numeric array indexes are supported
       value: "new_value"             # Value to set (not needed for remove)
       conditions:                    # Optional conditions that must be met for rule to apply
         - field: "path.to.field"     # JMESPath to field to evaluate
@@ -61,16 +61,13 @@ Conditions determine whether a rule is applied based on the value of a field. Ny
 
 ### JMESPath Syntax
 
-JMESPath is a query language for JSON. Basic syntax:
+Conditions and value references use JMESPath. Mutation targets use only dot-separated object keys and numeric array indexes:
 
 - Root object is implicitly referenced (no `$` prefix needed)
 - `property` - Child property
 - `property.subproperty` - Nested property access
 - `[index]` - Array index (e.g., `messages[0]`)
-- `*` - Wildcard for properties or array elements
-- `[*]` - All elements in an array
-- `[]` - Flattened array projections (e.g., `messages[].content`)
-- `property[*].subproperty` - Access a property on each item in an array
+- Wildcards and projections may be used in conditions, but not as `set` or `remove` target paths.
 
 ## Examples
 
@@ -120,7 +117,7 @@ rules:
 
 This rule removes the `stream` parameter when it's set to `true`, forcing synchronous responses.
 
-### Example 4: Add System Message
+### Example 4: Replace the First Message
 
 ```yaml
 rules:
@@ -134,7 +131,7 @@ rules:
         value: "system"
 ```
 
-This rule adds a system message at the beginning of the messages array if the first message is not already a system message.
+This rule replaces the first message if it is not already a system message. It does not insert or shift array elements.
 
 ### Example 5: Transform OpenAI to Anthropic Format
 

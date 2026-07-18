@@ -103,9 +103,9 @@ Now let's configure NyaProxy to work with your OpenAI API key:
 apis:
   openai:
     name: OpenAI API
-    endpoint: https://generativelanguage.googleapis.com/v1beta/openai
+    endpoint: https://api.openai.com/v1
     aliases:
-      - /openai
+      - oai
     key_variable: api_keys
     headers:
       Authorization: 'Bearer ${{api_keys}}'

@@ -11,7 +11,12 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 
 from ..utils.formatting import format_elapsed_time, json_safe_dumps
 from ..utils.redaction import redact_sensitive_data
-from .streaming import detect_streaming_content, handle_streaming_response
+from .streaming import (
+    _HOP_BY_HOP_HEADERS,
+    apply_response_headers,
+    detect_streaming_content,
+    handle_streaming_response,
+)
 
 if TYPE_CHECKING:
     from ..common.models import ProxyRequest
@@ -38,6 +43,7 @@ class RequestExecutor:
         self.config = config
         self.client = self._create_client()
         self.metrics_collector = metrics_collector
+        self._close_callbacks = []
 
     def _create_client(self) -> httpx.AsyncClient:
         """
@@ -75,8 +81,7 @@ class RequestExecutor:
         actual_start_time = time.time()
         api_name = request.api_name
 
-        # Whether this request is counted in metrics at all.
-        track = bool(self.metrics_collector and request._rate_limited)
+        track = bool(self.metrics_collector)
 
         if track:
             self.metrics_collector.record_request(api_name, request.api_key)
@@ -114,6 +119,31 @@ class RequestExecutor:
             f"({format_elapsed_time(time.time() - actual_start_time)})"
         )
 
+        if detect_streaming_content(response.headers):
+            streaming = await handle_streaming_response(response)
+            if track:
+                streaming._nya_add_finalizer(
+                    lambda: self.metrics_collector.record_response(
+                        api_name,
+                        request.api_key,
+                        response.status_code,
+                        time.time() - actual_start_time,
+                    )
+                )
+            return streaming
+
+        try:
+            result = await self.handle_normal_response(response)
+        except Exception:
+            if track:
+                self.metrics_collector.record_response(
+                    api_name,
+                    request.api_key,
+                    0,
+                    time.time() - actual_start_time,
+                )
+            raise
+
         if track:
             self.metrics_collector.record_response(
                 api_name,
@@ -121,9 +151,7 @@ class RequestExecutor:
                 response.status_code,
                 time.time() - actual_start_time,
             )
-
-        # process successful response
-        return await self.process_response(response)
+        return result
 
     async def execute_request(
         self, request: "ProxyRequest", timeout: httpx.Timeout
@@ -134,7 +162,7 @@ class RequestExecutor:
         stream = self.client.stream(
             method=request.method,
             url=request.url,
-            headers=request.headers,
+            headers=self._prepare_request_headers(request.headers),
             content=request.content,
             timeout=timeout,
         )
@@ -201,12 +229,13 @@ class RequestExecutor:
             async for chunk in response.aiter_raw():
                 chunks.append(chunk)
 
-            return Response(
+            proxy_response = Response(
                 content=b"".join(chunks),
                 status_code=response.status_code,
-                headers=response.headers,
                 media_type=media_type,
             )
+            apply_response_headers(proxy_response, response.headers, streaming=False)
+            return proxy_response
 
         finally:
             # Properly close the stream context if it exists
@@ -218,5 +247,27 @@ class RequestExecutor:
         """
         Close the HTTP client.
         """
+        callbacks, self._close_callbacks = getattr(self, "_close_callbacks", []), []
+        for callback in callbacks:
+            await callback()
         if self.client:
             await self.client.aclose()
+
+    def add_close_callback(self, callback) -> None:
+        """Register async cleanup that must run before the client closes."""
+        self._close_callbacks.append(callback)
+
+    @staticmethod
+    def _prepare_request_headers(headers: httpx.Headers):
+        """Strip hop-by-hop headers before sending the upstream request."""
+        connection_tokens = {
+            token.strip().lower()
+            for token in headers.get("connection", "").split(",")
+            if token.strip()
+        }
+        excluded = _HOP_BY_HOP_HEADERS | connection_tokens
+        return [
+            (name, value)
+            for name, value in headers.multi_items()
+            if name.lower() not in excluded
+        ]

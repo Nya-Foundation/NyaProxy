@@ -37,9 +37,12 @@ async def test_queue_rejects_full_or_over_quota_requests():
     queue._check_for_proxy_limit = lambda api_name, request: asyncio.sleep(0, result=1)
     request = make_request()
     request.api_name = "mock"
+    request._rate_limited = True
+    request.future = asyncio.Future()
 
+    assert await queue._wait_for_key("mock", request) is None
     with pytest.raises(ReachedMaxQuotaError):
-        await queue.enqueue_request(request)
+        request.future.result()
 
 
 @pytest.mark.asyncio
@@ -73,8 +76,8 @@ async def test_queue_enqueue_success_waits_records_metrics_and_reuses_workers(
 
     assert future is request.future
     assert request.priority == 1
-    assert sleeps == [0.1]
-    assert metrics.hits == ["mock"]
+    assert sleeps == []
+    assert metrics.hits == []
     assert metrics.queues == ["mock"]
     assert queue.get_all_queue_sizes()["mock"] == 1
 
@@ -112,7 +115,7 @@ async def test_queue_processor_loop_handles_no_processor_expiry_success_and_erro
     successful = make_request()
     successful.api_name = "mock"
     successful.future = asyncio.Future()
-    queue._check_for_resource_limit = lambda api_name: asyncio.sleep(
+    queue._check_for_resource_limit = lambda api_name, **kwargs: asyncio.sleep(
         0, result=("key-a", 0)
     )
     await queue._queues["mock"].put(successful)
@@ -207,6 +210,63 @@ async def test_queue_processes_success_failure_retry_and_expiry(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("status_code", [401, 403])
+async def test_configured_upstream_status_temporarily_blocks_selected_key(status_code):
+    config = CoreConfig()
+    config.key_blocking_enabled = True
+    config.key_blocking_status_codes = [401, 403]
+    config.key_blocking_duration = 30
+    control = TrafficManager(config)
+    queue = RequestQueue(config, control)
+
+    request = make_request()
+    request.api_name = "mock"
+    request.api_key = "key-a"
+    request.future = asyncio.Future()
+    queue.register_processor(
+        lambda request: asyncio.sleep(0, result=Response(status_code=status_code))
+    )
+
+    before = time.time()
+    await queue._process_with_worker("mock", request)
+
+    assert request.future.result().status_code == status_code
+    blocked_key = control.get_key_limiter("mock", "key-a")
+    assert blocked_key.blocked_until >= before + 30
+    assert blocked_key.locked is False
+    assert await control.acquire_key("mock", enforce_rate_limits=False) == ("key-b", 0)
+
+
+@pytest.mark.asyncio
+async def test_key_blocking_ignores_unconfigured_status_and_disabled_policy():
+    config = CoreConfig()
+    config.key_blocking_status_codes = [403]
+    control = TrafficManager(config)
+    queue = RequestQueue(config, control)
+
+    request = make_request()
+    request.api_name = "mock"
+    request.api_key = "key-a"
+    request.future = asyncio.Future()
+    queue.register_processor(
+        lambda request: asyncio.sleep(0, result=Response(status_code=403))
+    )
+    await queue._process_with_worker("mock", request)
+    assert control.get_key_limiter("mock", "key-a").blocked_until == 0
+
+    config.key_blocking_enabled = True
+    request = make_request()
+    request.api_name = "mock"
+    request.api_key = "key-a"
+    request.future = asyncio.Future()
+    queue.register_processor(
+        lambda request: asyncio.sleep(0, result=Response(status_code=401))
+    )
+    await queue._process_with_worker("mock", request)
+    assert control.get_key_limiter("mock", "key-a").blocked_until == 0
+
+
+@pytest.mark.asyncio
 async def test_queue_wait_for_key_expires_and_basic_status_methods():
     config = CoreConfig()
     control = TrafficManager(config)
@@ -216,7 +276,7 @@ async def test_queue_wait_for_key_expires_and_basic_status_methods():
     request.api_name = "mock"
     request.future = asyncio.Future()
     request.added_at = time.time() - 10
-    queue._check_for_resource_limit = lambda api_name: asyncio.sleep(
+    queue._check_for_resource_limit = lambda api_name, **kwargs: asyncio.sleep(
         0, result=(None, 1)
     )
 
@@ -244,7 +304,7 @@ async def test_queue_wait_for_key_sleeps_once_before_expiring(monkeypatch):
     request.future = asyncio.Future()
     sleeps = []
 
-    async def limited_resource(api_name):
+    async def limited_resource(api_name, **kwargs):
         return None, 0.4
 
     queue._check_for_resource_limit = limited_resource
@@ -270,8 +330,12 @@ async def test_queue_resource_limit_checks_endpoint_and_key_waits():
     assert await queue._check_for_resource_limit("mock") == (None, 0.25)
 
     control.time_to_endpoint_ready = lambda api_name: 0
-    control.acquire_key = lambda api_name: asyncio.sleep(0, result=(None, 0.5))
+    control.acquire_key = lambda api_name, **kwargs: asyncio.sleep(
+        0, result=(None, 0.5)
+    )
     assert await queue._check_for_resource_limit("mock") == (None, 0.5)
 
-    control.acquire_key = lambda api_name: asyncio.sleep(0, result=("key-a", 0))
+    control.acquire_key = lambda api_name, **kwargs: asyncio.sleep(
+        0, result=("key-a", 0)
+    )
     assert await queue._check_for_resource_limit("mock") == ("key-a", 0.0)

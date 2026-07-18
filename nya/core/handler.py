@@ -3,7 +3,7 @@ Request handler for intercepting and forwarding HTTP requests with token rotatio
 """
 
 import random
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 import orjson
@@ -52,14 +52,22 @@ class RequestHandler:
 
         # Construct target api endpoint URL
         target_endpoint: str = self.config.get_api_endpoint(api_name)
-        target_url = f"{target_endpoint}{trail_path}"
+        target_url = f"{target_endpoint.rstrip('/')}{trail_path}"
+        if request._url.query:
+            target_url = f"{target_url}?{request._url.query}"
         request.url = target_url
 
         request._rate_limited = self.should_enforce_rate_limit(api_name, trail_path)
 
         # parse the original request ip from proxy headers
-        proxy_ip = HeaderUtils.parse_source_ip_address(request.headers)
-        request.ip = proxy_ip if proxy_ip else request.ip
+        trusted_proxies = (
+            self.config.get_trusted_proxies()
+            if hasattr(self.config, "get_trusted_proxies")
+            else []
+        )
+        if HeaderUtils.is_trusted_proxy(request.ip, trusted_proxies):
+            proxy_ip = HeaderUtils.parse_source_ip_address(request.headers)
+            request.ip = proxy_ip if proxy_ip else request.ip
 
         request.user = self.get_proxy_api_key(request)
 
@@ -104,7 +112,10 @@ class RequestHandler:
         # Check for aliases in each API config
         for endpoint in apis_config.keys():
             aliases = self.config.get_api_aliases(endpoint)
-            if aliases and api_name in aliases:
+            normalized_aliases = {
+                alias.strip("/") for alias in aliases if isinstance(alias, str)
+            }
+            if api_name in normalized_aliases:
                 return endpoint, trail_path
 
         # No match found
@@ -143,14 +154,22 @@ class RequestHandler:
         mode = self.config.get_api_allowed_paths_mode(api_name)
         allowed_on_match = mode == "whitelist"
 
-        matched = "*" in paths or any(
-            pattern == path or path.startswith(pattern.rstrip("*")) for pattern in paths
-        )
+        matched = self._matches_path(path, paths)
 
         if matched == allowed_on_match:
             return None
 
         return 403, "NyaProxy: The request path is prohibited for this API"
+
+    @staticmethod
+    def _matches_path(path: str, patterns: List[str]) -> bool:
+        """Match exact paths and explicit trailing-``*`` prefixes."""
+        for pattern in patterns or []:
+            if pattern == "*" or pattern == path:
+                return True
+            if pattern.endswith("*") and path.startswith(pattern[:-1]):
+                return True
+        return False
 
     def set_request_priority(self, request: ProxyRequest) -> None:
         """
@@ -213,11 +232,7 @@ class RequestHandler:
             return True
 
         # Check each pattern against the path
-        for pattern in rate_limit_paths:
-            if pattern == path or path.startswith(pattern.rstrip("*")):
-                return True
-
-        return False
+        return self._matches_path(path, rate_limit_paths)
 
     def process_request_body(self, request: ProxyRequest) -> None:
         """
@@ -273,17 +288,23 @@ class RequestHandler:
             for var in required_vars:
                 # randomly select a value for the variable from the configured values
                 variables = self.config.get_api_variable_values(api_name, var)
-                var_values[var] = random.choice(variables) if variables else None
+                if not variables:
+                    raise VariablesConfigurationError(
+                        f"Header variable {var!r} has no configured values for {api_name}"
+                    )
+                var_values[var] = random.choice(variables)
 
             # Process headers with variable substitution
             processed_headers = HeaderUtils.process_headers(
                 header_config, var_values, original_headers=dict(request.headers)
             )
-            # Merge processed user defined headers with existing request headers
-            request.headers = HeaderUtils.merge_headers(
-                request.headers, processed_headers
-            )
+            # ``process_headers`` already starts from the filtered originals and
+            # applies configured overrides. Re-merging the unfiltered request
+            # here would reintroduce the gateway Authorization credential.
+            request.headers = processed_headers
 
+        except VariablesConfigurationError:
+            raise
         except Exception as e:
             raise VariablesConfigurationError(
                 f"Header processing failed for {api_name}: {str(e)}"

@@ -9,16 +9,30 @@ DEFAULT_CONFIG_NAME = "config.yaml"
 DEFAULT_SCHEMA_NAME = "schema.json"  # Previously schema.json, now using yaml format
 
 # Default Host and Port
-DEFAULT_HOST = "0.0.0.0"
+DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8080
 
 # API paths
 API_PATH_PREFIX = "/api/"
 
-# Request Header handling
-EXCLUDED_REQUEST_HEADERS = {
+# Hop-by-hop headers belong to one transport connection and must never be
+# copied through a proxy.  ``connection`` may nominate additional headers at
+# runtime; the static names cover the standard set.
+HOP_BY_HOP_HEADERS = {
     "content-length",
     "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailer",
+    "transfer-encoding",
+    "upgrade",
+}
+
+# Request headers that describe the connection between the client and
+# NyaProxy, rather than the request NyaProxy sends upstream.
+EXCLUDED_REQUEST_HEADERS = HOP_BY_HOP_HEADERS | {
     "upgrade-insecure-requests",
     "proxy-connection",
     "x-forwarded-for",

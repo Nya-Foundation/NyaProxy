@@ -55,5 +55,6 @@ async def test_handle_streaming_response_logs_generator_errors_and_closes():
     )
 
     streaming = await handle_streaming_response(response)
-    assert [chunk async for chunk in streaming.body_iterator] == []
+    with pytest.raises(RuntimeError, match="stream failed"):
+        [chunk async for chunk in streaming.body_iterator]
     assert response._stream_ctx is None

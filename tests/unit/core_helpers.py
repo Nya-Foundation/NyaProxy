@@ -27,6 +27,9 @@ class CoreConfig:
         self.retry_status_codes = [429]
         self.retry_after = 0
         self.retry_attempts = 2
+        self.key_blocking_enabled = False
+        self.key_blocking_status_codes = [403]
+        self.key_blocking_duration = 300
         self.key_concurrency = True
         self.random_delay = 0
         self.body_substitution_enabled = False
@@ -127,6 +130,15 @@ class CoreConfig:
 
     def get_api_retry_attempts(self, api_name):
         return self.retry_attempts
+
+    def get_api_key_blocking_enabled(self, api_name):
+        return self.key_blocking_enabled
+
+    def get_api_key_blocking_status_codes(self, api_name):
+        return self.key_blocking_status_codes
+
+    def get_api_key_blocking_duration_seconds(self, api_name):
+        return self.key_blocking_duration
 
     def get_api_default_timeout(self, api_name=None):
         return 5

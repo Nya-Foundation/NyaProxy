@@ -10,11 +10,12 @@ server:
     address: socks5://username:password@proxy.example.com:1080
   dashboard:
     enabled: true
+  trusted_proxies: []
   cors:
     # Allow all origins with "*", but specify exact origins when allow_credentials is true for security
     allow_origins: ["*"]
-    allow_credentials: true
-    allow_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    allow_credentials: false
+    allow_methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
     allow_headers: ["*"]
 
 # Default configuration applied to all API endpoints unless overridden
@@ -29,7 +30,7 @@ default_settings:
     mode: whitelist # if "whitelist", only allow listed paths; if "blacklist", block listed paths
     paths:
       - "*"
-  allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"] # Allowed HTTP methods for the API
+  allowed_methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"] # Allowed HTTP methods for the API
   queue:
     max_size: 200
     max_workers: 10 # Maximum number of concurrent workers for processing requests
@@ -57,7 +58,7 @@ apis:
     name: NovelAI API
     endpoint: https://image.novelai.net
     aliases:
-    - /novelai
+    - nai
     key_variable: keys
     key_concurrency: false # NovelAI does not support concurrent requests with the same key, so set this to false
     randomness: 4 # Random delay of (0.0-8)s to introduce variability in request timing
@@ -94,7 +95,7 @@ apis:
       endpoint_rate_limit: 10000/d
       key_rate_limit: 1/12s # 1/12s is a safe limit for NovelAI, to avoid bot detection
       ip_rate_limit: 5000/d # IP-based rate limit to protect against abuse and key redistribution
-      rate_limit_paths: null
+      rate_limit_paths: []
     request_body_substitution: 
       enabled: false # Set to true to if you only want to support unlimited image generation (Opus Tier)
       rules:

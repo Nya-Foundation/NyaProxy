@@ -3,6 +3,8 @@ Streaming response handling utilities for NyaProxy.
 """
 
 import traceback
+from collections.abc import Callable
+from typing import Awaitable, Optional
 
 import httpx
 from loguru import logger
@@ -34,8 +36,26 @@ async def handle_streaming_response(response: httpx.Response) -> StreamingRespon
     )
 
     logger.debug(f"Handling streaming response: {response.status_code} {media_type}, ")
-    # Process headers for streaming by removing unnecessary ones
-    _prepare_streaming_headers(response.headers)
+    finalizers = []
+    finalized = False
+
+    async def finalize() -> None:
+        nonlocal finalized
+        if finalized:
+            return
+        finalized = True
+        if hasattr(response, "_stream_ctx") and response._stream_ctx:
+            await response._stream_ctx.__aexit__(None, None, None)
+            response._stream_ctx = None
+        for callback in finalizers:
+            result = callback()
+            if result is not None:
+                await result
+
+    def add_finalizer(
+        callback: Callable[[], Optional[Awaitable[None]]],
+    ) -> None:
+        finalizers.append(callback)
 
     async def event_generator():
         try:
@@ -46,20 +66,36 @@ async def handle_streaming_response(response: httpx.Response) -> StreamingRespon
             logger.error(
                 f"Error in streaming response: {str(e)}, traceback: {traceback.format_exc()}"
             )
+            raise
         finally:
-            if hasattr(response, "_stream_ctx") and response._stream_ctx:
-                await response._stream_ctx.__aexit__(None, None, None)
-                response._stream_ctx = None
+            await finalize()
 
-    return StreamingResponse(
+    streaming = StreamingResponse(
         content=event_generator(),
         status_code=status_code,
         media_type=media_type,
-        headers=response.headers,
     )
+    apply_response_headers(streaming, response.headers, streaming=True)
+    streaming._nya_add_finalizer = add_finalizer
+    streaming._nya_close = finalize
+    return streaming
 
 
-def _prepare_streaming_headers(headers: httpx.Headers) -> None:
+_HOP_BY_HOP_HEADERS = {
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailer",
+    "transfer-encoding",
+    "upgrade",
+}
+
+
+def apply_response_headers(
+    response, headers: httpx.Headers, *, streaming: bool
+) -> None:
     """
     Prepare headers for streaming responses with SSE best practices.
 
@@ -70,18 +106,36 @@ def _prepare_streaming_headers(headers: httpx.Headers) -> None:
         Processed headers for streaming
     """
 
-    # Remove content-length as it's not applicable for streaming
-    if "content-length" in headers:
-        del headers["content-length"]
+    connection_tokens = {
+        token.strip().lower()
+        for token in headers.get("connection", "").split(",")
+        if token.strip()
+    }
+    excluded = _HOP_BY_HOP_HEADERS | connection_tokens
+    if streaming:
+        excluded.add("content-length")
 
-    # Remove date since fastapi will set it automatically
-    if "date" in headers:
-        del headers["date"]
+    raw_headers = [
+        (name.lower().encode("latin-1"), value.encode("latin-1"))
+        for name, value in headers.multi_items()
+        if name.lower() not in excluded
+    ]
+    present = {name for name, _ in raw_headers}
 
-    headers["connection"] = "keep-alive"
-    headers["cache-control"] = "no-cache"
-    headers["transfer-encoding"] = "chunked"
-    headers["x-accel-buffering"] = "no"
+    # Keep Starlette's computed content-type/content-length only when the
+    # upstream did not provide an end-to-end value.
+    for name, value in response.raw_headers:
+        if name not in present and name not in excluded:
+            raw_headers.append((name, value))
+            present.add(name)
+
+    if streaming:
+        if b"cache-control" not in present:
+            raw_headers.append((b"cache-control", b"no-cache"))
+        if b"x-accel-buffering" not in present:
+            raw_headers.append((b"x-accel-buffering", b"no"))
+
+    response.raw_headers = raw_headers
 
 
 def detect_streaming_content(headers: httpx.Headers) -> bool:
@@ -103,12 +157,6 @@ def detect_streaming_content(headers: httpx.Headers) -> bool:
 
     exceptions = ("application/json",)
 
-    sse_cts = {
-        "text/event-stream",
-        "application/x-ndjson",
-        "multipart/x-mixed-replace",
-    }
-
     media_prefixes = (
         "video/",
         "audio/",
@@ -121,7 +169,6 @@ def detect_streaming_content(headers: httpx.Headers) -> bool:
         "application/pdf",
     }
 
-    is_sse = ct in sse_cts
     is_media = any(ct.startswith(prefix) for prefix in media_prefixes) or (
         ct in other_media_cts
     )
@@ -130,9 +177,6 @@ def detect_streaming_content(headers: httpx.Headers) -> bool:
         return False
 
     if no_length or uses_chunked:
-        return True
-
-    if uses_chunked and is_sse:
         return True
 
     if is_media and (uses_chunked or supports_range):

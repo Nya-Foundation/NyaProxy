@@ -48,13 +48,15 @@ This is the fastest way to get started:
 2. Run this command to start NyaProxy:
 
 ```bash
-docker run -d -p 8080:8080 k3scat/nya-proxy:latest
+docker run -d -p 8080:8080 \
+  -v "${PWD}/config.yaml:/app/config.yaml:ro" \
+  k3scat/nya-proxy:latest --config config.yaml --host 0.0.0.0 --no-reload
 ```
 
 3. Open `http://localhost:8080` in your web browser
 
 > [!TIP]
-> The `-p 8080:8080` part maps the container's port to your computer. If port 8080 is already in use, you can change the first number (e.g., `-p 9000:8080` would make NyaProxy available at http://localhost:9000).
+> Create `config.yaml` first, set both the proxy and upstream keys, and keep it on the host so container replacement does not lose configuration. The `-p 8080:8080` part maps the container's port to your computer.
 
 
 ### Option 2: Docker Compose (Recommended)
@@ -73,12 +75,10 @@ services:
     restart: unless-stopped
     ports:
       - "8080:8080"
-    networks:
-      - nya-proxy-network
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+    command: ["--config", "config.yaml", "--host", "0.0.0.0", "--no-reload"]
 
-networks:
-  nya-proxy-network:
-    driver: bridge
 ```
 
 3. In the same folder, open a terminal or command prompt and run:
@@ -90,34 +90,27 @@ docker-compose up -d
 4. Open `http://localhost:8080` in your web browser
 
 > [!NOTE]
-> No need to supply any configuration files! NyaProxy will automatically create a basic configuration that works out of the box. You can customize it later through the web interface.
+> The bind-mounted configuration is read-only inside the container. Edit it on the host, validate with `nyaproxy --check-config --config config.yaml`, and restart the container.
 
 ## Configuring OpenAI API
 
 Now let's configure NyaProxy to work with your OpenAI API key:
 
-### 1. Access the Configuration Interface
+### 1. Create the Configuration File
 
-1. Go to `http://localhost:8080/config` in your web browser
-   
-2. The first time you access this page, you won't need a password as no master API key is configured yet. Simply click "Authenticate":
-
-> [!NOTE]
-> When no master API key is configured, NyaProxy doesn't show a login page. This is convenient for initial setup but not secure for production use.
+Copy a provider example to `config.yaml` before starting the container. The file is intentionally mounted read-only; edit it on the host and restart the container after changes.
 
 ### 2. Configure OpenAI API
 
-1. In the configuration editor, you'll see the automatically generated config
-
-2. Find or add your OpenAI configuration in the `apis` section:
+1. Find or add your OpenAI configuration in the host `config.yaml`:
 
 ```yaml
 apis:
   openai:
     name: OpenAI API
-    endpoint: https://generativelanguage.googleapis.com/v1beta/openai
+    endpoint: https://api.openai.com/v1
     aliases:
-      - /openai
+      - oai
     key_variable: api_keys
     headers:
       Authorization: 'Bearer ${{api_keys}}'
@@ -131,12 +124,12 @@ apis:
       key_rate_limit: 250/m
 ```
 
-3. Replace `sk-your-openai-key-1` with your actual OpenAI API key
+2. Replace `sk-your-openai-key-1` with your actual OpenAI API key
 
 > [!TIP]
 > You can use Gemini AI Studio to get a free API key that works with OpenAI-compatible interfaces. [Get a Gemini API key here](https://aistudio.google.com/app/apikey). Just make sure to use the Gemini endpoint if you're using a Gemini key.
 
-4. Under the `server` section, add a secure API key to protect your instance:
+3. Under the `server` section, add a secure API key to protect your instance:
 
 ```yaml
 server:
@@ -145,7 +138,7 @@ server:
     - your-secure-master-key  # Choose a strong password
 ```
 
-5. Click "Save Configuration"
+4. Validate the file, then start or restart the container.
 
 
 > [!IMPORTANT]

@@ -10,7 +10,7 @@ bounded ring buffer of recent requests, used purely for the dashboard's
 
 import time
 from collections import defaultdict, deque
-from typing import Any, Deque, Dict, List, Optional
+from typing import Any, Deque, Dict, List
 
 from prometheus_client import (
     CONTENT_TYPE_LATEST,

@@ -10,11 +10,12 @@ server:
     address: socks5://username:password@proxy.example.com:1080
   dashboard:
     enabled: true
+  trusted_proxies: []
   cors:
     # Allow all origins with "*", but specify exact origins when allow_credentials is true for security
     allow_origins: ["*"]
-    allow_credentials: true
-    allow_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    allow_credentials: false
+    allow_methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
     allow_headers: ["*"]
 
 # Default configuration applied to all API endpoints unless overridden
@@ -29,7 +30,7 @@ default_settings:
     mode: whitelist # if "whitelist", only allow listed paths; if "blacklist", block listed paths
     paths:
       - "*"
-  allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"] # Allowed HTTP methods for the API
+  allowed_methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"] # Allowed HTTP methods for the API
   queue:
     max_size: 200
     max_workers: 10 # Maximum number of concurrent workers for processing requests
@@ -54,7 +55,7 @@ default_settings:
 apis:
   openai:
     # Example for OpenAI-compatible API endpoint
-    name: Google Gemini API
+    name: OpenAI API
     # Supported endpoints:
     # Gemini: https://generativelanguage.googleapis.com/v1beta/openai
     # OpenAI: https://api.openai.com/v1
@@ -65,7 +66,7 @@ apis:
     # Ollama: http://localhost:11434/v1
     endpoint: https://api.openai.com/v1
     aliases:
-    - /openai
+    - oai
     key_variable: keys
     headers:
       Authorization: 'Bearer ${{keys}}'

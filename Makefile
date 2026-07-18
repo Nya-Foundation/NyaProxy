@@ -2,7 +2,7 @@
 # Run `make` or `make help` to see available targets.
 
 .DEFAULT_GOAL := help
-.PHONY: help install test test-unit test-e2e coverage lint typecheck format clean build
+.PHONY: help install check test test-unit test-e2e coverage lint typecheck format clean build
 
 PYTHON ?= python
 
@@ -12,6 +12,8 @@ help:  ## Show this help
 
 install:  ## Install the package with dev dependencies
 	$(PYTHON) -m pip install -e ".[dev,lint]"
+
+check: lint typecheck test  ## Run the same quality checks as CI
 
 test:  ## Run the full test suite
 	$(PYTHON) -m pytest
@@ -26,16 +28,16 @@ coverage:  ## Run tests and write an HTML coverage report to reports/htmlcov
 	$(PYTHON) -m pytest --cov-report=html
 	@echo "Coverage report: reports/htmlcov/index.html"
 
-lint:  ## Check formatting and import order without modifying files
-	$(PYTHON) -m black --check .
-	$(PYTHON) -m isort --check-only --profile black .
+lint:  ## Check Python lint rules and formatting without modifying files
+	$(PYTHON) -m ruff check .
+	$(PYTHON) -m ruff format --check .
 
 typecheck:  ## Run mypy on the type-clean module set (see pyproject [tool.mypy])
 	$(PYTHON) -m mypy
 
-format:  ## Auto-format code with black and isort
-	$(PYTHON) -m isort --profile black .
-	$(PYTHON) -m black .
+format:  ## Auto-fix and format Python code with Ruff
+	$(PYTHON) -m ruff check --fix .
+	$(PYTHON) -m ruff format .
 
 clean:  ## Remove build artifacts, caches, and generated reports
 	$(PYTHON) .clean.py

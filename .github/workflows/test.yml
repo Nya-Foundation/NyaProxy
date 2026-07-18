@@ -1,75 +1,119 @@
-# .github/workflows/test.yml
-name: CI - Unit Test
+name: CI - Quality
 
 on:
   push:
-    branches:
-      - dev
-    paths:
-      - 'nya/**'
-      - 'tests/**'
+    branches: [dev, staging]
   pull_request:
-    branches: ["dev", "staging"]
-    paths:
-      - 'nya/**'
-      - 'tests/**'
-
+    branches: [dev, staging, main]
   workflow_dispatch:
+  workflow_call:
 
-# Concurrency settings:
-# - For PRs: Cancel older runs for the same PR.
-# - For pushes: Cancel older runs for the same branch.
-# - workflow_dispatch runs will run independently.
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  quality:
+    name: Style, types, and package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install quality tools
+        run: python -m pip install -e ".[dev,lint]"
+
+      - name: Lint and check formatting with Ruff
+        run: make lint
+
+      - name: Type check
+        run: make typecheck
+
+      - name: Build and smoke-test the wheel
+        run: |
+          # `make build` does not clean dist/, so a stale artifact would make
+          # the dist/*.whl glob ambiguous.
+          rm -rf dist
+          make build
+
+          # Install into a throwaway venv rather than over the editable
+          # install used by lint and typecheck. That install owns the
+          # `nyaproxy` script, so testing in place cannot distinguish a
+          # working wheel from a wheel whose console script is missing.
+          # Installing with dependencies also asserts that the declared
+          # runtime requirements are actually sufficient.
+          SMOKE="${RUNNER_TEMP:-/tmp}/smoke-venv"
+          rm -rf "$SMOKE"
+          python -m venv "$SMOKE"
+          "$SMOKE/bin/python" -m pip install --quiet dist/*.whl
+
+          # Check the entry point through metadata first: a wheel missing its
+          # console script otherwise surfaces only as "command not found".
+          "$SMOKE/bin/python" - <<'PY'
+          import importlib.metadata as md
+          scripts = {e.name for e in md.entry_points(group="console_scripts")}
+          assert "nyaproxy" in scripts, f"wheel is missing the nyaproxy console script; found {scripts or 'none'}"
+          PY
+
+          "$SMOKE/bin/nyaproxy" --version
+
+          # Data files are not picked up by imports, so they need asserting
+          # explicitly — including the dashboard assets, which the service
+          # serves at runtime and would 404 on if they were dropped.
+          "$SMOKE/bin/python" - <<'PY'
+          from importlib.resources import files
+          root = files("nya")
+          required = [
+              "config.yaml",
+              "schema.json",
+              "html/index.html",
+              "html/login.html",
+              "html/static/css/styles.css",
+              "html/static/js/dashboard.js",
+          ]
+          missing = [p for p in required if not (root / p).is_file()]
+          assert not missing, f"wheel is missing packaged data files: {missing}"
+          PY
+
   test:
+    name: Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ['3.11', '3.12', '3.13']
-      fail-fast: false # Ensure all Python versions are tested
+        python-version: ['3.11', '3.12', '3.13', '3.14']
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      # fetch-depth: 0 # Usually not needed for tests unless testing git history itself
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
-        cache: 'pip'
-        cache-dependency-path: |
-          pyproject.toml
-          setup.py
-          # Add requirements*.txt if relevant
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e ".[dev,lint]"
+      - name: Install test dependencies
+        run: python -m pip install -e ".[dev]"
 
-    - name: Type check (mypy ratchet)
-      # Checks only the type-clean module set in pyproject [tool.mypy].
-      run: |
-        mypy
+      - name: Run tests with coverage
+        run: python -m pytest --cov-report=xml --cov-fail-under=90
 
-    - name: Run tests with coverage
-      # --cov-fail-under is a ratchet: it must never drop. Actual coverage
-      # sits around 95%; 90 leaves headroom without letting it erode.
-      run: |
-        pytest --cov=nya tests/ --cov-report=xml --cov-fail-under=90
-
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v5
-      with:
-        files: ./reports/coverage.xml
-        token: ${{ secrets.CODECOV_TOKEN }} 
-        fail_ci_if_error: true # Recommended to fail the build if Codecov upload fails
-        name: codecov-${{ matrix.python-version }} # Optional: name the report based on Python version
-        flags: unittests
-        verbose: true
-      # Only upload coverage for one Python version to avoid duplicate reports (optional, but common)
-      # if: matrix.python-version == '3.12' # Or your primary test version
+      - name: Upload coverage
+        if: matrix.python-version == '3.13'
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./reports/coverage.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+          flags: tests
