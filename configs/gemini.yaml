@@ -49,6 +49,10 @@ default_settings:
     retry_after_seconds: 1
     retry_request_methods: [ POST, GET, PUT, DELETE, PATCH, OPTIONS ]
     retry_status_codes: [ 429, 500, 502, 503, 504 ]
+  key_blocking:
+    enabled: false # Set to true to take a key out of rotation after the statuses below
+    status_codes: [ 403 ]
+    duration_seconds: 300 # How long a quarantined key stays unavailable
   timeouts:
     request_timeout_seconds: 300
 
