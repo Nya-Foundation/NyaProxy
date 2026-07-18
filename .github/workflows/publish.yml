@@ -92,6 +92,26 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Build a single-arch image and actually start it before publishing
+      # anything. `docker build` never validates ENTRYPOINT, so an image whose
+      # console script is missing builds, pushes, and scans clean, then dies
+      # at runtime with "exec: nyaproxy: not found". The amd64 layers are
+      # reused from cache by the multi-arch build below, so this is cheap.
+      - name: Build image for smoke test
+        if: steps.semantic-release.outputs.released == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          load: true
+          platforms: linux/amd64
+          tags: nyaproxy:smoke
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke-test the image
+        if: steps.semantic-release.outputs.released == 'true'
+        run: docker run --rm nyaproxy:smoke --version
+
       - name: Build and push Docker image
         if: steps.semantic-release.outputs.released == 'true'
         uses: docker/build-push-action@v5
