@@ -33,6 +33,7 @@
         <nav class="header-nav" aria-label="Dashboard sections">
           <a href="#overview">Overview</a>
           <a href="#apis">APIs</a>
+          <a href="#credentials">Credentials</a>
           <a href="#activity">Activity</a>
         </nav>
         <div class="header-actions">
@@ -40,7 +41,7 @@
             <span class="dot dot-warn" aria-hidden="true"></span><span id="connection-label">Connecting</span>
           </span>
           <span id="last-updated" class="stamp"></span>
-          <button id="refresh-btn" class="icon-btn refresh-btn" type="button" aria-label="Refresh data" title="Refresh (r)">
+          <button id="refresh-btn" class="icon-btn refresh-btn" type="button" aria-label="Refresh data" title="Refresh (r) — auto-refreshes every 15 seconds">
             <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
               <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" />
             </svg>
@@ -63,66 +64,107 @@
         <div>
           <div class="eyebrow"><span class="eyebrow-line"></span>Live operations</div>
           <h1 id="page-title">Gateway overview</h1>
-          <p>Traffic health, upstream usage, and queue pressure in one place.</p>
+          <p>Traffic health, latency, credential rotation, and queue pressure in one place.</p>
         </div>
-        <div class="intro-meta">
-          <span>Auto-refresh</span>
-          <strong>Every 15 seconds</strong>
-        </div>
+        <dl class="intro-meta">
+          <div>
+            <dt>Uptime</dt>
+            <dd id="meta-uptime">—</dd>
+          </div>
+          <div>
+            <dt>Sampled window</dt>
+            <dd id="meta-window">—</dd>
+          </div>
+        </dl>
       </section>
 
-      <section class="overview-grid band" aria-label="Overview metrics">
-        <div class="pulse-grid">
-          <article class="tile tile-error">
-            <div class="tile-top">
-              <div class="tile-label">Error rate</div>
-              <span class="metric-icon" aria-hidden="true">!</span>
-            </div>
-            <div class="tile-value">
-              <span id="tile-error-dot" class="dot dot-ok" hidden></span>
-              <span id="tile-error-value" class="skel skel-value"></span>
-            </div>
-            <div id="tile-error-sub" class="tile-sub"></div>
-          </article>
-          <article class="tile">
-            <div class="tile-top">
-              <div class="tile-label">Requests</div>
-              <span class="metric-icon" aria-hidden="true">⇄</span>
-            </div>
-            <div class="tile-value"><span id="tile-requests-value" class="skel skel-value"></span></div>
-            <div class="tile-sub">since last reset</div>
-          </article>
-          <article class="tile">
-            <div class="tile-top">
-              <div class="tile-label">Pressure</div>
-              <span class="metric-icon" aria-hidden="true">≈</span>
-            </div>
-            <div class="tile-value">
-              <span id="tile-pressure-value" class="skel skel-value"></span>
-              <span class="tile-unit">rate-limited</span>
-            </div>
-            <div id="tile-pressure-sub" class="tile-sub"></div>
-          </article>
-          <article class="tile">
-            <div class="tile-top">
-              <div class="tile-label">Uptime</div>
-              <span class="metric-icon metric-icon-live" aria-hidden="true">●</span>
-            </div>
-            <div class="tile-value"><span id="tile-uptime-value" class="skel skel-value"></span></div>
-            <div class="tile-sub"><span class="dot dot-ok" aria-hidden="true"></span>system online</div>
-          </article>
-        </div>
-        <aside class="status-panel" aria-labelledby="response-health-title">
-          <div class="panel-kicker">Response health</div>
-          <h2 id="response-health-title">Status distribution</h2>
-          <p>Share of upstream responses since metrics were last reset.</p>
-          <div class="status-chart">
-            <div id="horizon-bar" class="horizon-bar" role="img" aria-label="Status mix"></div>
-            <div id="horizon-legend" class="hz-legend"></div>
+      <section class="band pulse-grid" aria-label="Key metrics">
+        <article class="tile" id="tile-throughput">
+          <div class="tile-top">
+            <div class="tile-label">Throughput</div>
+            <span class="metric-icon" aria-hidden="true">⇄</span>
           </div>
-          <div class="status-note"><span class="dot dot-ok" aria-hidden="true"></span>2xx responses indicate healthy delivery</div>
-        </aside>
+          <div class="tile-value">
+            <span id="tile-throughput-value" class="skel skel-value"></span>
+            <span class="tile-unit">req/min</span>
+          </div>
+          <div id="tile-throughput-spark" class="tile-spark"></div>
+          <div id="tile-throughput-sub" class="tile-sub"></div>
+        </article>
+
+        <article class="tile tile-error">
+          <div class="tile-top">
+            <div class="tile-label">Error rate</div>
+            <span class="metric-icon" aria-hidden="true">!</span>
+          </div>
+          <div class="tile-value">
+            <span id="tile-error-dot" class="dot dot-ok" hidden></span>
+            <span id="tile-error-value" class="skel skel-value"></span>
+          </div>
+          <div id="tile-error-spark" class="tile-spark"></div>
+          <div id="tile-error-sub" class="tile-sub"></div>
+        </article>
+
+        <article class="tile">
+          <div class="tile-top">
+            <div class="tile-label">Latency p95</div>
+            <span class="metric-icon" aria-hidden="true">◴</span>
+          </div>
+          <div class="tile-value"><span id="tile-latency-value" class="skel skel-value"></span></div>
+          <div id="tile-latency-spark" class="tile-spark"></div>
+          <div id="tile-latency-sub" class="tile-sub"></div>
+        </article>
+
+        <article class="tile">
+          <div class="tile-top">
+            <div class="tile-label">Pressure</div>
+            <span class="metric-icon" aria-hidden="true">≈</span>
+          </div>
+          <div class="tile-value">
+            <span id="tile-pressure-value" class="skel skel-value"></span>
+            <span class="tile-unit">rate-limited</span>
+          </div>
+          <div id="tile-pressure-spark" class="tile-spark"></div>
+          <div id="tile-pressure-sub" class="tile-sub"></div>
+        </article>
       </section>
+
+      <div class="band health-grid">
+        <section class="panel panel-health" aria-labelledby="response-health-title">
+          <div class="section-head">
+            <div class="section-heading">
+              <div class="section-kicker">Response health</div>
+              <h2 id="response-health-title" class="section-title">Status and latency</h2>
+              <p>Where upstream responses land, and how long they take.</p>
+            </div>
+          </div>
+          <div class="health-body">
+            <div class="health-block">
+              <div class="block-label">Status mix <span class="block-note">all responses since reset</span></div>
+              <div id="horizon-bar" class="horizon-bar" role="img" aria-label="Status mix"></div>
+              <div id="horizon-legend" class="hz-legend"></div>
+            </div>
+            <div class="health-block">
+              <div class="block-label">Latency spread <span class="block-note" id="latency-sample">recent responses</span></div>
+              <div id="latency-axis" class="latency-axis" role="img" aria-label="Latency percentiles"></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="credentials" class="panel panel-keys" aria-labelledby="keys-heading">
+          <div class="section-head">
+            <div class="section-heading">
+              <div class="section-kicker">Credentials</div>
+              <h2 id="keys-heading" class="section-title">Key rotation <span id="key-count" class="count-pill" hidden></span></h2>
+              <p>How evenly traffic spreads across the pool, and which keys are failing.</p>
+            </div>
+            <span id="ms-keys" class="micro-status" hidden><span class="dot dot-warn" aria-hidden="true"></span></span>
+          </div>
+          <div id="key-board" class="key-board">
+            <span class="skel skel-line skel-strip"></span>
+          </div>
+        </section>
+      </div>
 
       <section id="apis" class="band panel panel-apis" aria-labelledby="apis-heading">
         <div class="section-head">
@@ -145,22 +187,24 @@
           </div>
         </div>
         <div class="table-wrap">
-          <table class="data">
+          <table class="data table-apis">
             <thead>
               <tr>
-                <th scope="col">API</th>
-                <th scope="col" class="col-num">Requests</th>
-                <th scope="col" class="col-num">Err %</th>
-                <th scope="col" class="col-num">Avg</th>
-                <th scope="col" class="col-num">Active</th>
-                <th scope="col" class="col-num">Queue</th>
-                <th scope="col" class="col-num">Last</th>
+                <th scope="col"><button type="button" class="th-sort" data-sort="name">API</button></th>
+                <th scope="col" class="col-num"><button type="button" class="th-sort" data-sort="requests">Requests</button></th>
+                <th scope="col" class="col-trend">Trend</th>
+                <th scope="col" class="col-num"><button type="button" class="th-sort" data-sort="errors">Err %</button></th>
+                <th scope="col" class="col-num"><button type="button" class="th-sort" data-sort="latency">Avg</button></th>
+                <th scope="col" class="col-num"><button type="button" class="th-sort" data-sort="p95">p95</button></th>
+                <th scope="col" class="col-num"><button type="button" class="th-sort" data-sort="active">Active</button></th>
+                <th scope="col" class="col-num"><button type="button" class="th-sort" data-sort="queue">Queue</button></th>
+                <th scope="col" class="col-num"><button type="button" class="th-sort" data-sort="last">Last</button></th>
               </tr>
             </thead>
             <tbody id="api-tbody">
-              <tr class="skeleton-row"><td colspan="7"><span class="skel skel-line"></span></td></tr>
-              <tr class="skeleton-row"><td colspan="7"><span class="skel skel-line"></span></td></tr>
-              <tr class="skeleton-row"><td colspan="7"><span class="skel skel-line"></span></td></tr>
+              <tr class="skeleton-row"><td colspan="9"><span class="skel skel-line"></span></td></tr>
+              <tr class="skeleton-row"><td colspan="9"><span class="skel skel-line"></span></td></tr>
+              <tr class="skeleton-row"><td colspan="9"><span class="skel skel-line"></span></td></tr>
             </tbody>
           </table>
         </div>
@@ -202,9 +246,10 @@
               </label>
             </div>
           </div>
+          <div id="active-filters" class="filter-bar" hidden></div>
           <div id="status-chips" class="chip-row"></div>
           <div class="table-wrap history-table-wrap">
-            <table class="data">
+            <table class="data table-history">
               <thead>
                 <tr>
                   <th scope="col">Time</th>
@@ -225,7 +270,6 @@
       </div>
     </main>
 
-    <!-- Band G — footer -->
     <footer class="app-footer">
       <div class="container">
         <!-- Relative: the page lives at <prefix>/dashboard/, so ../metrics
