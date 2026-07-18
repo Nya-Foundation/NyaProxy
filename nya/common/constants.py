@@ -55,3 +55,7 @@ EXCLUDED_REQUEST_HEADERS = HOP_BY_HOP_HEADERS | {
 }
 
 WATCH_FILE = "watch.txt"
+
+# A single save in the config UI can emit several change events. Restarts drop
+# in-flight requests, so a burst of edits is collapsed into one reload.
+RELOAD_DEBOUNCE_SECONDS = 2.0

@@ -1,6 +1,7 @@
 import argparse
 import contextlib
 import os
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -391,14 +392,26 @@ def test_parse_args_and_trigger_reload(monkeypatch, tmp_path):
     watch_file = tmp_path / "reload.watch"
     monkeypatch.setattr(server_app, "WATCH_FILE", str(watch_file))
     monkeypatch.delenv("DISABLE_HOT_RELOAD", raising=False)
+    monkeypatch.setattr(server_app, "_last_reload_trigger", 0.0)
 
+    # A save in the config UI can emit several change events; each restart
+    # drops in-flight requests, so a burst must collapse into one reload.
     server_app.trigger_reload()
     server_app.trigger_reload()
+    assert watch_file.read_text() == "reload\n"
 
+    # Once the debounce window has passed, a later change reloads again.
+    monkeypatch.setattr(
+        server_app,
+        "_last_reload_trigger",
+        time.monotonic() - server_app.RELOAD_DEBOUNCE_SECONDS - 1,
+    )
+    server_app.trigger_reload()
     assert watch_file.read_text() == "reload\nreload\n"
 
     # With hot-reload disabled the watch file must stay untouched
     monkeypatch.setenv("DISABLE_HOT_RELOAD", "1")
+    monkeypatch.setattr(server_app, "_last_reload_trigger", 0.0)
     server_app.trigger_reload()
     assert watch_file.read_text() == "reload\nreload\n"
 

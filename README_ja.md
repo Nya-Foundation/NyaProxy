@@ -93,11 +93,21 @@ nyaproxy
 ### Docker
 
 ```bash
+mkdir -p data
+cp configs/openai.yaml data/config.yaml  # プレースホルダーのキーをすべて置き換えてください
+
 docker run -d \
   -p 8080:8080 \
-  -v ${PWD}/config.yaml:/app/config.yaml:ro \
-  k3scat/nya-proxy:latest --config config.yaml --host 0.0.0.0 --no-reload
+  -v ${PWD}/data:/app \
+  --user "$(id -u):$(id -g)" \
+  k3scat/nya-proxy:latest --config /app/config.yaml --host 0.0.0.0
 ```
+
+`config.yaml` そのものではなく、**ディレクトリ**をマウントしてください。`/config` UI は一時ファイルを書き出してから対象ファイルへリネームして保存しますが、ファイル単位でバインドマウントされたパスではこのリネームが `EBUSY` で失敗し、保存のたびに 500 が返ります。同じ理由で、読み取り専用マウントでも保存できません。
+
+イメージは uid 100 で動作するため、そのままでは自分が所有するディレクトリに書き込めません。`--user` を指定してコンテナを現在のユーザーとして実行します。macOS と Windows の Docker Desktop は所有者を自動的にマッピングするため、このフラグは省略できます。
+
+このディレクトリには `config.yaml` と `.nya_state.json` が置かれます。後者はレート制限のウィンドウとキーのクールダウンを再起動をまたいで保持するため、設定変更でクォータがリセットされることはありません。設定はホスト側でも `/config` UI からでも編集でき、いずれの場合も NyaProxy が自動的に再起動して反映します。`server.api_key` を設定するまでは、ポートを外部に公開しないでください。
 
 ## 設定
 
