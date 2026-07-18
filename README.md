@@ -88,14 +88,21 @@ nyaproxy          # or: python -m nya
 ### Docker
 
 ```bash
-cp configs/openai.yaml config.yaml  # then replace every placeholder key
+mkdir -p data
+cp configs/openai.yaml data/config.yaml  # then replace every placeholder key
+
 docker run -d \
   -p 8080:8080 \
-  -v ${PWD}/config.yaml:/app/config.yaml:ro \
-  k3scat/nya-proxy:latest --config config.yaml --host 0.0.0.0 --no-reload
+  -v ${PWD}/data:/app \
+  --user "$(id -u):$(id -g)" \
+  k3scat/nya-proxy:latest --config /app/config.yaml --host 0.0.0.0
 ```
 
-The bind-mounted file is the persistent source of truth. Edit it on the host and restart the container. Do not publish the port until `server.api_key` is set.
+Mount the **directory**, not `config.yaml` itself. Saving from the `/config` UI writes a temporary file and renames it over the target, and that rename fails with `EBUSY` against a bind-mounted file, so every save returns a 500. The mount must also be writable — a read-only mount blocks saves for the same reason.
+
+`--user` runs the container as you, since the image runs as uid 100 and could not otherwise write a directory you own. Docker Desktop on macOS and Windows maps ownership for you, so you can drop that flag there.
+
+The directory holds `config.yaml` and `.nya_state.json`, which carries rate-limit windows and key cool-downs across restarts so a config change does not reset your quotas. Edit configuration on the host or through the `/config` UI; either way NyaProxy restarts itself to apply it. Do not publish the port until `server.api_key` is set.
 
 ### CLI Reference
 
