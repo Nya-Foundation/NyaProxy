@@ -1,6 +1,96 @@
 # CHANGELOG
 
 
+## v0.7.1 (2026-07-18)
+
+### Bug Fixes
+
+- Apply config changes reliably and keep quotas across restarts
+  ([`ddede03`](https://github.com/Nya-Foundation/NyaProxy/commit/ddede03265c6dabd28312cf24c6328b4062af330))
+
+Editing configuration through the UI did not take effect. Three separate faults, each of which alone
+  was enough to break it:
+
+1. Docker could not save at all. Nacho writes config by renaming a temporary file over the target,
+  and that rename fails with EBUSY against a bind-mounted file:
+
+StorageError: Cannot save /app/config.yaml: [Errno 16] Resource busy:
+  '/app/.config.yaml.qk9ed65s.tmp' -> '/app/config.yaml'
+
+The documented compose file also mounted it read-only. Mount the directory, read-write, and run as a
+  user that can write it.
+
+2. The image shipped --no-reload, which makes trigger_reload a no-op. Restarting is how a config
+  change is applied, so this stranded every edit until the container was restarted by hand.
+
+3. Restarting reset the state that enforces quotas. Rate-limit windows and key cool-downs live only
+  in memory, so each edit handed out a fresh burst allowance and released every quarantined key —
+  also true of any ordinary deploy or crash.
+
+Persist limiter windows and cool-downs across restarts. Limiters are rebuilt lazily so the rate
+  always comes from the current configuration and only the consumed window carries over; a limit
+  raised while the process was down therefore applies immediately. Entries are keyed by a hash of
+  the limiter name because that name embeds the upstream credential and client IPs, and the file is
+  written 0600 via a temporary file and rename. A missing, corrupt, or version-mismatched file is
+  ignored: cold counters are a degradation, refusing to start is an outage.
+
+Also debounce reload triggers. A single save emits several change events and every restart drops
+  in-flight requests, including streaming responses.
+
+The state file lives beside the configuration, taken from the config manager rather than CONFIG_PATH
+  — the path can arrive as a constructor argument, and falling back to the working directory made
+  two instances started from one directory share quotas. That bug surfaced as e2e tests leaking
+  rate-limit state between runs.
+
+Not persisted: queued requests. Each owns an asyncio.Future tied to a client socket that does not
+  survive the restart, so replaying one would spend upstream quota on a response nobody is waiting
+  for. Shutdown already fails them so clients can retry.
+
+Verified end to end in Docker: a UI save now returns 200, persists to the host, triggers "WatchFiles
+  detected changes in 'watch.txt'. Reloading...", and writes .nya_state.json on the way out. 28 new
+  tests, checked by mutation: disabling restoration fails 4 of them, and removing the name hashing
+  fails the credential-leak test.
+
+### Documentation
+
+- Document the data directory mount for Docker
+  ([`15e37cf`](https://github.com/Nya-Foundation/NyaProxy/commit/15e37cfe07de45154b197a3c2fe13d430bc14b4e))
+
+The documented `docker run` reproduced every fault that made config edits fail in containers: it
+  bind-mounted config.yaml as a single file, mounted it read-only, and passed --no-reload.
+
+Mount the directory instead. Saving from the /config UI writes a temporary file and renames it over
+  the target, which fails with EBUSY against a bind-mounted file, so every save returned a 500
+  before the read-only flag was even reached. Add --user, because the image runs as uid 100 and
+  cannot otherwise write a directory the operator owns, and note that Docker Desktop maps ownership
+  itself. Drop --no-reload, which stranded any edit that did manage to save.
+
+Also describe what the directory now holds: config.yaml plus .nya_state.json, which carries
+  rate-limit windows and key cool-downs across the restart that applies a configuration change.
+
+Applied to the Chinese and Japanese READMEs as well, since all three carried the same command.
+
+Verified by running the documented command verbatim against a build of this tree: the container
+  starts, a UI save returns 200 and persists to ./data on the host, the reload fires ("WatchFiles
+  detected changes in 'watch.txt'"), .nya_state.json is written 0600 beside the config, and the
+  service stays healthy afterwards.
+
+- Show key_blocking in the provider example configs
+  ([`b02fc8d`](https://github.com/Nya-Foundation/NyaProxy/commit/b02fc8d0fa5d8e8c6d0073c783ad2a1db77edc05))
+
+The credential quarantine setting shipped with the starter config in nya/config.yaml and is listed
+  in the README feature table, but none of the provider examples mentioned it, so anyone copying one
+  as a starting point had no sign the option exists.
+
+Add the block to the openai, gemini, and novelai examples, mirroring the starter config's values
+  (disabled, 403, 300s) rather than asserting per-provider status codes. Left disabled deliberately:
+  quarantining on a wrongly chosen status code removes keys from rotation, which should be an
+  explicit choice.
+
+Verified: all five configs validate against nya/schema.json and load through ConfigManager, which
+  reports key_blocking for every API.
+
+
 ## v0.7.0 (2026-07-18)
 
 ### Bug Fixes
