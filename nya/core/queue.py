@@ -6,7 +6,7 @@ import asyncio
 import random
 import time
 import traceback
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from loguru import logger
 
@@ -48,9 +48,11 @@ class RequestQueue:
         # Priority queues for each API
         self._queues: Dict[str, asyncio.PriorityQueue] = {}
 
-        # Worker pools for concurrent processing
-        self._worker_pools: Dict[str, asyncio.Semaphore] = {}
-        self._worker_tasks: Dict[str, asyncio.Task] = {}
+        # Worker tasks for concurrent processing
+        self._worker_tasks: Dict[str, List[asyncio.Task]] = {}
+
+        # Pending delayed-retry tasks, held so they are not garbage collected
+        self._retry_tasks: set = set()
 
         # Registered processor
         self._processor: Optional[Callable[["ProxyRequest"], Awaitable["Response"]]] = (
@@ -58,7 +60,7 @@ class RequestQueue:
         )
 
     async def enqueue_request(
-        self, request: "ProxyRequest", priority: int = None
+        self, request: "ProxyRequest", priority: Optional[int] = None
     ) -> asyncio.Future:
         """
         Enqueue a request for processing.
@@ -113,11 +115,10 @@ class RequestQueue:
 
         self._queues[api_name] = asyncio.PriorityQueue()
 
-        # Create worker semaphore to limit concurrent processing
+        # Start one worker task per allowed concurrent request; each worker
+        # processes a single request at a time, so worker count is the
+        # concurrency limit.
         max_workers = self.config.get_api_max_workers(api_name) or 10
-        self._worker_pools[api_name] = asyncio.Semaphore(max_workers)
-
-        # Start processor for this API
         self._worker_tasks[api_name] = [
             asyncio.create_task(self._process_api_queue(api_name))
             for _ in range(max_workers)
@@ -136,6 +137,13 @@ class RequestQueue:
                 # Get next request (blocks until available)
                 request: "ProxyRequest" = await self._queues[api_name].get()
 
+                # Drop requests the client no longer waits for (timeout or
+                # disconnect cancelled the future) before spending quota.
+                if request.future.done():
+                    self.control.release_ip(api_name, request.ip)
+                    self.control.release_user(api_name, request.user)
+                    continue
+
                 # Check if request expired
                 if self._is_request_expired(request):
                     self.control.release_ip(api_name, request.ip)
@@ -153,7 +161,6 @@ class RequestQueue:
 
                 request.api_key = key
 
-                # Process with worker semaphore
                 await self._process_with_worker(api_name, request)
 
             except Exception as e:
@@ -180,7 +187,7 @@ class RequestQueue:
                 self.metrics_collector.record_rate_limit_hit(api_name)
                 recorded_hit = True
 
-            if self._is_request_expired(request):
+            if request.future.done() or self._is_request_expired(request):
                 self.control.release_ip(api_name, request.ip)
                 self.control.release_user(api_name, request.user)
                 if not request.future.done():
@@ -202,33 +209,44 @@ class RequestQueue:
         self, api_name: str, request: "ProxyRequest"
     ) -> None:
         """
-        Process a single request with worker pool limiting.
+        Process a single request on the current worker.
         """
-        async with self._worker_pools[api_name]:
-            try:
-                # Process the request
-                request.attempts += 1
-                response = await self._processor(request)
+        # The client may have gone away while this request waited for a key;
+        # give the acquired resources back instead of burning upstream quota.
+        if request.future.done():
+            self._free_resources_on_failure(request, 0)
+            return
 
-                # unlock the key after being processed
-                self.control.unlock_key(request.api_name, request.api_key)
+        try:
+            # Process the request
+            request.attempts += 1
+            started_at = time.time()
+            response = await self._processor(request)
 
-                # Release resources if response indicates failure
-                if response.status_code >= 400:
-                    self._free_resources_on_failure(request, response.status_code)
+            # Feed the fastest_response load-balancing strategy
+            self.control.get_load_balancer(api_name).record_response_time(
+                request.api_key, time.time() - started_at
+            )
 
-                # If status code requires retry, handle it
-                if await self._handle_user_defined_retry(request, response.status_code):
-                    return
+            # unlock the key after being processed
+            self.control.unlock_key(request.api_name, request.api_key)
 
-                if not request.future.done():
-                    request.future.set_result(response)
+            # Release resources if response indicates failure
+            if response.status_code >= 400:
+                self._free_resources_on_failure(request, response.status_code)
 
-            except Exception as e:
-                self._free_resources_on_failure(request, 500)
+            # If status code requires retry, handle it
+            if await self._handle_user_defined_retry(request, response.status_code):
+                return
 
-                if not request.future.done():
-                    request.future.set_exception(e)
+            if not request.future.done():
+                request.future.set_result(response)
+
+        except Exception as e:
+            self._free_resources_on_failure(request, 500)
+
+            if not request.future.done():
+                request.future.set_exception(e)
 
     def _free_resources_on_failure(
         self, request: "ProxyRequest", status_code: int
@@ -313,6 +331,11 @@ class RequestQueue:
     async def _handle_retry(self, request: "ProxyRequest", retry_delay: float) -> None:
         """
         Handle retry logic for any type of failure.
+
+        The delayed re-enqueue is scheduled as a separate task so the worker
+        that processed this request is immediately free for other traffic —
+        sleeping in-line here would stall the whole per-API pipeline whenever
+        several requests are retrying at once.
         """
         api_name = request.api_name
         max_retries = self.config.get_api_retry_attempts(api_name)
@@ -327,14 +350,27 @@ class RequestQueue:
             logger.debug(
                 f"[Retry] for {api_name} after {retry_delay}s, [Attempt]: {request.attempts}/{max_retries}"
             )
-            await asyncio.sleep(random.uniform(0.8 * retry_delay, 1.6 * retry_delay))
-
-            # Re-enqueue with high priority (1 = retry priority)
-            request.priority = 1
-            await self._queues[request.api_name].put(request)
+            delay = random.uniform(0.8 * retry_delay, 1.6 * retry_delay)
+            task = asyncio.create_task(self._requeue_after_delay(request, delay))
+            self._retry_tasks.add(task)
+            task.add_done_callback(self._retry_tasks.discard)
         else:
             # Max retries reached, fail the request
             request.future.set_exception(ReachedMaxRetriesError(api_name, max_retries))
+
+    async def _requeue_after_delay(self, request: "ProxyRequest", delay: float) -> None:
+        """
+        Re-enqueue a retrying request with retry priority after a delay.
+        """
+        if delay > 0:
+            await asyncio.sleep(delay)
+
+        if request.future.done():
+            return
+
+        # Re-enqueue with high priority (1 = retry priority)
+        request.priority = 1
+        await self._queues[request.api_name].put(request)
 
     def _is_request_expired(self, request: "ProxyRequest") -> bool:
         """
@@ -342,23 +378,6 @@ class RequestQueue:
         """
         expiry_seconds = self.config.get_api_queue_expiry(request.api_name)
         return time.time() - request.added_at > expiry_seconds
-
-    def get_queue_size(self, api_name: str) -> int:
-        """
-        Get current queue size for an API.
-        """
-        if api_name in self._queues:
-            return self._queues[api_name].qsize()
-        return 0
-
-    async def get_estimated_wait_time(self, api_name: str) -> float:
-        """
-        Get estimated wait time for new requests.
-        """
-        queue_size = self.get_queue_size(api_name)
-        if queue_size == 0:
-            return 0.0
-        return queue_size * 1.0
 
     async def clear_queue(self, api_name: str) -> int:
         """
@@ -385,6 +404,15 @@ class RequestQueue:
             logger.info(f"Cleared queue for {api_name}: {count} requests cancelled")
 
         return count
+
+    async def clear_all_queues(self) -> int:
+        """
+        Clear the queues of every API, returning the total cancelled count.
+        """
+        total = 0
+        for api_name in list(self._queues):
+            total += await self.clear_queue(api_name)
+        return total
 
     def get_all_queue_sizes(self) -> Dict[str, int]:
         """

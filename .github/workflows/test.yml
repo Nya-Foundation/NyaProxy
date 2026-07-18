@@ -57,10 +57,10 @@ jobs:
         mypy
 
     - name: Run tests with coverage
-      # --cov-fail-under is a ratchet: it must never drop. Raise it as
-      # coverage improves (next milestones: 45, then 60).
+      # --cov-fail-under is a ratchet: it must never drop. Actual coverage
+      # sits around 95%; 90 leaves headroom without letting it erode.
       run: |
-        pytest --cov=nya tests/ --cov-report=xml --cov-fail-under=42
+        pytest --cov=nya tests/ --cov-report=xml --cov-fail-under=90
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v5

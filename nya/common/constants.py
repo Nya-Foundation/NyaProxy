@@ -40,8 +40,4 @@ EXCLUDED_REQUEST_HEADERS = {
     "cf-worker",
 }
 
-# Metrics
-MAX_QUEUE_SIZE = 200
-
-
 WATCH_FILE = "watch.txt"

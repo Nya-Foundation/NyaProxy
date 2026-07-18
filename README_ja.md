@@ -5,7 +5,7 @@
 [English](README.md) | [简体中文](README_zh.md) | [日本語](README_ja.md)
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/Nya-Foundation/NyaProxy/main/assets/banner.png" alt="NyaProxy Banner" width="800" />
+  <img src="https://raw.githubusercontent.com/Nya-Foundation/NyaProxy/main/assets/brand/banner-1280x640.png" alt="NyaProxy Banner" width="800" />
 
   <p>API Key、Bearer Token、カスタムヘッダーを使う HTTP API に対して、認証情報の注入、クォータを考慮したルーティング、レート制限、リトライ、可観測性を一元化します。</p>
 
@@ -284,7 +284,7 @@ apis:
 ## セキュリティ上の注意
 
 - localhost 以外に公開する前に `server.api_key` を設定してください。
--  `server.api_key` が設定されていない場合、NyaProxy は `SUPER_SECURE_PASSWORD!!!` をデフォルト値として使用します。
+- `server.api_key` が設定されていない場合、NyaProxy は**認証を完全に無効化**します。プロキシ・ダッシュボード・設定 UI に誰でもアクセスできてしまうため、必ずキーを設定するか `127.0.0.1` のみにバインドしてください。
 - `server.api_key` の最初のキーは、ダッシュボードと設定 UI にアクセスする管理者キーとして扱われます。
 - 追加のプロキシキーは通常の API プロキシリクエストに使用できます。
 - 上流サービスの認証情報をクライアントに共有しないでください。NyaProxy の設定またはデプロイ環境の Secret 管理に保存してください。

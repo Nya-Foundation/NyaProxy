@@ -61,29 +61,30 @@ def test_zero_window_is_treated_as_unlimited():
     limiter = RateLimiter("5/0s")
     assert limiter.window_seconds == 0
     for _ in range(50):
-        assert limiter.can_proceed() is True
+        assert limiter.is_limited() is False
+        limiter.record()
     assert limiter.is_limited() is False
 
 
 # --------------------------------------------------------------------------
-# can_proceed / is_limited core flow
+# is_limited / record core flow
 # --------------------------------------------------------------------------
 
 
 def test_unlimited_limiter_never_limits():
     limiter = RateLimiter("0/s")
     for _ in range(1000):
-        assert limiter.can_proceed() is True
+        assert limiter.is_limited() is False
+        limiter.record()
     assert limiter.is_limited() is False
 
 
 def test_limiter_blocks_after_quota_exhausted():
     limiter = RateLimiter("3/m")
-    assert limiter.can_proceed() is True
-    assert limiter.can_proceed() is True
-    assert limiter.can_proceed() is True
+    for _ in range(3):
+        assert limiter.is_limited() is False
+        limiter.record()
     # Fourth request within the same window is rejected.
-    assert limiter.can_proceed() is False
     assert limiter.is_limited() is True
 
 
@@ -93,7 +94,8 @@ def test_old_timestamps_expire_and_free_quota():
     stale = time.time() - 61
     limiter.request_timestamps.extend([stale, stale])
     assert limiter.is_limited() is False
-    assert limiter.can_proceed() is True
+    limiter.record()
+    assert limiter.is_limited() is False
 
 
 # --------------------------------------------------------------------------
@@ -106,7 +108,6 @@ def test_lock_forces_limited_regardless_of_quota():
     assert limiter.is_limited() is False
     limiter.lock()
     assert limiter.is_limited() is True
-    assert limiter.can_proceed() is False
     limiter.unlock()
     assert limiter.is_limited() is False
 
@@ -125,7 +126,7 @@ def test_time_until_reset_on_locked_empty_limiter_does_not_crash():
 
 def test_release_refunds_most_recent_request():
     limiter = RateLimiter("1/m")
-    assert limiter.can_proceed() is True
+    limiter.record()
     assert limiter.is_limited() is True
     limiter.release()
     assert limiter.is_limited() is False
@@ -139,15 +140,15 @@ def test_release_on_empty_limiter_is_noop():
 
 def test_clear_resets_all_recorded_requests():
     limiter = RateLimiter("2/m")
-    limiter.can_proceed()
-    limiter.can_proceed()
+    limiter.record()
+    limiter.record()
     limiter.clear()
     assert len(limiter.request_timestamps) == 0
     assert limiter.is_limited() is False
 
 
 # --------------------------------------------------------------------------
-# block_for / time_until_reset / remaining_quota
+# block_for / time_until_reset
 # --------------------------------------------------------------------------
 
 
@@ -157,18 +158,6 @@ def test_block_for_makes_limiter_limited_until_duration_passes():
     assert limiter.is_limited() is True
     reset = limiter.time_until_reset()
     assert 0 < reset <= 30
-
-
-def test_remaining_quota_counts_down():
-    limiter = RateLimiter("3/m")
-    assert limiter.remaining_quota() == 3
-    limiter.can_proceed()
-    assert limiter.remaining_quota() == 2
-
-
-def test_remaining_quota_unlimited_returns_sentinel():
-    limiter = RateLimiter("0/s")
-    assert limiter.remaining_quota() == 999
 
 
 def test_time_until_reset_zero_when_not_limited():

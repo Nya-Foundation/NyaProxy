@@ -43,7 +43,7 @@ def register_control_routes(app: FastAPI, dashboard: "DashboardAPI") -> None:
                 status_code=503, content={"error": "Request queue not available"}
             )
         try:
-            cleared_count = dashboard.request_queue.clear_all_queues()
+            cleared_count = await dashboard.request_queue.clear_all_queues()
             return {"cleared_count": cleared_count}
         except Exception as e:
             logger.error(f"Error clearing all queues: {str(e)}")

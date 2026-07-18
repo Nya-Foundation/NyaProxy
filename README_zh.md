@@ -5,7 +5,7 @@
 [English](README.md) | [简体中文](README_zh.md) | [日本語](README_ja.md)
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/Nya-Foundation/NyaProxy/main/assets/banner.png" alt="NyaProxy Banner" width="800" />
+  <img src="https://raw.githubusercontent.com/Nya-Foundation/NyaProxy/main/assets/brand/banner-1280x640.png" alt="NyaProxy Banner" width="800" />
 
   <p>集中处理凭证注入、配额感知路由、频率限制、重试、故障转移和可观测性，适用于任何使用 API Key、Bearer Token 或自定义请求头的 HTTP API。</p>
 
@@ -284,7 +284,7 @@ apis:
 ## 安全建议
 
 - 在对外暴露 NyaProxy 前设置 `server.api_key`。
-- 如果未配置 `server.api_key`，NyaProxy 会使用 `SUPER_SECURE_PASSWORD!!!` 作为默认值。
+- 如果未配置 `server.api_key`，NyaProxy 会**完全禁用鉴权**：任何人都可以访问代理、仪表板和配置界面。请务必设置 Key，或仅绑定到 `127.0.0.1`。
 - `server.api_key` 中的第一个 Key 会作为管理员 Key，用于访问仪表板和配置界面。
 - 其他代理 Key 可用于普通代理请求。
 - 不要将上游服务凭证交给客户端。应将其保存在 NyaProxy 配置或部署环境的 Secret 管理系统中。

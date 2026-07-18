@@ -4,16 +4,10 @@ NyaProxy - A cute and simple low-level API proxy with dynamic token rotation.
 
 from ._version import __version__
 from .common.exceptions import (
-    APIConfigError,
     ConfigurationError,
-    ConnectionError,
-    EndpointRateLimitExceededError,
-    NoAvailableAPIKeyError,
     NyaProxyStatus,
     QueueFullError,
     RequestExpiredError,
-    TimeoutError,
-    UnknownAPIError,
     VariablesConfigurationError,
 )
 from .common.models import ProxyRequest
@@ -45,14 +39,8 @@ __all__ = [
     "NyaProxyStatus",
     "ConfigurationError",
     "VariablesConfigurationError",
-    "EndpointRateLimitExceededError",
     "QueueFullError",
     "RequestExpiredError",
-    "NoAvailableAPIKeyError",
-    "APIConfigError",
-    "UnknownAPIError",
-    "ConnectionError",
-    "TimeoutError",
     # Version
     "__version__",
 ]

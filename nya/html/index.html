@@ -7,188 +7,183 @@
     <link rel="icon" href="{{ root_path }}/favicon.ico" />
     <link rel="stylesheet" href="{{ root_path }}/static/css/styles.css" />
     <script>
-      // Apply the saved theme before first paint to avoid a flash.
+      // Apply the theme before first paint to avoid a flash of the wrong theme.
       (function () {
-        var t = localStorage.getItem("nyaproxy-theme") || "dark";
-        document.documentElement.setAttribute("data-theme", t);
+        try {
+          var t = localStorage.getItem("nyaproxy-theme");
+          if (t !== "dark" && t !== "light")
+            t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+          document.documentElement.setAttribute("data-theme", t);
+        } catch (e) {}
       })();
     </script>
   </head>
-  <body>
-    <div class="layout">
-      <!-- Header -->
-      <header class="app-header">
-        <div class="container">
-          <div class="brand">
-            <img class="logo" src="{{ root_path }}/static/logo.svg" alt="" />
-            <span>NyaProxy</span>
-            <span class="tag">Dashboard</span>
-          </div>
-          <div class="header-actions">
-            <span id="last-updated" class="last-updated"></span>
-            <button id="refresh-btn" class="icon-btn" title="Refresh" aria-label="Refresh">
-              <svg viewBox="0 0 20 20" fill="currentColor">
-                <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" />
-              </svg>
-            </button>
-            <button id="theme-toggle" class="icon-btn" title="Toggle theme" aria-label="Toggle theme">
-              <svg class="icon-moon" viewBox="0 0 20 20" fill="currentColor">
-                <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
-              </svg>
-              <svg class="icon-sun" viewBox="0 0 20 20" fill="currentColor" style="display: none">
-                <path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clip-rule="evenodd" />
-              </svg>
-            </button>
-          </div>
+  <body data-control="{{ enable_control }}">
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <!-- Band A — header -->
+    <header class="app-header">
+      <div class="container header-inner">
+        <div class="brand">
+          <img class="logo" src="{{ root_path }}/static/logo.svg" alt="" />
+          <span class="wordmark">nyaproxy</span>
         </div>
-      </header>
-
-      <main class="container">
-        <!-- Overview -->
-        <section class="section">
-          <div class="section-head">
-            <h2 class="section-title">Overview</h2>
-          </div>
-          <div class="stat-grid">
-            <div class="stat-card">
-              <div class="stat-label">Total Requests</div>
-              <div id="stat-requests" class="stat-value">—</div>
-              <div class="stat-sub">since last reset</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">Errors</div>
-              <div id="stat-errors" class="stat-value">—</div>
-              <div id="stat-error-rate" class="stat-sub">—</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">Rate-limit Hits</div>
-              <div id="stat-ratelimits" class="stat-value">—</div>
-              <div id="stat-queue-hits" class="stat-sub">—</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">Uptime</div>
-              <div id="stat-uptime" class="stat-value">—</div>
-              <div class="stat-sub"><span class="dot dot-ok"></span>system online</div>
-            </div>
-          </div>
-        </section>
-
-        <!-- APIs -->
-        <section class="section">
-          <div class="section-head">
-            <h2 class="section-title">APIs</h2>
-            <div style="display: flex; gap: 8px">
-              <input id="api-search" class="field" type="text" placeholder="Filter APIs…" />
-              <button id="reset-metrics-btn" class="btn btn-danger" style="display: {{ enable_control }}">
-                Reset metrics
-              </button>
-            </div>
-          </div>
-          <div class="panel table-wrap">
-            <table class="data">
-              <thead>
-                <tr>
-                  <th>API</th>
-                  <th>Requests</th>
-                  <th>Errors</th>
-                  <th>Error rate</th>
-                  <th>Avg latency</th>
-                  <th>Active</th>
-                  <th>Last request</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody id="api-tbody">
-                <tr class="empty-row"><td colspan="8" class="skeleton">Loading…</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <!-- Distribution -->
-        <section class="section">
-          <div class="section-head">
-            <h2 class="section-title">Current Distribution</h2>
-          </div>
-          <div class="dist-grid">
-            <div class="panel panel-pad">
-              <div class="stat-label" style="margin-bottom: 14px">Status codes</div>
-              <div id="dist-status"><div class="skeleton">Loading…</div></div>
-            </div>
-            <div class="panel panel-pad">
-              <div class="stat-label" style="margin-bottom: 14px">Requests by API</div>
-              <div id="dist-api"><div class="skeleton">Loading…</div></div>
-            </div>
-          </div>
-        </section>
-
-        <!-- Queues -->
-        <section class="section">
-          <div class="section-head">
-            <h2 class="section-title">Queues</h2>
-            <button id="clear-all-queues-btn" class="btn btn-warning" style="display: {{ enable_control }}">
-              Clear all queues
-            </button>
-          </div>
-          <div id="queue-grid" class="queue-grid">
-            <div class="queue-card skeleton">Loading…</div>
-          </div>
-        </section>
-
-        <!-- Recent requests -->
-        <section class="section">
-          <div class="section-head">
-            <h2 class="section-title">Recent Requests</h2>
-            <input id="history-search" class="field" type="text" placeholder="Filter requests…" />
-          </div>
-          <div class="panel table-wrap">
-            <table class="data">
-              <thead>
-                <tr>
-                  <th>Time</th>
-                  <th>API</th>
-                  <th>Status</th>
-                  <th>Latency</th>
-                  <th>Key</th>
-                </tr>
-              </thead>
-              <tbody id="history-tbody">
-                <tr class="empty-row"><td colspan="5" class="skeleton">Loading…</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </main>
-
-      <footer class="app-footer">
-        <div class="container">
-          <span>NyaProxy</span>
-          <span>
-            <a href="/metrics">Prometheus metrics</a>
-            &nbsp;·&nbsp;
-            <a href="https://github.com/Nya-Foundation/nyaproxy" target="_blank" rel="noopener">GitHub</a>
-          </span>
-        </div>
-      </footer>
-    </div>
-
-    <!-- API details modal -->
-    <div id="modal" class="modal-overlay" hidden>
-      <div class="modal">
-        <div class="modal-head">
-          <h3 id="modal-title">API details</h3>
-          <button id="modal-close" class="icon-btn" aria-label="Close">
-            <svg viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+        <div class="header-actions">
+          <span id="last-updated" class="stamp"></span>
+          <button id="refresh-btn" class="icon-btn" type="button" aria-label="Refresh data" title="Refresh (r)">
+            <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" />
+            </svg>
+          </button>
+          <button id="theme-toggle" class="icon-btn" type="button" aria-label="Switch to light theme">
+            <svg class="icon-moon" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
+            </svg>
+            <svg class="icon-sun" viewBox="0 0 20 20" fill="currentColor" style="display: none" aria-hidden="true">
+              <path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clip-rule="evenodd" />
             </svg>
           </button>
         </div>
-        <div id="modal-body" class="modal-body"></div>
       </div>
-    </div>
+    </header>
+
+    <main id="main" class="container">
+      <!-- Band B — pulse row -->
+      <section class="band" aria-label="Overview">
+        <div class="pulse-grid">
+          <div class="tile">
+            <div class="tile-label">Error rate</div>
+            <div class="tile-value">
+              <span id="tile-error-dot" class="dot dot-ok" hidden></span>
+              <span id="tile-error-value" class="skel skel-value"></span>
+            </div>
+            <div id="tile-error-sub" class="tile-sub"></div>
+          </div>
+          <div class="tile">
+            <div class="tile-label">Requests</div>
+            <div class="tile-value"><span id="tile-requests-value" class="skel skel-value"></span></div>
+            <div class="tile-sub">since last reset</div>
+          </div>
+          <div class="tile">
+            <div class="tile-label">Pressure</div>
+            <div class="tile-value">
+              <span id="tile-pressure-value" class="skel skel-value"></span>
+              <span class="tile-unit">rate-limited</span>
+            </div>
+            <div id="tile-pressure-sub" class="tile-sub"></div>
+          </div>
+          <div class="tile">
+            <div class="tile-label">Uptime</div>
+            <div class="tile-value"><span id="tile-uptime-value" class="skel skel-value"></span></div>
+            <div class="tile-sub"><span class="dot dot-ok" aria-hidden="true"></span>system online</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Band C — horizon bar (status mix) -->
+      <section class="band band-horizon" aria-label="Status mix">
+        <div id="horizon-bar" class="horizon-bar" role="img" aria-label="Status mix"></div>
+        <div id="horizon-legend" class="hz-legend"></div>
+      </section>
+
+      <!-- Band D — APIs ledger -->
+      <section class="band" aria-labelledby="apis-heading">
+        <div class="section-head">
+          <h2 id="apis-heading" class="section-title">APIs</h2>
+          <span id="ms-apis" class="micro-status" hidden><span class="dot dot-warn" aria-hidden="true"></span></span>
+          <div class="section-controls">
+            <input id="api-search" class="field" type="text" placeholder="Filter APIs…" aria-label="Filter APIs" title="Filter (/)" />
+            <span class="confirm-group">
+              <button id="reset-metrics-btn" class="ghost-btn ghost-danger" type="button" style="display: {{ enable_control }}">Reset metrics</button>
+              <button id="reset-metrics-cancel" class="ghost-btn ghost-cancel" type="button" hidden aria-label="Cancel reset metrics">Cancel</button>
+            </span>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr>
+                <th scope="col">API</th>
+                <th scope="col" class="col-num">Requests</th>
+                <th scope="col" class="col-num">Err %</th>
+                <th scope="col" class="col-num">Avg</th>
+                <th scope="col" class="col-num">Active</th>
+                <th scope="col" class="col-num">Queue</th>
+                <th scope="col" class="col-num">Last</th>
+              </tr>
+            </thead>
+            <tbody id="api-tbody">
+              <tr class="skeleton-row"><td colspan="7"><span class="skel skel-line"></span></td></tr>
+              <tr class="skeleton-row"><td colspan="7"><span class="skel skel-line"></span></td></tr>
+              <tr class="skeleton-row"><td colspan="7"><span class="skel skel-line"></span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Band E — queue strip -->
+      <section class="band" aria-labelledby="queues-heading">
+        <div class="section-head">
+          <h2 id="queues-heading" class="section-title">Queues</h2>
+          <span id="ms-queues" class="micro-status" hidden><span class="dot dot-warn" aria-hidden="true"></span></span>
+          <div class="section-controls">
+            <span class="confirm-group">
+              <button id="clear-all-queues-btn" class="ghost-btn ghost-warn" type="button" style="display: {{ enable_control }}">Clear all queues</button>
+              <button id="clear-all-queues-cancel" class="ghost-btn ghost-cancel" type="button" hidden aria-label="Cancel clear all queues">Cancel</button>
+            </span>
+          </div>
+        </div>
+        <div id="queue-strip" class="queue-strip">
+          <span class="skel skel-line skel-strip"></span>
+        </div>
+      </section>
+
+      <!-- Band F — recent requests -->
+      <section class="band" aria-labelledby="history-heading">
+        <div class="section-head">
+          <h2 id="history-heading" class="section-title">Recent requests</h2>
+          <span id="ms-history" class="micro-status" hidden><span class="dot dot-warn" aria-hidden="true"></span></span>
+          <div class="section-controls">
+            <input id="history-search" class="field" type="text" placeholder="Search requests…" aria-label="Search requests" />
+          </div>
+        </div>
+        <div id="status-chips" class="chip-row"></div>
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr>
+                <th scope="col">Time</th>
+                <th scope="col">API</th>
+                <th scope="col">Status</th>
+                <th scope="col" class="col-num">Latency</th>
+                <th scope="col">Key</th>
+              </tr>
+            </thead>
+            <tbody id="history-tbody">
+              <tr class="skeleton-row"><td colspan="5"><span class="skel skel-line"></span></td></tr>
+              <tr class="skeleton-row"><td colspan="5"><span class="skel skel-line"></span></td></tr>
+              <tr class="skeleton-row"><td colspan="5"><span class="skel skel-line"></span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <!-- Band G — footer -->
+    <footer class="app-footer">
+      <div class="container">
+        <!-- Relative: the page lives at <prefix>/dashboard/, so ../metrics
+             resolves to <prefix>/metrics behind any reverse-proxy prefix. -->
+        nyaproxy · <a href="../metrics">Prometheus metrics</a> ·
+        <a href="https://github.com/Nya-Foundation/nyaproxy" target="_blank" rel="noopener">GitHub</a>
+      </div>
+    </footer>
 
     <!-- Toast -->
-    <div id="toast" class="toast"><span id="toast-msg"></span></div>
+    <div id="toast" class="toast" role="status"><span id="toast-msg"></span></div>
+
+    <!-- Shared debounced live region for filter counts -->
+    <div id="announcer" class="vh" aria-live="polite"></div>
 
     <script src="{{ root_path }}/static/js/dashboard.js"></script>
   </body>

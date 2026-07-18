@@ -8,6 +8,7 @@ configured-key handling is exercised explicitly.
 
 import pytest
 from starlette.applications import Starlette
+from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
@@ -137,7 +138,9 @@ def build_client(api_key):
         Route("/", ok),
         Route("/api/v1/thing", ok),
         Route("/dashboard", ok),
+        Route("/dashboard/api/metrics", ok),
         Route("/config", ok),
+        Route("/config/api/apps", ok),
     ]
     app = Starlette(routes=routes)
     app.add_middleware(AuthMiddleware, auth=make_manager(api_key))
@@ -191,6 +194,179 @@ def test_middleware_redirects_config_to_login_page():
     resp = client.get("/config")
     assert resp.status_code == 401
     assert resp.headers["content-type"].startswith("text/html")
+
+
+# --------------------------------------------------------------------------
+# Blank / malformed key entries
+#
+# An unset "${MASTER_KEY}" or a stray '-' in YAML yields a blank entry. Such an
+# entry must never authenticate anything, and must never silently promote a
+# proxy key to master.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("blank", ["", "   ", None])
+def test_blank_master_entry_never_authenticates(blank):
+    """Regression: an empty bearer token used to match a blank master key."""
+    manager = make_manager([blank, "app-key"])
+
+    # Auth is still on: other keys are usable, so this is not "no auth".
+    assert manager.is_auth_disabled() is False
+    assert manager.master_key() is None
+
+    # The empty credential that used to pass as master is now rejected.
+    assert manager.verify_api_key("", verify_master=True) is False
+    assert manager.verify_api_key("   ", verify_master=True) is False
+    # ...and a proxy key is not quietly promoted to master either.
+    assert manager.verify_api_key("app-key", verify_master=True) is False
+    # ...while it still works for proxy traffic.
+    assert manager.verify_api_key("app-key") is True
+
+
+@pytest.mark.parametrize("blank", ["", "   ", None])
+def test_blank_entries_are_not_usable_keys(blank):
+    manager = make_manager(["master", blank, "app-key"])
+    assert manager.usable_keys() == ["master", "app-key"]
+    assert manager.master_key() == "master"
+    assert manager.verify_api_key("") is False
+    assert manager.verify_api_key(str(blank or "").strip()) is False
+
+
+def test_none_entry_does_not_crash():
+    """Regression: None entries raised AttributeError on every auth check."""
+    manager = make_manager([None, "app-key"])
+    assert manager.verify_api_key("app-key") is True
+    assert manager.verify_api_key("anything", verify_master=True) is False
+
+
+@pytest.mark.parametrize("configured", [["", "  "], [None], [None, ""]])
+def test_list_of_only_blank_entries_is_auth_disabled(configured):
+    """Equivalent to no key at all — open, and the startup warning fires."""
+    manager = make_manager(configured)
+    assert manager.is_auth_disabled() is True
+    assert manager.usable_keys() == []
+
+
+def test_blank_master_locks_admin_surface_end_to_end():
+    client = build_client(["", "app-key"])
+    for creds in ("", "app-key"):
+        resp = client.get("/dashboard", headers={"Authorization": f"Bearer {creds}"})
+        assert resp.status_code == 401
+    # bare "Bearer" with nothing after it
+    assert (
+        client.get("/dashboard", headers={"Authorization": "Bearer "}).status_code
+        == 401
+    )
+    # proxying is unaffected
+    assert (
+        client.get(
+            "/api/v1/thing", headers={"Authorization": "Bearer app-key"}
+        ).status_code
+        == 200
+    )
+
+
+def test_usable_keys_ignores_unexpected_config_shape():
+    """An unrecognised shape denies rather than opening."""
+    manager = make_manager(42)
+    assert manager.usable_keys() == []
+    assert manager.master_key() is None
+    assert manager.is_auth_disabled() is False
+    assert manager.verify_api_key("anything") is False
+
+
+# --------------------------------------------------------------------------
+# Master-key separation: only the first configured key reaches the admin
+# surfaces (dashboard, config UI); every configured key may use the proxy.
+# --------------------------------------------------------------------------
+
+
+ADMIN_PATHS = ["/dashboard", "/dashboard/api/metrics", "/config", "/config/api/apps"]
+
+
+@pytest.mark.parametrize("path", ADMIN_PATHS)
+def test_non_master_key_cannot_reach_admin_surfaces(path):
+    """Regression: a proxy-only key must not open the dashboard or config UI."""
+    client = build_client(["master", "app-key"])
+    resp = client.get(path, headers={"Authorization": "Bearer app-key"})
+    assert resp.status_code == 401
+    assert resp.headers["content-type"].startswith("text/html")  # login page
+
+
+@pytest.mark.parametrize("path", ADMIN_PATHS)
+def test_master_key_reaches_admin_surfaces(path):
+    client = build_client(["master", "app-key"])
+    resp = client.get(path, headers={"Authorization": "Bearer master"})
+    assert resp.status_code == 200
+    assert resp.text == "ok"
+
+
+def test_non_master_key_still_allowed_for_proxy_traffic():
+    """The whole point of the extra keys: proxying, just not administration."""
+    client = build_client(["master", "app-key"])
+    resp = client.get("/api/v1/thing", headers={"Authorization": "Bearer app-key"})
+    assert resp.status_code == 200
+    assert resp.text == "ok"
+
+
+def test_non_master_session_cookie_cannot_reach_admin_surfaces():
+    client = build_client(["master", "app-key"])
+    client.cookies.set("nyaproxy_api_key", "app-key")
+    assert client.get("/dashboard").status_code == 401
+
+
+def test_single_string_key_is_its_own_master():
+    """With one configured key there is no distinction to enforce."""
+    client = build_client("solo")
+    resp = client.get("/dashboard", headers={"Authorization": "Bearer solo"})
+    assert resp.status_code == 200
+
+
+@pytest.mark.parametrize(
+    ("path", "root_path", "expected"),
+    [
+        # ASGI servers disagree on whether `path` includes the mount prefix,
+        # so both conventions must resolve to the same answer.
+        ("/dashboard", "/prefix", True),  # path excludes root_path
+        ("/prefix/dashboard", "/prefix", True),  # path includes root_path
+        ("/config/api/apps", "/prefix", True),
+        ("/prefix/config/api/apps", "/prefix", True),
+        ("/dashboard", "", True),
+        ("/api/svc/thing", "", False),
+        # 'dashboard' appearing inside a proxied upstream path is not admin
+        ("/api/svc/dashboard/widget", "", False),
+        # a sibling path that merely shares the prefix string is not admin
+        ("/dashboard-public", "", False),
+    ],
+)
+def test_is_admin_surface_path_resolution(path, root_path, expected):
+    request = Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": path,
+            "root_path": root_path,
+            "headers": [],
+            "query_string": b"",
+        }
+    )
+    assert AuthMiddleware._is_admin_surface(request) is expected
+
+
+def test_proxy_path_containing_dashboard_segment_is_not_admin():
+    """A proxied upstream path that merely contains 'dashboard' stays open."""
+
+    async def ok(request):
+        return PlainTextResponse("ok")
+
+    app = Starlette(routes=[Route("/api/svc/dashboard/widget", ok)])
+    app.add_middleware(AuthMiddleware, auth=make_manager(["master", "app-key"]))
+    client = TestClient(app)
+
+    resp = client.get(
+        "/api/svc/dashboard/widget", headers={"Authorization": "Bearer app-key"}
+    )
+    assert resp.status_code == 200
 
 
 def test_login_page_returns_500_when_template_missing(monkeypatch):

@@ -11,7 +11,6 @@ import sys
 import uvicorn
 from fastapi import FastAPI, Request
 from loguru import logger
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse, Response
 
@@ -34,16 +33,6 @@ logger.remove()
 logger.add(sys.stderr, level="INFO")
 
 
-class RootPathMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, root_path: str):
-        super().__init__(app)
-        self.root_path = root_path
-
-    async def dispatch(self, request: Request, call_next):
-        request.scope["root_path"] = self.root_path
-        return await call_next(request)
-
-
 class NyaProxyApp:
     """
     Main NyaProxy application class
@@ -60,6 +49,7 @@ class NyaProxyApp:
         self._init_config(config_path=config_path, schema_path=schema_path)
 
         self.core = None
+        self.metrics_collector = None
         self.auth = AuthManager(config=self.config)
         self.dashboard = None
 
@@ -91,17 +81,6 @@ class NyaProxyApp:
 
         self.config = config
 
-    def _init_auth(self):
-        """
-        Initialize the authentication manager
-        """
-        auth = AuthManager(
-            config=self.config,
-        )
-        if not auth:
-            raise RuntimeError("Failed to initialize auth manager")
-        return auth
-
     def _create_main_app(self):
         """
         Create the main FastAPI application with middleware pre-configured
@@ -130,11 +109,6 @@ class NyaProxyApp:
             allow_methods=allow_methods,
             allow_headers=allow_headers,
         )
-
-        if not self.auth:
-            raise RuntimeError(
-                "Auth manager must be initialized before adding middleware"
-            )
 
         # Add auth middleware
         app.add_middleware(AuthMiddleware, auth=self.auth)
@@ -169,6 +143,11 @@ class NyaProxyApp:
                 content={"message": "Welcome to NyaProxy!"},
                 status_code=200,
             )
+
+        # Liveness endpoint for load balancers / container orchestrators
+        @app.get("/health", include_in_schema=False)
+        async def health():
+            return {"status": "ok"}
 
         # Info endpoint
         @app.get("/info")
@@ -216,6 +195,35 @@ class NyaProxyApp:
         req = await ProxyRequest.from_request(request)
         return await self.core.handle_request(req)
 
+    def _server_address(self):
+        """
+        Resolve the effective host/port, preferring the launcher's env overrides.
+        """
+        host = os.environ.get("SERVER_HOST") or self.config.get_host()
+        port = os.environ.get("SERVER_PORT") or self.config.get_port()
+        return host, port
+
+    def _warn_if_unauthenticated(self):
+        host, _ = self._server_address()
+        if self.auth.is_auth_disabled():
+            if host not in ("127.0.0.1", "localhost", "::1"):
+                logger.warning(
+                    f"server.api_key is not set and NyaProxy is bound to {host}: "
+                    "the proxy, dashboard, and config UI are reachable WITHOUT authentication. "
+                    "Set server.api_key or bind to 127.0.0.1."
+                )
+            return
+
+        # Auth is on, but a blank first entry (an unset ${VAR}, a stray '-' in
+        # YAML) leaves no master key. Proxying still works; the dashboard and
+        # config UI are locked, which is safe but baffling without a warning.
+        if self.auth.master_key() is None:
+            logger.warning(
+                "The first entry of server.api_key is empty, so no master key is "
+                "configured: the dashboard and config UI will reject every key. "
+                "Proxy traffic still works with the remaining keys."
+            )
+
     async def init_nya_services(self):
         """
         Initialize services for NyaProxy
@@ -223,6 +231,7 @@ class NyaProxyApp:
         try:
 
             self.init_logging()
+            self._warn_if_unauthenticated()
             # Create FastAPI app with middleware pre-configured
 
             # Initialize metrics collector
@@ -254,6 +263,8 @@ class NyaProxyApp:
         logger.add(
             log_config.get("log_file", "app.log"),
             level=log_config.get("level", "INFO").upper(),
+            rotation="10 MB",
+            retention=5,
         )
 
     def init_metrics_collector(self) -> None:
@@ -291,8 +302,7 @@ class NyaProxyApp:
             logger.warning("Configuration web server not available")
             return False
 
-        host = os.environ.get("SERVER_HOST") or self.config.get_host()
-        port = os.environ.get("SERVER_PORT") or self.config.get_port()
+        host, port = self._server_address()
         remote_url = os.environ.get("REMOTE_CONFIG_URL")
 
         if remote_url:
@@ -324,14 +334,10 @@ class NyaProxyApp:
             logger.info("Dashboard disabled in configuration")
             return False
 
-        host = os.environ.get("SERVER_HOST") or self.config.get_host()
-        port = os.environ.get("SERVER_PORT") or self.config.get_port()
+        host, port = self._server_address()
 
         try:
-            self.dashboard = DashboardAPI(
-                port=port,
-                enable_control=True,
-            )
+            self.dashboard = DashboardAPI(enable_control=True)
 
             # Set dependencies from the core
             self.dashboard.set_metrics_collector(self.metrics_collector)
@@ -434,6 +440,11 @@ def parse_args():
     )
 
     parser.add_argument(
+        "--no-reload",
+        action="store_true",
+        help="Disable the file-watch supervisor; config changes then require a manual restart",
+    )
+    parser.add_argument(
         "--version", action="version", version=f"NyaProxy {__version__}"
     )
     return parser.parse_args()
@@ -449,15 +460,17 @@ def create_app():
 
 def trigger_reload(**kwargs):
     """
-    Trigger a reload of the application.
+    Trigger a reload of the application by touching the file uvicorn watches.
     """
-    logger.info("[Info] Configuration changed, triggering reload...")
-    if os.path.exists(WATCH_FILE):
-        with open(WATCH_FILE, "a") as f:
-            f.write("\n")  # Append a newline to trigger reload
-    else:
-        with open(WATCH_FILE, "w") as f:
-            f.write("Reload triggered\n")  # Create the file if it doesn't exist
+    if os.environ.get("DISABLE_HOT_RELOAD"):
+        logger.warning(
+            "Configuration changed but hot-reload is disabled; "
+            "restart NyaProxy to apply the new settings"
+        )
+        return
+    logger.info("Configuration changed, triggering reload...")
+    with open(WATCH_FILE, "a") as f:
+        f.write("reload\n")
 
 
 def main():
@@ -515,13 +528,15 @@ def main():
         os.environ["REMOTE_CONFIG_API_KEY"] = remote_api_key
     if remote_app_name:
         os.environ["REMOTE_CONFIG_APP_NAME"] = remote_app_name
+    if args.no_reload:
+        os.environ["DISABLE_HOT_RELOAD"] = "1"
 
     uvicorn.run(
         "nya.server.app:create_app",
         host=host,
         port=int(port),
-        reload=True,
-        reload_includes=[WATCH_FILE],
+        reload=not args.no_reload,
+        reload_includes=None if args.no_reload else [WATCH_FILE],
         timeout_keep_alive=30,
         server_header=False,
     )

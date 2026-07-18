@@ -9,7 +9,7 @@ from starlette.responses import JSONResponse, Response
 from starlette.testclient import TestClient
 
 from nya.server import app as server_app
-from nya.server.app import NyaProxyApp, RootPathMiddleware
+from nya.server.app import NyaProxyApp
 
 
 class AppConfig:
@@ -79,8 +79,7 @@ class FakeMetricsCollector:
 
 
 class FakeDashboard:
-    def __init__(self, port, enable_control):
-        self.port = port
+    def __init__(self, enable_control):
         self.enable_control = enable_control
         self.app = FastAPI()
         self.metrics_collector = None
@@ -104,21 +103,14 @@ def make_app_instance(config=_DEFAULT_CONFIG):
     app = object.__new__(NyaProxyApp)
     app.config = AppConfig() if config is _DEFAULT_CONFIG else config
     app.core = None
-    app.auth = SimpleNamespace(get_api_key=lambda: None)
+    app.auth = SimpleNamespace(
+        get_api_key=lambda: None,
+        is_auth_disabled=lambda: True,
+        master_key=lambda: None,
+    )
     app.dashboard = None
     app.metrics_collector = None
     return app
-
-
-def test_root_path_middleware_sets_scope_root_path():
-    app = FastAPI()
-    app.add_middleware(RootPathMiddleware, root_path="/proxy")
-
-    @app.get("/scope")
-    async def scope_root(request: Request):
-        return {"root_path": request.scope["root_path"]}
-
-    assert TestClient(app).get("/scope").json() == {"root_path": "/proxy"}
 
 
 def test_create_main_app_registers_public_routes_and_metrics():
@@ -128,6 +120,7 @@ def test_create_main_app_registers_public_routes_and_metrics():
     client = TestClient(instance._create_main_app())
 
     assert client.get("/").json() == {"message": "Welcome to NyaProxy!"}
+    assert client.get("/health").json() == {"status": "ok"}
     assert client.get("/info").json()["apis"]["mock"]["aliases"] == ["alias"]
     metrics = client.get("/metrics")
     assert metrics.status_code == 200
@@ -145,19 +138,9 @@ def test_constructor_and_auth_logging_metric_initializers(monkeypatch):
     assert isinstance(created.config, FakeConfigManager)
     assert created.core is None
     assert created.dashboard is None
-    assert created._init_auth().config is created.config
-
     created.init_logging()
     created.init_metrics_collector()
     assert created.metrics_collector is not None
-
-
-def test_init_auth_raises_if_auth_manager_factory_fails(monkeypatch):
-    instance = make_app_instance()
-    monkeypatch.setattr(server_app, "AuthManager", lambda config: None)
-
-    with pytest.raises(RuntimeError):
-        instance._init_auth()
 
 
 def test_metrics_route_reports_unavailable_without_collector():
@@ -280,6 +263,44 @@ async def test_init_services_calls_each_initializer_in_order(monkeypatch):
     assert calls == ["logging", "metrics", "core", "config", "dashboard", "routes"]
 
 
+def test_warn_if_unauthenticated_fires_only_on_public_bind(monkeypatch):
+    from loguru import logger
+
+    messages = []
+    sink_id = logger.add(lambda m: messages.append(str(m)), level="WARNING")
+    try:
+        instance = make_app_instance()
+
+        monkeypatch.setenv("SERVER_HOST", "0.0.0.0")
+        instance._warn_if_unauthenticated()
+        assert any("WITHOUT authentication" in m for m in messages)
+
+        messages.clear()
+        monkeypatch.setenv("SERVER_HOST", "127.0.0.1")
+        instance._warn_if_unauthenticated()
+        assert not messages
+
+        # Auth enabled with a real master key: never warn, even on a public bind
+        messages.clear()
+        instance.auth = SimpleNamespace(
+            is_auth_disabled=lambda: False, master_key=lambda: "master"
+        )
+        monkeypatch.setenv("SERVER_HOST", "0.0.0.0")
+        instance._warn_if_unauthenticated()
+        assert not messages
+
+        # Auth enabled but the master entry is blank: admin surfaces are
+        # locked, which needs to be said out loud.
+        messages.clear()
+        instance.auth = SimpleNamespace(
+            is_auth_disabled=lambda: False, master_key=lambda: None
+        )
+        instance._warn_if_unauthenticated()
+        assert any("no master key is configured" in m for m in messages)
+    finally:
+        logger.remove(sink_id)
+
+
 @pytest.mark.asyncio
 async def test_init_services_logs_and_reraises_initializer_failure():
     instance = make_app_instance()
@@ -330,10 +351,6 @@ def test_init_config_reads_environment_and_auth_guard(monkeypatch):
     assert captured["remote_url"] == "https://remote.test"
     assert instance.config is not None
 
-    instance.auth = None
-    with pytest.raises(RuntimeError):
-        instance._create_main_app()
-
 
 def test_init_config_wraps_config_manager_failures(monkeypatch):
     class BrokenConfigManager:
@@ -373,11 +390,17 @@ def test_parse_args_and_trigger_reload(monkeypatch, tmp_path):
 
     watch_file = tmp_path / "reload.watch"
     monkeypatch.setattr(server_app, "WATCH_FILE", str(watch_file))
+    monkeypatch.delenv("DISABLE_HOT_RELOAD", raising=False)
 
     server_app.trigger_reload()
     server_app.trigger_reload()
 
-    assert watch_file.read_text().startswith("Reload triggered")
+    assert watch_file.read_text() == "reload\nreload\n"
+
+    # With hot-reload disabled the watch file must stay untouched
+    monkeypatch.setenv("DISABLE_HOT_RELOAD", "1")
+    server_app.trigger_reload()
+    assert watch_file.read_text() == "reload\nreload\n"
 
 
 def test_parse_args_supports_remote_options(monkeypatch):
@@ -432,6 +455,7 @@ def test_main_sets_environment_and_runs_uvicorn(monkeypatch, tmp_path):
             remote_url="https://remote.test",
             remote_api_key="secret",
             remote_app_name="nya",
+            no_reload=False,
         ),
     )
     monkeypatch.setattr(
@@ -478,6 +502,7 @@ def test_main_copies_default_config_when_no_config_is_available(monkeypatch, tmp
             remote_url=None,
             remote_api_key=None,
             remote_app_name=None,
+            no_reload=False,
         ),
     )
     monkeypatch.setattr(

@@ -16,7 +16,7 @@ T = TypeVar("T")
 
 class ConfigManager:
     """
-    Manages configuration for NyaProxy using Nacho (singleton pattern).
+    Manages configuration for NyaProxy using Nacho.
     """
 
     def __init__(
@@ -123,8 +123,14 @@ class ConfigManager:
 
         try:
             nya_app = {"NyaProxy": self.config}
+            # Nacho's auth guard takes a single key string (it raises on any
+            # other type). Hand it the master key only: the config editor is an
+            # admin surface, so the additional proxy keys must not open it.
+            # A blank master resolves to None, which is safe here because the
+            # NyaProxy auth middleware in front of /config denies admin access
+            # outright in that case.
             server = NachoOrchestrator(
-                apps=nya_app, logger=logger, api_key=self.get_api_key()
+                apps=nya_app, logger=logger, api_key=self._master_api_key()
             )
         except Exception as e:
             error_msg = f"Failed to load configuration: {str(e)}"
@@ -132,12 +138,6 @@ class ConfigManager:
             raise ConfigurationError(error_msg)
 
         return server
-
-    def get_debug_level(self) -> str:
-        """
-        Get the debug level for logging.
-        """
-        return self.config.get_str("server.debug_level", "INFO")
 
     def get_host(self) -> str:
         """
@@ -157,18 +157,6 @@ class ConfigManager:
         """
         return self.config.get_bool("server.dashboard.enabled", True)
 
-    def get_retry_mode(self) -> str:
-        """
-        Get the retry mode for failed requests.
-        """
-        return self.config.get_str("server.retry.mode", "default")
-
-    def get_retry_config(self) -> Dict[str, Any]:
-        """
-        Get the retry configuration.
-        """
-        return self.config.get_dict("server.retry", {})
-
     def get_api_key(self) -> Union[None, str, List[str]]:
         """
         Get the API key(s) for authenticating with the proxy.
@@ -182,6 +170,24 @@ class ConfigManager:
             return api_key
         else:
             return str(api_key)
+
+    def _master_api_key(self) -> Optional[str]:
+        """
+        The first configured key, which is the only one allowed to administer
+        the proxy. Returns None when it is absent or blank.
+
+        Mirrors ``AuthManager.master_key``; kept here so the config server can
+        be built before the auth layer exists.
+        """
+        api_key = self.get_api_key()
+        if isinstance(api_key, str):
+            first: Any = api_key
+        elif isinstance(api_key, list) and api_key:
+            first = api_key[0]
+        else:
+            return None
+
+        return first.strip() if isinstance(first, str) and first.strip() else None
 
     def get_apis(self) -> Dict[str, Any]:
         """
@@ -250,12 +256,6 @@ class ConfigManager:
         """
         return self.config.get_bool("server.cors.allow_credentials", False)
 
-    def get_default_settings(self) -> Dict[str, Any]:
-        """
-        Get the default settings for endpoints.
-        """
-        return self.config.get_dict("default_settings", {})
-
     def get_default_timeout(self) -> int:
         """
         Get the default timeout for API requests.
@@ -308,22 +308,6 @@ class ConfigManager:
         else:  # Default to string
             return self.config.get_str(f"apis.{api_name}.{setting_path}", default_value)
 
-    def get_api_request_body_substitution_enabled(self, api_name: str) -> bool:
-        """
-        Get whether request body substitution is enabled for an API.
-        """
-        return self.get_api_setting(
-            api_name, "request_body_substitution.enabled", "bool"
-        )
-
-    def get_api_request_body_substitution_rules(
-        self, api_name: str
-    ) -> List[Dict[str, Any]]:
-        """
-        Get request body substitution rules.
-        """
-        return self.get_api_setting(api_name, "request_body_substitution.rules", "list")
-
     def get_api_default_timeout(self, api_name: str) -> int:
         """
         Get default timeout for API requests.
@@ -365,6 +349,12 @@ class ConfigManager:
         Get load balancing strategy.
         """
         return self.get_api_setting(api_name, "load_balancing_strategy", "str")
+
+    def get_api_key_weights(self, api_name: str) -> List[int]:
+        """
+        Get key selection weights for the 'weighted' load balancing strategy.
+        """
+        return self.config.get_list(f"apis.{api_name}.key_weights", [])
 
     def get_api_allowed_paths(self, api_name: str) -> List[str]:
         """
@@ -444,12 +434,6 @@ class ConfigManager:
         """
         return self.get_api_setting(api_name, "retry.enabled", "bool")
 
-    def get_api_retry_mode(self, api_name: str) -> str:
-        """
-        Get retry mode.
-        """
-        return self.get_api_setting(api_name, "retry.mode", "str")
-
     def get_api_retry_attempts(self, api_name: str) -> int:
         """
         Get retry attempts count.
@@ -513,26 +497,13 @@ class ConfigManager:
             # If it's not a list or string, try to convert to string
             return [str(values)]
 
-    def get_api_request_subst_rules(self, api_name: str) -> Dict[str, Any]:
+    def get_api_request_subst_rules(self, api_name: str) -> List[Dict[str, Any]]:
         """
-        Get request body substitution rules if enabled.
+        Get request body substitution rules, or an empty list when disabled.
         """
-
-        enable = self.get_api_request_body_substitution_enabled(api_name)
-
-        if not enable:
-            return {}
-        return self.get_api_request_body_substitution_rules(api_name)
-
-    def reload(self) -> None:
-        """
-        Reload the configuration from disk.
-        """
-        try:
-            self.config = self.init_config_client()
-            self.server = self.init_config_server()
-
-            logger.info("[NyaProxy] Configuration reloaded successfully")
-        except Exception as e:
-            logger.error(f"Failed to reload configuration: {str(e)}")
-            raise ConfigurationError(f"Failed to reload configuration: {str(e)}")
+        enabled = self.get_api_setting(
+            api_name, "request_body_substitution.enabled", "bool"
+        )
+        if not enabled:
+            return []
+        return self.get_api_setting(api_name, "request_body_substitution.rules", "list")

@@ -5,7 +5,9 @@ Provides authentication mechanisms and middleware.
 
 import hmac
 import importlib.resources
-from typing import TYPE_CHECKING, Optional
+import json
+from typing import TYPE_CHECKING, List, Optional
+from urllib.parse import unquote
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -35,6 +37,60 @@ class AuthManager:
         """
         return self.config.get_api_key()
 
+    def usable_keys(self) -> List[str]:
+        """
+        Configured keys that can actually authenticate, in configured order.
+
+        Blank and non-string entries are dropped: an unset ``${VAR}`` or a
+        stray ``-`` in YAML must never authenticate anything. Returns an empty
+        list for an unrecognised config shape, which callers treat as
+        "nothing matches" rather than "no auth".
+        """
+        configured_key = self.get_api_key()
+        if isinstance(configured_key, str):
+            configured_key = [configured_key]
+        elif not isinstance(configured_key, list):
+            return []
+
+        return [
+            entry.strip()
+            for entry in configured_key
+            if isinstance(entry, str) and entry.strip()
+        ]
+
+    def master_key(self) -> Optional[str]:
+        """
+        The single credential allowed on the admin surfaces.
+
+        This is the *first configured entry*, not the first usable one: if the
+        operator left it blank, the admin surfaces lock rather than silently
+        promoting a proxy key to master.
+        """
+        configured_key = self.get_api_key()
+        if isinstance(configured_key, str):
+            first = configured_key
+        elif isinstance(configured_key, list) and configured_key:
+            first = configured_key[0]
+        else:
+            return None
+
+        return first.strip() if isinstance(first, str) and first.strip() else None
+
+    def is_auth_disabled(self) -> bool:
+        """
+        True when no usable API key is configured, i.e. every request is allowed.
+        """
+        configured_key = self.get_api_key()
+        if configured_key is None:
+            return True
+        if isinstance(configured_key, str):
+            stripped = configured_key.strip()
+            return not stripped or stripped.lower() in ("none", "null")
+        if isinstance(configured_key, list):
+            # A list holding only blank entries is the same as no key at all.
+            return not self.usable_keys()
+        return False
+
     def verify_api_key(self, key: str, verify_master: bool = False) -> bool:
         """
         Verify if the provided key matches the configured API key.
@@ -52,38 +108,18 @@ class AuthManager:
         # Strip the key to ensure consistent comparison
         key = key.strip()
 
-        # Get the configured key (can be None, str, or List[str])
-        configured_key = self.get_api_key()
-
-        # If no API key is configured, allow all keys
-        if configured_key is None:
+        if self.is_auth_disabled():
             return True
 
-        # Handle string case
-        if isinstance(configured_key, str):
-            # Empty config key or special values mean no auth
-            if not configured_key.strip() or configured_key.strip().lower() in [
-                "none",
-                "null",
-            ]:
-                return True
-            return self._secrets_equal(key, configured_key.strip())
+        if verify_master:
+            # Only the first configured key administers the proxy; a blank
+            # master entry locks the admin surfaces instead of opening them.
+            master = self.master_key()
+            if not master:
+                return False
+            return self._secrets_equal(key, master)
 
-        # Handle list case
-        if isinstance(configured_key, list):
-            # Empty list means no auth
-            if not configured_key:
-                return True
-
-            if verify_master:
-                # Only the first key acts as the master key
-                return self._secrets_equal(key, configured_key[0].strip())
-
-            # Check all keys if verify_master is False
-            return any(self._secrets_equal(key, k.strip()) for k in configured_key)
-
-        # If we reach here, configured_key is an unexpected type
-        return False
+        return any(self._secrets_equal(key, k) for k in self.usable_keys())
 
     @staticmethod
     def _secrets_equal(provided: str, expected: str) -> bool:
@@ -110,21 +146,26 @@ class AuthManager:
             bool: True if valid, False otherwise
         """
 
-        # Get API key from session cookie
+        # Get API key from session cookie. The login page URI-encodes the
+        # value so keys containing ';', ',' or non-ASCII survive the cookie
+        # grammar — decode before comparing.
         cookie_key = request.cookies.get("nyaproxy_api_key", "")
 
         # Trim any whitespace that might be added by some browsers
-        cookie_key = cookie_key.strip() if cookie_key else ""
+        cookie_key = unquote(cookie_key).strip() if cookie_key else ""
 
         # Verify the cookie key against the configured master key only
         return self.verify_api_key(cookie_key, verify_master=True)
 
-    def verify_api_key_header(self, request: Request):
+    def verify_api_key_header(self, request: Request, verify_master: bool = False):
         """
         Verify the API key from the Authorization header.
 
         Args:
             request: The FastAPI request
+            verify_master: If True, only the master key is accepted. Admin
+                surfaces (dashboard, config UI) pass True; proxy traffic
+                accepts any configured key.
 
         Returns:
             bool: True if valid, False otherwise
@@ -133,7 +174,7 @@ class AuthManager:
         if api_key.startswith("Bearer "):
             api_key = api_key[7:]
 
-        return self.verify_api_key(api_key)
+        return self.verify_api_key(api_key, verify_master=verify_master)
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -154,45 +195,67 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Skip auth for specific paths if needed
         excluded_paths = [
             "/",
+            "/health",
             "/info",
             "/metrics",
             "/docs",
             "/redoc",
             "/openapi.json",
+        ]
+        # Public assets the pre-auth login page needs; suffix match so they
+        # stay reachable behind any reverse-proxy path prefix.
+        excluded_asset_suffixes = (
             "/dashboard/static/logo.svg",
             "/dashboard/favicon.ico",
-        ]
-        if any(request.url.path == path for path in excluded_paths):
-            return await call_next(request)
-
-        configured_key = self.auth.get_api_key()
-
-        # No API key required if configured_key is None or empty string/list
-        if configured_key is None or (
-            isinstance(configured_key, (str, list)) and not configured_key
+            "/dashboard/static/fonts/SpaceGrotesk-var.woff2",
+        )
+        if request.url.path in excluded_paths or request.url.path.endswith(
+            excluded_asset_suffixes
         ):
             return await call_next(request)
 
-        # First, check for valid session cookie
+        if self.auth.is_auth_disabled():
+            return await call_next(request)
+
+        # The dashboard and the config UI are administrative surfaces: only the
+        # master key reaches them. Every other path is proxy traffic, which any
+        # configured key may use.
+        is_admin_surface = self._is_admin_surface(request)
+
+        # First, check for valid session cookie (master key only)
         if self.auth.verify_session_cookie(request):
             return await call_next(request)
 
         # Then, check for valid Authorization header
-        if self.auth.verify_api_key_header(request):
+        if self.auth.verify_api_key_header(request, verify_master=is_admin_surface):
             return await call_next(request)
 
-        # If no valid auth found, determine response based on path
-        is_dashboard = request.url.path.startswith("/dashboard")
-        is_config = request.url.path.startswith("/config")
-
         # For dashboard and config paths, redirect to login page
-        if is_dashboard or is_config:
+        if is_admin_surface:
             return self._generate_login_page(request)
 
         # For API and other paths, return JSON error
         return JSONResponse(
             status_code=403,
             content={"error": "Unauthorized: NyaProxy - Invalid API key"},
+        )
+
+    @staticmethod
+    def _is_admin_surface(request: Request) -> bool:
+        """
+        True for the dashboard and config UI, which require the master key.
+
+        The mount prefix is stripped first so the check still holds when the
+        app is served under a reverse-proxy path prefix.
+        """
+        path = request.url.path
+        root_path = request.scope.get("root_path", "")
+        if root_path and path.startswith(root_path):
+            path = path[len(root_path) :] or "/"
+
+        return any(
+            path == prefix or path.startswith(f"{prefix}/")
+            for prefix in ("/dashboard", "/config")
         )
 
     def _generate_login_page(self, request: Request):
@@ -212,7 +275,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 content={"error": "Internal server error: Login page unavailable"},
             )
 
-        # Replace placeholders in the HTML template
-        html_content = html_content.replace("{{ return_path }}", return_path)
+        # The template quotes the placeholder ("{{ return_path }}") inside JS
+        # string literals; substitute a JSON-escaped literal so a crafted
+        # percent-encoded path cannot break out of the string (reflected XSS).
+        # \u-escape <> as well so '</script>' cannot terminate the block.
+        safe_return_path = (
+            json.dumps(return_path).replace("<", "\\u003c").replace(">", "\\u003e")
+        )
+        asset_root = request.scope.get("root_path", "") + "/dashboard"
+        html_content = html_content.replace(
+            '"{{ return_path }}"', safe_return_path
+        ).replace("{{ asset_root }}", asset_root)
 
         return HTMLResponse(content=html_content, status_code=401)

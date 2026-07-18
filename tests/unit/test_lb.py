@@ -136,9 +136,9 @@ def test_record_response_time_registers_unknown_keys():
 
 
 def test_record_response_time_caps_history_length():
-    from nya.common.constants import MAX_QUEUE_SIZE
+    from nya.services.lb import RESPONSE_TIME_WINDOW
 
     lb = LoadBalancer(["a"], strategy="fastest_response")
-    for i in range(MAX_QUEUE_SIZE + 50):
+    for i in range(RESPONSE_TIME_WINDOW + 50):
         lb.record_response_time("a", float(i))
-    assert len(lb.response_times["a"]) == MAX_QUEUE_SIZE
+    assert len(lb.response_times["a"]) == RESPONSE_TIME_WINDOW

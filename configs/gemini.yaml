@@ -1,8 +1,9 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Nya-Foundation/NyaProxy/main/nya/schema.json
 server:
-  api_key: SUPER_SECURE_PASSWORD!!!
+  api_key: change-me-proxy-key # replace before deploying; this key gates ALL access to NyaProxy
   logging:
     enabled: true
-    level: debug
+    level: info
     log_file: app.log
   proxy:
     enabled: false
@@ -43,7 +44,6 @@ default_settings:
       - "*"
   retry:
     enabled: true
-    mode: key_rotation
     attempts: 3
     retry_after_seconds: 1
     retry_request_methods: [ POST, GET, PUT, DELETE, PATCH, OPTIONS ]
@@ -72,7 +72,7 @@ apis:
       # Endpoint rate limit should be n × per-key-RPD, where n is the number of keys
       endpoint_rate_limit: 75/d
       key_rate_limit: 5/m
-      # Paths to apply rate limits (regex supported) - defaults to all paths "*"
+      # Paths to apply rate limits (prefix match, trailing * wildcard) - defaults to all paths "*"
       rate_limit_paths:
         - "/chat/*"
         - "/images/*"

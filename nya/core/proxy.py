@@ -3,10 +3,12 @@ The NyaProxyCore class handles the main proxy logic with queue-first architectur
 """
 
 import asyncio
+import math
 import random
 import traceback
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING, Dict, Optional, Union
 
+import httpx
 from loguru import logger
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
@@ -15,6 +17,7 @@ from ..common.exceptions import (
     QueueFullError,
     ReachedMaxQuotaError,
     ReachedMaxRetriesError,
+    RequestExpiredError,
 )
 from .control import TrafficManager
 from .handler import RequestHandler
@@ -43,7 +46,7 @@ class NyaProxyCore:
         Initialize the NyaProxyCore with the given configuration and metrics collector.
 
         Args:
-            config: Configuration manager instance, defaults to ConfigManager singleton if None
+            config: Configuration manager instance
             metrics_collector: Optional metrics collector for tracking request metrics
         """
         self.config = config
@@ -79,11 +82,10 @@ class NyaProxyCore:
             if not request.api_name:
                 return self._error_response("NyaProxy: Unknown API endpoint", 404)
 
-            if not self.handler.is_request_allowed(request):
-                return self._error_response(
-                    "NyaProxy: The Request method or path are prohibited for this API",
-                    405,
-                )
+            denial = self.handler.validate_request_policy(request)
+            if denial:
+                status_code, message = denial
+                return self._error_response(message, status_code)
 
             # If rate limit does not apply, get a random key and process immediately
             if not request._rate_limited:
@@ -95,14 +97,26 @@ class NyaProxyCore:
             timeout = self.config.get_api_default_timeout(request.api_name)
             return await asyncio.wait_for(future, timeout=timeout)
 
-        except (ReachedMaxRetriesError, ReachedMaxQuotaError) as e:
+        except ReachedMaxQuotaError as e:
+            headers = (
+                {"Retry-After": str(math.ceil(e.wait_time))} if e.wait_time else None
+            )
+            return self._error_response(e.message, 429, headers)
+        except ReachedMaxRetriesError as e:
             return self._error_response(e.message, 429)
         except APIKeyNotConfiguredError as e:
             return self._error_response(e.message, 500)
         except QueueFullError as e:
             return self._error_response(e.message, 503)
-        except asyncio.TimeoutError:
+        except (asyncio.TimeoutError, RequestExpiredError):
             return self._error_response("NyaProxy: Request timed out in queue", 504)
+        except httpx.TimeoutException:
+            return self._error_response("NyaProxy: Upstream request timed out", 504)
+        except httpx.TransportError as e:
+            logger.warning(f"Upstream transport error for {request.api_name}: {e}")
+            return self._error_response(
+                "NyaProxy: Unable to reach upstream endpoint", 502
+            )
         except Exception as e:
             logger.error(
                 f"Unexpected error handling request: {e}, traceback: {traceback.format_exc()}"
@@ -131,9 +145,12 @@ class NyaProxyCore:
         self,
         message: str,
         status_code: int = 500,
+        headers: Optional[Dict[str, str]] = None,
     ) -> JSONResponse:
         """
         Create a simple error response.
         """
 
-        return JSONResponse(status_code=status_code, content={"error": message})
+        return JSONResponse(
+            status_code=status_code, content={"error": message}, headers=headers
+        )

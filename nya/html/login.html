@@ -4,53 +4,73 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>NyaProxy — Sign in</title>
-    <link rel="icon" href="/dashboard/favicon.ico" />
+    <link rel="icon" href="{{ asset_root }}/favicon.ico" />
     <script>
+      // Apply the theme before first paint to avoid a flash of the wrong theme.
       (function () {
-        var t = localStorage.getItem("nyaproxy-theme") || "dark";
-        document.documentElement.setAttribute("data-theme", t);
+        try {
+          var t = localStorage.getItem("nyaproxy-theme");
+          if (t !== "dark" && t !== "light")
+            t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+          document.documentElement.setAttribute("data-theme", t);
+        } catch (e) {}
       })();
     </script>
     <style>
-      /* Self-contained: the login page is served before authentication,
-         so it cannot load the dashboard's shared stylesheet. */
+      /* Self-contained: served pre-auth, so no shared stylesheet. The brand
+         font is inlined here; its path is on the auth exclusion list. */
+      @font-face {
+        font-family: "Space Grotesk";
+        src:
+          url("{{ asset_root }}/static/fonts/SpaceGrotesk-var.woff2") format("woff2") tech("variations"),
+          url("{{ asset_root }}/static/fonts/SpaceGrotesk-var.woff2") format("woff2");
+        font-weight: 300 700;
+        font-display: swap;
+      }
       :root,
       [data-theme="dark"] {
-        --bg: #0d0f14;
-        --bg-elevated: #161922;
-        --border: #262b38;
-        --text: #e6e8ed;
-        --text-muted: #9ba1b0;
-        --text-faint: #646b7d;
-        --accent: #6366f1;
-        --accent-hover: #818cf8;
-        --accent-soft: rgba(99, 102, 241, 0.16);
-        --danger: #f87171;
-        --danger-soft: rgba(248, 113, 113, 0.15);
-        --shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+        --bg: #151732;
+        --surface: #1c1f3e;
+        --surface-2: #23264b;
+        --border: #2c2f58;
+        --text: #f3f4fa;
+        --text-2: #a9acd6;
+        --text-3: #8285b8;
+        --accent: #8a8deb;
+        --accent-strong: #9fa2f0;
+        --accent-hover: #a9acf2;
+        --on-accent: #0f1129;
+        --focus-ring: #8a8deb;
+        --err: #e08b85;
       }
       [data-theme="light"] {
-        --bg: #f4f5f7;
-        --bg-elevated: #ffffff;
-        --border: #e3e5ea;
-        --text: #1a1d23;
-        --text-muted: #5b616e;
-        --text-faint: #8b909d;
-        --accent: #4f46e5;
-        --accent-hover: #4338ca;
-        --accent-soft: rgba(79, 70, 229, 0.1);
-        --danger: #dc2626;
-        --danger-soft: rgba(220, 38, 38, 0.1);
-        --shadow: 0 12px 32px rgba(0, 0, 0, 0.16);
+        --bg: #f6f6fb;
+        --surface: #ffffff;
+        --surface-2: #edeef7;
+        --border: #e2e4f0;
+        --text: #23264b;
+        --text-2: #4a4e78;
+        --text-3: #666a9e;
+        --accent: #6c6fe0;
+        --accent-strong: #5457c9;
+        --accent-hover: #4b4ebe;
+        --on-accent: #ffffff;
+        --focus-ring: #6c6fe0;
+        --err: #b3372f;
       }
       * {
         box-sizing: border-box;
         margin: 0;
         padding: 0;
       }
+      html {
+        font-family: "Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      html.theme-transition,
+      html.theme-transition body {
+        transition: background-color 120ms ease, color 120ms ease;
+      }
       body {
-        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI",
-          Roboto, sans-serif;
         background: var(--bg);
         color: var(--text);
         min-height: 100vh;
@@ -58,171 +78,322 @@
         align-items: center;
         justify-content: center;
         padding: 24px;
+        font-size: 14px;
+        line-height: 1.5;
       }
-      .card {
-        background: var(--bg-elevated);
-        border: 1px solid var(--border);
-        border-radius: 14px;
-        box-shadow: var(--shadow);
+      :focus-visible {
+        outline: 2px solid var(--focus-ring);
+        outline-offset: 2px;
+      }
+      .col {
         width: 100%;
-        max-width: 380px;
-        padding: 32px 28px;
+        max-width: 360px;
       }
-      .brand {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        justify-content: center;
+      .mark {
+        display: block;
+        width: 56px;
+        height: 56px;
+        margin: 0 auto;
       }
-      .brand img {
-        width: 30px;
-        height: 30px;
+      /* The horizon rule the mark sits on. */
+      .horizon {
+        position: relative;
+        height: 1px;
+        background: var(--border);
+        margin-bottom: 24px;
       }
-      .brand span {
-        font-size: 1.15rem;
-        font-weight: 650;
+      .horizon::after {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: -1px;
+        transform: translateX(-50%);
+        width: 48px;
+        height: 2px;
+        border-radius: 1px;
+        background: var(--accent);
+      }
+      .wordmark {
+        text-align: center;
+        font-size: 20px;
+        font-weight: 500;
+        letter-spacing: 0.01em;
       }
       .sub {
         text-align: center;
-        color: var(--text-muted);
-        font-size: 0.85rem;
-        margin: 8px 0 24px;
+        color: var(--text-3);
+        font-size: 12.5px;
+        margin: 6px 0 32px;
       }
       label {
         display: block;
-        font-size: 0.78rem;
+        font-size: 11.5px;
         font-weight: 500;
-        color: var(--text-muted);
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--text-2);
         margin-bottom: 6px;
       }
-      input[type="password"] {
-        width: 100%;
-        background: var(--bg);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        color: var(--text);
-        font-size: 0.9rem;
-        padding: 10px 12px;
-        transition: border-color 0.12s ease, box-shadow 0.12s ease;
+      .field-wrap {
+        position: relative;
       }
-      input[type="password"]:focus {
-        outline: none;
-        border-color: var(--accent);
-        box-shadow: 0 0 0 3px var(--accent-soft);
+      #api-key {
+        width: 100%;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        color: var(--text);
+        font-family: inherit;
+        font-size: 14px;
+        padding: 10px 44px 10px 12px;
+      }
+      #api-key[aria-invalid="true"] {
+        border-color: var(--err);
+      }
+      .eye {
+        position: absolute;
+        top: 50%;
+        right: 6px;
+        transform: translateY(-50%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        background: none;
+        border: none;
+        border-radius: 999px;
+        color: var(--text-3);
+        cursor: pointer;
+      }
+      .eye:hover {
+        color: var(--text-2);
+      }
+      .eye svg {
+        width: 17px;
+        height: 17px;
       }
       button[type="submit"] {
         width: 100%;
         margin-top: 16px;
         padding: 10px;
-        font-size: 0.9rem;
-        font-weight: 600;
-        color: #fff;
-        background: var(--accent);
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--on-accent);
+        background: var(--accent-strong);
         border: none;
-        border-radius: 8px;
+        border-radius: 6px;
         cursor: pointer;
-        transition: background-color 0.12s ease;
       }
       button[type="submit"]:hover {
         background: var(--accent-hover);
       }
-      button[type="submit"]:disabled {
-        opacity: 0.6;
+      button[type="submit"][aria-busy="true"] {
         cursor: progress;
       }
-      .error {
+      .error-slot {
+        min-height: 24px;
+        margin-bottom: 8px;
+      }
+      #error {
+        color: var(--err);
+        font-size: 12.5px;
+      }
+      #error[hidden] {
         display: none;
-        margin-top: 14px;
-        font-size: 0.82rem;
-        color: var(--danger);
-        background: var(--danger-soft);
-        border-radius: 8px;
-        padding: 9px 12px;
       }
       .theme-toggle {
         position: fixed;
         top: 18px;
         right: 18px;
-        width: 34px;
-        height: 34px;
         display: flex;
         align-items: center;
         justify-content: center;
+        width: 36px;
+        height: 36px;
         border: 1px solid var(--border);
-        border-radius: 8px;
-        background: var(--bg-elevated);
-        color: var(--text-muted);
+        border-radius: 999px;
+        background: transparent;
+        color: var(--text-2);
         cursor: pointer;
+      }
+      .theme-toggle:hover {
+        background: var(--surface-2);
       }
       .theme-toggle svg {
         width: 17px;
         height: 17px;
       }
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          transition: none !important;
+          animation: none !important;
+        }
+      }
     </style>
   </head>
   <body>
-    <button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme">
-      <svg class="icon-moon" viewBox="0 0 20 20" fill="currentColor">
+    <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to light theme">
+      <svg class="icon-moon" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
       </svg>
-      <svg class="icon-sun" viewBox="0 0 20 20" fill="currentColor" style="display: none">
+      <svg class="icon-sun" viewBox="0 0 20 20" fill="currentColor" style="display: none" aria-hidden="true">
         <path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clip-rule="evenodd" />
       </svg>
     </button>
 
-    <div class="card">
-      <div class="brand">
-        <img src="/dashboard/static/logo.svg" alt="" />
-        <span>NyaProxy</span>
+    <main class="col">
+      <img class="mark" src="{{ asset_root }}/static/logo.svg" alt="" />
+      <div class="horizon"></div>
+      <h1 class="wordmark">nyaproxy</h1>
+      <p class="sub">Sign in to the dashboard</p>
+
+      <div class="error-slot">
+        <div id="error" role="alert" hidden></div>
       </div>
-      <p class="sub">Sign in to access the dashboard</p>
 
       <form id="login-form" method="post" action="javascript:void(0);">
-        <label for="api-key">API key</label>
-        <input type="password" id="api-key" name="apiKey" required autocomplete="off" placeholder="Enter your API key" />
+        <label for="api-key">Master key</label>
+        <div class="field-wrap">
+          <input
+            type="password"
+            id="api-key"
+            name="apiKey"
+            required
+            autocomplete="off"
+            autofocus
+            placeholder="Enter the master key"
+          />
+          <button id="toggle-key" class="eye" type="button" aria-label="Show key" aria-pressed="false">
+            <svg class="icon-eye" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+              <path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd" />
+            </svg>
+            <svg class="icon-eye-off" viewBox="0 0 20 20" fill="currentColor" style="display: none" aria-hidden="true">
+              <path fill-rule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074l-1.78-1.781zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z" clip-rule="evenodd" />
+              <path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.741L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.065 7 9.542 7 .847 0 1.669-.105 2.454-.303z" />
+            </svg>
+          </button>
+        </div>
         <button type="submit" id="submit-btn">Sign in</button>
       </form>
-      <div id="error" class="error"></div>
-    </div>
+    </main>
 
     <script>
-      const root = document.documentElement;
-      const toggle = document.getElementById("theme-toggle");
-      const moon = toggle.querySelector(".icon-moon");
-      const sun = toggle.querySelector(".icon-sun");
+      (function () {
+        var root = document.documentElement;
+        var toggle = document.getElementById("theme-toggle");
+        var moon = toggle.querySelector(".icon-moon");
+        var sun = toggle.querySelector(".icon-sun");
 
-      function applyTheme(theme) {
-        root.setAttribute("data-theme", theme);
-        localStorage.setItem("nyaproxy-theme", theme);
-        const dark = theme === "dark";
-        moon.style.display = dark ? "" : "none";
-        sun.style.display = dark ? "none" : "";
-      }
-      applyTheme(localStorage.getItem("nyaproxy-theme") || "dark");
-      toggle.addEventListener("click", () =>
-        applyTheme(root.getAttribute("data-theme") === "dark" ? "light" : "dark")
-      );
-
-      document
-        .getElementById("login-form")
-        .addEventListener("submit", function () {
-          const key = document.getElementById("api-key").value;
-          const btn = document.getElementById("submit-btn");
-          const error = document.getElementById("error");
-          btn.disabled = true;
-          error.style.display = "none";
+        function syncThemeUI() {
+          var dark = root.getAttribute("data-theme") !== "light";
+          moon.style.display = dark ? "" : "none";
+          sun.style.display = dark ? "none" : "";
+          toggle.setAttribute(
+            "aria-label",
+            dark ? "Switch to light theme" : "Switch to dark theme"
+          );
+        }
+        syncThemeUI();
+        toggle.addEventListener("click", function () {
+          root.classList.add("theme-transition");
+          var next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+          root.setAttribute("data-theme", next);
           try {
-            document.cookie =
-              "nyaproxy_api_key=" +
-              key +
-              "; path=/; max-age=7200; SameSite=Strict";
-            window.location.href = "{{ return_path }}";
-          } catch (e) {
-            error.textContent = "Authentication failed. Please try again.";
-            error.style.display = "block";
-            btn.disabled = false;
+            localStorage.setItem("nyaproxy-theme", next);
+          } catch (e) {}
+          syncThemeUI();
+        });
+
+        // Show/hide key.
+        var input = document.getElementById("api-key");
+        var eye = document.getElementById("toggle-key");
+        eye.addEventListener("click", function () {
+          var show = input.type === "password";
+          input.type = show ? "text" : "password";
+          eye.setAttribute("aria-pressed", String(show));
+          eye.setAttribute("aria-label", show ? "Hide key" : "Show key");
+          eye.querySelector(".icon-eye").style.display = show ? "none" : "";
+          eye.querySelector(".icon-eye-off").style.display = show ? "" : "none";
+        });
+
+        var form = document.getElementById("login-form");
+        var btn = document.getElementById("submit-btn");
+        var error = document.getElementById("error");
+        var busy = false;
+
+        function setBusy(on) {
+          busy = on;
+          btn.textContent = on ? "Signing in…" : "Sign in";
+          if (on) btn.setAttribute("aria-busy", "true");
+          else btn.removeAttribute("aria-busy");
+        }
+
+        function showError(message) {
+          error.textContent = message;
+          error.hidden = false;
+          input.setAttribute("aria-invalid", "true");
+          input.focus();
+          input.select();
+        }
+
+        form.addEventListener("submit", async function (e) {
+          e.preventDefault();
+          if (busy) return; // soft-disable: never the disabled attribute
+          setBusy(true);
+          error.hidden = true;
+          input.removeAttribute("aria-invalid");
+
+          var key = input.value;
+          // URI-encode so ';', ',' and non-ASCII survive the cookie grammar
+          // (the server decodes); Secure keeps the key off plain HTTP.
+          var secure = location.protocol === "https:" ? "; Secure" : "";
+          document.cookie =
+            "nyaproxy_api_key=" + encodeURIComponent(key) +
+            "; path=/; max-age=7200; SameSite=Strict" + secure;
+          // Single sign-on for the /config editor (Nacho). Its SPA reads the
+          // key from localStorage and sends it as a Bearer header for API
+          // calls, while its WebSocket live-updates authenticate from the
+          // NACHO_api_key cookie. Seed both — mirroring Nacho's own login —
+          // so one sign-in here also unlocks the config editor.
+          try {
+            localStorage.setItem("nacho_api_key", key);
+          } catch (e) {}
+          document.cookie =
+            "NACHO_api_key=" + encodeURIComponent(key) +
+            "; path=/; max-age=7200; SameSite=Strict" + secure;
+
+          try {
+            // Validate before redirecting: the 401 login mechanism is the oracle.
+            var res = await fetch("{{ return_path }}", {
+              credentials: "same-origin",
+            });
+            if (res.status === 401) {
+              document.cookie =
+                "nyaproxy_api_key=; path=/; max-age=0; SameSite=Strict" + secure;
+              document.cookie =
+                "NACHO_api_key=; path=/; max-age=0; SameSite=Strict" + secure;
+              try {
+                localStorage.removeItem("nacho_api_key");
+              } catch (e) {}
+              setBusy(false);
+              showError("That key wasn't accepted.");
+            } else if (res.ok) {
+              window.location.href = "{{ return_path }}";
+            } else {
+              setBusy(false);
+              showError("Authentication failed. Please try again.");
+            }
+          } catch (err) {
+            setBusy(false);
+            showError("Authentication failed. Please try again.");
           }
         });
+      })();
     </script>
   </body>
 </html>

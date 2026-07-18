@@ -177,3 +177,5 @@ cython_debug/
 
 watch.txt
 config.yaml
+# Serena MCP tool state
+.serena/

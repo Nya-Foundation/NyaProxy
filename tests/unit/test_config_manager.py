@@ -137,12 +137,9 @@ def sample_data():
 def test_top_level_getters_return_configured_values():
     manager = make_manager(sample_data())
 
-    assert manager.get_debug_level() == "DEBUG"
     assert manager.get_host() == "127.0.0.1"
     assert manager.get_port() == 9191
     assert manager.get_dashboard_enabled() is False
-    assert manager.get_retry_mode() == "aggressive"
-    assert manager.get_retry_config()["attempts"] == 3
     assert manager.get_api_key() == ["master", "secondary"]
     assert manager.get_logging_config() == {
         "enabled": False,
@@ -161,10 +158,6 @@ def test_top_level_getters_return_configured_values():
 def test_api_getters_fall_back_to_default_settings_and_api_overrides():
     manager = make_manager(sample_data())
 
-    assert manager.get_api_request_body_substitution_enabled("openai") is True
-    assert manager.get_api_request_body_substitution_rules("openai") == [
-        {"name": "drop", "operation": "remove", "path": "x"}
-    ]
     assert manager.get_api_default_timeout("openai") == 30
     assert manager.get_api_key_variable("openai") == "keys"
     assert manager.get_api_key_concurrency("openai") is False
@@ -187,7 +180,6 @@ def test_api_getters_fall_back_to_default_settings_and_api_overrides():
     assert manager.get_api_ip_rate_limit("openai") == "2/s"
     assert manager.get_api_user_rate_limit("openai") == "3/s"
     assert manager.get_api_retry_enabled("openai") is True
-    assert manager.get_api_retry_mode("openai") == "default"
     assert manager.get_api_retry_attempts("openai") == 4
     assert manager.get_api_retry_after_seconds("openai") == 0.5
     assert manager.get_api_retry_status_codes("openai") == [429, 500]
@@ -208,7 +200,7 @@ def test_api_lookup_aliases_variables_and_disabled_substitutions():
     assert manager.get_api_request_subst_rules("openai") == [
         {"name": "drop", "operation": "remove", "path": "x"}
     ]
-    assert manager.get_api_request_subst_rules("fallback") == {}
+    assert manager.get_api_request_subst_rules("fallback") == []
 
 
 def test_get_apis_requires_at_least_one_api():
@@ -335,33 +327,3 @@ def test_init_config_server_wraps_orchestrator_errors(monkeypatch):
 
     with pytest.raises(ConfigurationError):
         manager.init_config_server()
-
-
-def test_reload_replaces_client_and_server(monkeypatch):
-    manager = object.__new__(ConfigManager)
-    manager.config = SimpleNamespace(name="old")
-    manager.server = SimpleNamespace(name="old-server")
-
-    monkeypatch.setattr(
-        manager, "init_config_client", lambda: SimpleNamespace(name="new")
-    )
-    monkeypatch.setattr(
-        manager, "init_config_server", lambda: SimpleNamespace(name="new-server")
-    )
-
-    manager.reload()
-
-    assert manager.config.name == "new"
-    assert manager.server.name == "new-server"
-
-
-def test_reload_wraps_failures(monkeypatch):
-    manager = object.__new__(ConfigManager)
-
-    def explode():
-        raise RuntimeError("nope")
-
-    monkeypatch.setattr(manager, "init_config_client", explode)
-
-    with pytest.raises(ConfigurationError):
-        manager.reload()
