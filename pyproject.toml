@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nya-proxy"
-version = "0.4.6"
+version = "0.6.0"
 description = "A lightweight, flexible API proxy with dynamic token rotation, load balancing, and rate limiting capabilities."
 readme = "README.md"
 authors = [
@@ -12,7 +12,6 @@ authors = [
 ]
 license = "MIT"
 license-files = ["LICENSE"]
-
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -101,13 +100,6 @@ exclude_lines = [
     "raise ImportError"
 ]
 
-[project.urls]
-"Homepage" = "https://github.com/Nya-Foundation/nyaproxy"
-"Bug Tracker" = "https://github.com/Nya-Foundation/nyaproxy/issues"
-
-[project.scripts]
-nyaproxy = "nya.server.app:main"
-
 
 [tool.setuptools]
 package-dir = {"" = "."}  # Use current directory as source root
@@ -124,6 +116,7 @@ include = ["nya*"] # Include nya and its subpackages
 
 [tool.setuptools.exclude-package-data]
 "*" = ["*.pyc", "*.pyo", "__pycache__/*"]
+
 
 [tool.semantic_release]
 tag_format = "v{version}"
