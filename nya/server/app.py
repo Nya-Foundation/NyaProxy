@@ -7,6 +7,8 @@ import argparse
 import contextlib
 import os
 import sys
+import time
+from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, Request
@@ -20,6 +22,7 @@ from ..common.constants import (
     DEFAULT_HOST,
     DEFAULT_PORT,
     DEFAULT_SCHEMA_NAME,
+    RELOAD_DEBOUNCE_SECONDS,
     WATCH_FILE,
 )
 from ..common.models import ProxyRequest
@@ -27,6 +30,7 @@ from ..config.manager import ConfigManager
 from ..core.proxy import NyaProxyCore
 from ..dashboard.api import DashboardAPI
 from ..services.metrics import PROMETHEUS_CONTENT_TYPE, MetricsCollector
+from ..services.state import load_state, resolve_state_path, save_state
 from .auth import AuthManager, AuthMiddleware
 
 logger.remove()
@@ -237,6 +241,9 @@ class NyaProxyApp:
             self.init_metrics_collector()
 
             self.init_core()
+            # Rate-limit windows and key cool-downs must survive the restart
+            # that applies a configuration change.
+            self.restore_runtime_state()
             # Mount sub-applications for NyaProxy if available
             self.init_config_ui()
 
@@ -378,12 +385,62 @@ class NyaProxyApp:
         async def proxy_request(request: Request):
             return await self.generic_proxy_request(request)
 
+    def _state_path(self) -> Path:
+        """
+        Location of the file holding state that outlives the process.
+
+        The configured path is taken from the config manager rather than the
+        environment: the path can also arrive as a constructor argument, and
+        falling back to the working directory would make two instances
+        started from the same directory share one another's quotas.
+        """
+        config_path = getattr(self.config, "config_path", None) or os.environ.get(
+            "CONFIG_PATH"
+        )
+        return resolve_state_path(config_path)
+
+    def restore_runtime_state(self) -> int:
+        """
+        Re-apply rate-limit windows and key cool-downs from the previous run.
+
+        Returns the number of staged limiter entries. Failure here is never
+        fatal: cold counters are a degradation, refusing to start is an
+        outage.
+        """
+        if not self.core or not getattr(self.core, "control", None):
+            return 0
+        try:
+            state = load_state(self._state_path())
+            if not state:
+                return 0
+            staged = self.core.control.import_state(state)
+            if staged:
+                logger.info(f"Restored rate-limit state for {staged} limiters")
+            return staged
+        except Exception as e:
+            logger.warning(f"Could not restore runtime state: {e}")
+            return 0
+
+    def persist_runtime_state(self) -> bool:
+        """Write rate-limit windows and key cool-downs for the next run."""
+        if not self.core or not getattr(self.core, "control", None):
+            return False
+        try:
+            return save_state(self._state_path(), self.core.control.export_state())
+        except Exception as e:
+            logger.warning(f"Could not persist runtime state: {e}")
+            return False
+
     async def shutdown(self):
         """
         Clean up resources on shutdown.
         """
 
         logger.info("Shutting down NyaProxy")
+
+        # Persist before tearing anything down, so a restart triggered by a
+        # config change does not reset quotas or release quarantined keys.
+        self.persist_runtime_state()
 
         # Close proxy handler client
         if self.core and hasattr(self.core, "request_executor"):
@@ -449,16 +506,33 @@ def create_app():
     return nya_proxy_app.app
 
 
+_last_reload_trigger = 0.0
+
+
 def trigger_reload(**kwargs):
     """
     Trigger a reload of the application by touching the file uvicorn watches.
+
+    Restarting is how a configuration change is applied, so this is on the
+    path of every edit made through the config UI.
     """
+    global _last_reload_trigger
+
     if os.environ.get("DISABLE_HOT_RELOAD"):
         logger.warning(
             "Configuration changed but hot-reload is disabled; "
             "restart NyaProxy to apply the new settings"
         )
         return
+
+    # A UI save can emit several change events in quick succession, and each
+    # restart drops in-flight requests. Collapse a burst into one reload.
+    now = time.monotonic()
+    if now - _last_reload_trigger < RELOAD_DEBOUNCE_SECONDS:
+        logger.debug("Configuration changed again; reload already pending")
+        return
+    _last_reload_trigger = now
+
     logger.info("Configuration changed, triggering reload...")
     with open(WATCH_FILE, "a") as f:
         f.write("reload\n")

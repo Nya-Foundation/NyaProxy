@@ -4,11 +4,12 @@ Simplified key manager that focuses on key availability and rate limiting.
 
 import asyncio
 import time
-from typing import TYPE_CHECKING, Dict, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union
 
 from ..common.exceptions import APIKeyNotConfiguredError
 from ..services.lb import LoadBalancer
 from ..services.limit import RateLimiter
+from ..services.state import state_key
 
 if TYPE_CHECKING:
     from ..config.manager import ConfigManager
@@ -40,6 +41,9 @@ class TrafficManager:
         self.rate_limiters: Dict[str, RateLimiter] = {}
         self._limiter_prune_interval_seconds = 60.0
         self._last_limiter_prune = 0.0
+        # Limiter state carried over from a previous process, applied lazily
+        # as each limiter is recreated. See import_state.
+        self._restorable_state: Dict[str, Any] = {}
 
         self._lock = asyncio.Lock()
 
@@ -69,11 +73,52 @@ class TrafficManager:
         self._prune_idle_limiters()
         limiter = self.rate_limiters.get(name)
         if not limiter:
+            # The rate always comes from the current configuration; only the
+            # consumed window and cool-down are carried over from a previous
+            # run, so a limit edited across a restart takes effect.
             limiter = RateLimiter(rate_limit=rate_limit)
+            restored = self._restorable_state.pop(state_key(name), None)
+            if restored:
+                limiter.restore_state(restored)
             self.rate_limiters[name] = limiter
         else:
             limiter.touch()
         return limiter
+
+    def export_state(self) -> Dict[str, Any]:
+        """
+        Snapshot limiter state for the next process.
+
+        Restarting is how NyaProxy applies configuration changes, so without
+        this every edit would hand out a fresh burst allowance and release
+        every quarantined key.
+
+        Entries are keyed by a hash of the limiter name, because the name
+        itself contains the upstream credential or a client IP.
+        """
+        limiters = {}
+        for name, limiter in self.rate_limiters.items():
+            state = limiter.export_state()
+            if state:
+                limiters[state_key(name)] = state
+        return {"rate_limiters": limiters}
+
+    def import_state(self, state: Dict[str, Any]) -> int:
+        """
+        Stage limiter state from a previous run.
+
+        Nothing is applied here: limiters are rebuilt lazily on first use so
+        they pick up the current configuration, and the staged entry is
+        applied at that point. Entries for limiters that are never touched
+        again are simply dropped.
+        """
+        staged = state.get("rate_limiters") or {}
+        if not isinstance(staged, dict):
+            return 0
+        self._restorable_state = {
+            name: value for name, value in staged.items() if isinstance(value, dict)
+        }
+        return len(self._restorable_state)
 
     def _prune_idle_limiters(self) -> None:
         """

@@ -38,4 +38,7 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD wget -q -O - http://127.0.0.1:8080/health || exit 1
 
 ENTRYPOINT ["nyaproxy"]
-CMD ["--config", "/app/config.yaml", "--host", "0.0.0.0", "--no-reload"]
+# Hot-reload stays on: restarting is how a configuration change is applied, so
+# --no-reload silently strands every edit made through the config UI. Rate-limit
+# windows and key cool-downs survive the restart (see nya/services/state.py).
+CMD ["--config", "/app/config.yaml", "--host", "0.0.0.0"]

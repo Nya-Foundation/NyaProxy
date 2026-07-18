@@ -6,5 +6,17 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
-      # Create config.yaml first and replace every placeholder credential.
-      - ./config.yaml:/app/config.yaml:ro
+      # Mount the DIRECTORY, not config.yaml itself. Saving from the config UI
+      # writes a temporary file and renames it over the target; that rename
+      # fails with EBUSY against a bind-mounted file, so every save through the
+      # UI returns a 500. Read-write for the same reason.
+      #
+      # Put your config.yaml in ./data/ before starting, and replace every
+      # placeholder credential. NyaProxy also writes .nya_state.json here so
+      # rate-limit windows and key cool-downs survive the restart that applies
+      # a configuration change.
+      - ./data:/app
+    # The image runs as uid 100, which cannot write a directory owned by you.
+    # This runs the container as your own user instead; the alternative is
+    # `sudo chown -R 100:101 ./data`.
+    user: "${UID:-1000}:${GID:-1000}"
