@@ -355,6 +355,17 @@
           document.cookie =
             "nyaproxy_api_key=" + encodeURIComponent(key) +
             "; path=/; max-age=7200; SameSite=Strict" + secure;
+          // Single sign-on for the /config editor (Nacho). Its SPA reads the
+          // key from localStorage and sends it as a Bearer header for API
+          // calls, while its WebSocket live-updates authenticate from the
+          // NACHO_api_key cookie. Seed both — mirroring Nacho's own login —
+          // so one sign-in here also unlocks the config editor.
+          try {
+            localStorage.setItem("nacho_api_key", key);
+          } catch (e) {}
+          document.cookie =
+            "NACHO_api_key=" + encodeURIComponent(key) +
+            "; path=/; max-age=7200; SameSite=Strict" + secure;
 
           try {
             // Validate before redirecting: the 401 login mechanism is the oracle.
@@ -364,6 +375,11 @@
             if (res.status === 401) {
               document.cookie =
                 "nyaproxy_api_key=; path=/; max-age=0; SameSite=Strict" + secure;
+              document.cookie =
+                "NACHO_api_key=; path=/; max-age=0; SameSite=Strict" + secure;
+              try {
+                localStorage.removeItem("nacho_api_key");
+              } catch (e) {}
               setBusy(false);
               showError("That key wasn't accepted.");
             } else if (res.ok) {

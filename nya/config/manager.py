@@ -123,9 +123,12 @@ class ConfigManager:
 
         try:
             nya_app = {"NyaProxy": self.config}
-            server = NachoOrchestrator(
-                apps=nya_app, logger=logger, api_key=self.get_api_key()
-            )
+            # Nacho's auth guard expects a single key string; NyaProxy treats
+            # the first configured key as the master key.
+            api_key = self.get_api_key()
+            if isinstance(api_key, list):
+                api_key = api_key[0] if api_key else None
+            server = NachoOrchestrator(apps=nya_app, logger=logger, api_key=api_key)
         except Exception as e:
             error_msg = f"Failed to load configuration: {str(e)}"
             logger.error(error_msg)
