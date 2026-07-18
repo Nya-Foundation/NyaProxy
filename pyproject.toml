@@ -33,7 +33,7 @@ dependencies = [
     "orjson>=3.11,<4",
     "loguru>=0.7.3",
     "prometheus-client>=0.25.0",
-    "nacho-python[remote,schema,server]>=0.1.0",
+    "nacho-python[remote,schema,server]>=0.1.1",
 ]
 
 [project.optional-dependencies]

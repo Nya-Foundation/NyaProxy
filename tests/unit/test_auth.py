@@ -197,6 +197,85 @@ def test_middleware_redirects_config_to_login_page():
 
 
 # --------------------------------------------------------------------------
+# Blank / malformed key entries
+#
+# An unset "${MASTER_KEY}" or a stray '-' in YAML yields a blank entry. Such an
+# entry must never authenticate anything, and must never silently promote a
+# proxy key to master.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("blank", ["", "   ", None])
+def test_blank_master_entry_never_authenticates(blank):
+    """Regression: an empty bearer token used to match a blank master key."""
+    manager = make_manager([blank, "app-key"])
+
+    # Auth is still on: other keys are usable, so this is not "no auth".
+    assert manager.is_auth_disabled() is False
+    assert manager.master_key() is None
+
+    # The empty credential that used to pass as master is now rejected.
+    assert manager.verify_api_key("", verify_master=True) is False
+    assert manager.verify_api_key("   ", verify_master=True) is False
+    # ...and a proxy key is not quietly promoted to master either.
+    assert manager.verify_api_key("app-key", verify_master=True) is False
+    # ...while it still works for proxy traffic.
+    assert manager.verify_api_key("app-key") is True
+
+
+@pytest.mark.parametrize("blank", ["", "   ", None])
+def test_blank_entries_are_not_usable_keys(blank):
+    manager = make_manager(["master", blank, "app-key"])
+    assert manager.usable_keys() == ["master", "app-key"]
+    assert manager.master_key() == "master"
+    assert manager.verify_api_key("") is False
+    assert manager.verify_api_key(str(blank or "").strip()) is False
+
+
+def test_none_entry_does_not_crash():
+    """Regression: None entries raised AttributeError on every auth check."""
+    manager = make_manager([None, "app-key"])
+    assert manager.verify_api_key("app-key") is True
+    assert manager.verify_api_key("anything", verify_master=True) is False
+
+
+@pytest.mark.parametrize("configured", [["", "  "], [None], [None, ""]])
+def test_list_of_only_blank_entries_is_auth_disabled(configured):
+    """Equivalent to no key at all — open, and the startup warning fires."""
+    manager = make_manager(configured)
+    assert manager.is_auth_disabled() is True
+    assert manager.usable_keys() == []
+
+
+def test_blank_master_locks_admin_surface_end_to_end():
+    client = build_client(["", "app-key"])
+    for creds in ("", "app-key"):
+        resp = client.get("/dashboard", headers={"Authorization": f"Bearer {creds}"})
+        assert resp.status_code == 401
+    # bare "Bearer" with nothing after it
+    assert (
+        client.get("/dashboard", headers={"Authorization": "Bearer "}).status_code
+        == 401
+    )
+    # proxying is unaffected
+    assert (
+        client.get(
+            "/api/v1/thing", headers={"Authorization": "Bearer app-key"}
+        ).status_code
+        == 200
+    )
+
+
+def test_usable_keys_ignores_unexpected_config_shape():
+    """An unrecognised shape denies rather than opening."""
+    manager = make_manager(42)
+    assert manager.usable_keys() == []
+    assert manager.master_key() is None
+    assert manager.is_auth_disabled() is False
+    assert manager.verify_api_key("anything") is False
+
+
+# --------------------------------------------------------------------------
 # Master-key separation: only the first configured key reaches the admin
 # surfaces (dashboard, config UI); every configured key may use the proxy.
 # --------------------------------------------------------------------------

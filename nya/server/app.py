@@ -205,15 +205,23 @@ class NyaProxyApp:
 
     def _warn_if_unauthenticated(self):
         host, _ = self._server_address()
-        if self.auth.is_auth_disabled() and host not in (
-            "127.0.0.1",
-            "localhost",
-            "::1",
-        ):
+        if self.auth.is_auth_disabled():
+            if host not in ("127.0.0.1", "localhost", "::1"):
+                logger.warning(
+                    f"server.api_key is not set and NyaProxy is bound to {host}: "
+                    "the proxy, dashboard, and config UI are reachable WITHOUT authentication. "
+                    "Set server.api_key or bind to 127.0.0.1."
+                )
+            return
+
+        # Auth is on, but a blank first entry (an unset ${VAR}, a stray '-' in
+        # YAML) leaves no master key. Proxying still works; the dashboard and
+        # config UI are locked, which is safe but baffling without a warning.
+        if self.auth.master_key() is None:
             logger.warning(
-                f"server.api_key is not set and NyaProxy is bound to {host}: "
-                "the proxy, dashboard, and config UI are reachable WITHOUT authentication. "
-                "Set server.api_key or bind to 127.0.0.1."
+                "The first entry of server.api_key is empty, so no master key is "
+                "configured: the dashboard and config UI will reject every key. "
+                "Proxy traffic still works with the remaining keys."
             )
 
     async def init_nya_services(self):

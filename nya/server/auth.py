@@ -6,7 +6,7 @@ Provides authentication mechanisms and middleware.
 import hmac
 import importlib.resources
 import json
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, List, Optional
 from urllib.parse import unquote
 
 from fastapi import Request
@@ -37,6 +37,45 @@ class AuthManager:
         """
         return self.config.get_api_key()
 
+    def usable_keys(self) -> List[str]:
+        """
+        Configured keys that can actually authenticate, in configured order.
+
+        Blank and non-string entries are dropped: an unset ``${VAR}`` or a
+        stray ``-`` in YAML must never authenticate anything. Returns an empty
+        list for an unrecognised config shape, which callers treat as
+        "nothing matches" rather than "no auth".
+        """
+        configured_key = self.get_api_key()
+        if isinstance(configured_key, str):
+            configured_key = [configured_key]
+        elif not isinstance(configured_key, list):
+            return []
+
+        return [
+            entry.strip()
+            for entry in configured_key
+            if isinstance(entry, str) and entry.strip()
+        ]
+
+    def master_key(self) -> Optional[str]:
+        """
+        The single credential allowed on the admin surfaces.
+
+        This is the *first configured entry*, not the first usable one: if the
+        operator left it blank, the admin surfaces lock rather than silently
+        promoting a proxy key to master.
+        """
+        configured_key = self.get_api_key()
+        if isinstance(configured_key, str):
+            first = configured_key
+        elif isinstance(configured_key, list) and configured_key:
+            first = configured_key[0]
+        else:
+            return None
+
+        return first.strip() if isinstance(first, str) and first.strip() else None
+
     def is_auth_disabled(self) -> bool:
         """
         True when no usable API key is configured, i.e. every request is allowed.
@@ -48,7 +87,8 @@ class AuthManager:
             stripped = configured_key.strip()
             return not stripped or stripped.lower() in ("none", "null")
         if isinstance(configured_key, list):
-            return not configured_key
+            # A list holding only blank entries is the same as no key at all.
+            return not self.usable_keys()
         return False
 
     def verify_api_key(self, key: str, verify_master: bool = False) -> bool:
@@ -71,22 +111,15 @@ class AuthManager:
         if self.is_auth_disabled():
             return True
 
-        # Get the configured key (can be str or List[str] at this point)
-        configured_key = self.get_api_key()
+        if verify_master:
+            # Only the first configured key administers the proxy; a blank
+            # master entry locks the admin surfaces instead of opening them.
+            master = self.master_key()
+            if not master:
+                return False
+            return self._secrets_equal(key, master)
 
-        if isinstance(configured_key, str):
-            return self._secrets_equal(key, configured_key.strip())
-
-        if isinstance(configured_key, list):
-            if verify_master:
-                # Only the first key acts as the master key
-                return self._secrets_equal(key, configured_key[0].strip())
-
-            # Check all keys if verify_master is False
-            return any(self._secrets_equal(key, k.strip()) for k in configured_key)
-
-        # If we reach here, configured_key is an unexpected type
-        return False
+        return any(self._secrets_equal(key, k) for k in self.usable_keys())
 
     @staticmethod
     def _secrets_equal(provided: str, expected: str) -> bool:

@@ -123,12 +123,15 @@ class ConfigManager:
 
         try:
             nya_app = {"NyaProxy": self.config}
-            # Nacho's auth guard expects a single key string; NyaProxy treats
-            # the first configured key as the master key.
-            api_key = self.get_api_key()
-            if isinstance(api_key, list):
-                api_key = api_key[0] if api_key else None
-            server = NachoOrchestrator(apps=nya_app, logger=logger, api_key=api_key)
+            # Nacho's auth guard takes a single key string (it raises on any
+            # other type). Hand it the master key only: the config editor is an
+            # admin surface, so the additional proxy keys must not open it.
+            # A blank master resolves to None, which is safe here because the
+            # NyaProxy auth middleware in front of /config denies admin access
+            # outright in that case.
+            server = NachoOrchestrator(
+                apps=nya_app, logger=logger, api_key=self._master_api_key()
+            )
         except Exception as e:
             error_msg = f"Failed to load configuration: {str(e)}"
             logger.error(error_msg)
@@ -167,6 +170,24 @@ class ConfigManager:
             return api_key
         else:
             return str(api_key)
+
+    def _master_api_key(self) -> Optional[str]:
+        """
+        The first configured key, which is the only one allowed to administer
+        the proxy. Returns None when it is absent or blank.
+
+        Mirrors ``AuthManager.master_key``; kept here so the config server can
+        be built before the auth layer exists.
+        """
+        api_key = self.get_api_key()
+        if isinstance(api_key, str):
+            first: Any = api_key
+        elif isinstance(api_key, list) and api_key:
+            first = api_key[0]
+        else:
+            return None
+
+        return first.strip() if isinstance(first, str) and first.strip() else None
 
     def get_apis(self) -> Dict[str, Any]:
         """

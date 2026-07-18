@@ -103,7 +103,11 @@ def make_app_instance(config=_DEFAULT_CONFIG):
     app = object.__new__(NyaProxyApp)
     app.config = AppConfig() if config is _DEFAULT_CONFIG else config
     app.core = None
-    app.auth = SimpleNamespace(get_api_key=lambda: None, is_auth_disabled=lambda: True)
+    app.auth = SimpleNamespace(
+        get_api_key=lambda: None,
+        is_auth_disabled=lambda: True,
+        master_key=lambda: None,
+    )
     app.dashboard = None
     app.metrics_collector = None
     return app
@@ -276,12 +280,23 @@ def test_warn_if_unauthenticated_fires_only_on_public_bind(monkeypatch):
         instance._warn_if_unauthenticated()
         assert not messages
 
-        # Auth enabled: never warn, even on a public bind
+        # Auth enabled with a real master key: never warn, even on a public bind
         messages.clear()
-        instance.auth = SimpleNamespace(is_auth_disabled=lambda: False)
+        instance.auth = SimpleNamespace(
+            is_auth_disabled=lambda: False, master_key=lambda: "master"
+        )
         monkeypatch.setenv("SERVER_HOST", "0.0.0.0")
         instance._warn_if_unauthenticated()
         assert not messages
+
+        # Auth enabled but the master entry is blank: admin surfaces are
+        # locked, which needs to be said out loud.
+        messages.clear()
+        instance.auth = SimpleNamespace(
+            is_auth_disabled=lambda: False, master_key=lambda: None
+        )
+        instance._warn_if_unauthenticated()
+        assert any("no master key is configured" in m for m in messages)
     finally:
         logger.remove(sink_id)
 

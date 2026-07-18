@@ -987,15 +987,15 @@ wheels = [
 
 [[package]]
 name = "nacho-python"
-version = "0.1.0"
+version = "0.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pyyaml" },
     { name = "tomli-w" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/be/35/19156e04d0ce145857e116d7c913a01700cec2044ff312fdd646c145ff95/nacho_python-0.1.0.tar.gz", hash = "sha256:98f07a95e029460a591388a63bc03cd086b0f383dc01c10cdf2258f44eec7a31", size = 85395, upload-time = "2026-07-18T03:43:00.79Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/61/7b/1c67eebb83304fda33884affff4e28f04b40ea9049df217a84cfff5834cd/nacho_python-0.1.1.tar.gz", hash = "sha256:c2664d4db49b6a508374d57b4b684a97ea574149b5b1931e94ef4dbbaac22114", size = 87367, upload-time = "2026-07-18T07:09:43.762Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/72/7b/f72cad337820dcfd64316c086115acd86f32dd7966417b5bc103ef807fd8/nacho_python-0.1.0-py3-none-any.whl", hash = "sha256:13fe7756f8d33ce37925b6fa72e4ea3681a93627a3498d8d66de43d5e0315462", size = 81746, upload-time = "2026-07-18T03:42:59.464Z" },
+    { url = "https://files.pythonhosted.org/packages/fd/93/9a240c13af3e536190a665ca26c841846aae9f0ce2c659d1d64f412c7643/nacho_python-0.1.1-py3-none-any.whl", hash = "sha256:bf2fffbc2ae61564ef1828255eb9a834b138597e3cd427543c952039ee2dc1b8", size = 83126, upload-time = "2026-07-18T07:09:42.159Z" },
 ]
 
 [package.optional-dependencies]
@@ -1056,7 +1056,7 @@ requires-dist = [
     { name = "jmespath", specifier = ">=1.1.0" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "mypy", marker = "extra == 'lint'", specifier = ">=1.14.0" },
-    { name = "nacho-python", extras = ["remote", "schema", "server"], specifier = ">=0.1.0" },
+    { name = "nacho-python", extras = ["remote", "schema", "server"], specifier = ">=0.1.1" },
     { name = "orjson", specifier = ">=3.11,<4" },
     { name = "prometheus-client", specifier = ">=0.25.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.0" },
