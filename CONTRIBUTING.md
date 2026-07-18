@@ -64,11 +64,8 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 NyaProxy uses automated tools to maintain consistent code style and type safety:
 
-- **Black**: Python code formatting
-- **isort**: Import sorting (with the Black compatibility profile)
+- **Ruff**: Python linting, import sorting, and code formatting
 - **mypy**: Static type checking (see the ratchet note below)
-
-```
 
 ### Type-checking ratchet
 
@@ -78,7 +75,8 @@ those are checked in CI. When you clean up a legacy module, add it to that
 `files` list so it can never regress.
 
 Our CI pipeline also checks formatting on every PR, but it's best to format
-your code before pushing.
+your code with `make format` before pushing. Run `make check` to reproduce
+the complete CI quality checks locally.
 
 ## Pull Request Process
 

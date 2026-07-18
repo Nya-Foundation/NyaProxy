@@ -188,8 +188,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
 
-        # skip OPTIONS requests
-        if request.method == "OPTIONS":
+        # Browsers need unauthenticated CORS preflight, but an ordinary
+        # OPTIONS request is a proxy request and must follow normal auth.
+        is_cors_preflight = (
+            request.method == "OPTIONS"
+            and "origin" in request.headers
+            and "access-control-request-method" in request.headers
+        )
+        if is_cors_preflight:
             return await call_next(request)
 
         # Skip auth for specific paths if needed

@@ -24,7 +24,12 @@ def test_header_utils_templates_filter_and_merge_headers():
     processed = HeaderUtils.process_headers(
         {"X-Key": "${{ key }}", "X-List": "${{ values }}", "X-None": None},
         {"key": "secret", "values": ["first", "second"]},
-        original_headers={"Connection": "close", "X-Original": "yes"},
+        original_headers={
+            "Authorization": "Bearer gateway-secret",
+            "Connection": "close",
+            "Transfer-Encoding": "chunked",
+            "X-Original": "yes",
+        },
     )
     merged = HeaderUtils.merge_headers(
         Headers({"X-Original": "old", "Keep-Alive": "timeout=5"}), processed
@@ -39,8 +44,17 @@ def test_header_utils_templates_filter_and_merge_headers():
     assert processed["X-Key"] == "secret"
     assert processed["X-List"] == "first"
     assert "connection" not in processed
+    assert "authorization" not in processed
+    assert "transfer-encoding" not in processed
     assert merged["X-Original"] == "yes"
     assert "connection" not in processed
+
+
+def test_header_utils_trusted_proxy_cidrs():
+    assert HeaderUtils.is_trusted_proxy("10.1.2.3", ["10.0.0.0/8"]) is True
+    assert HeaderUtils.is_trusted_proxy("2001:db8::1", ["2001:db8::/32"]) is True
+    assert HeaderUtils.is_trusted_proxy("192.0.2.1", ["10.0.0.0/8"]) is False
+    assert HeaderUtils.is_trusted_proxy("invalid", ["0.0.0.0/0"]) is False
 
 
 def test_proxy_request_ordering_and_helpers():

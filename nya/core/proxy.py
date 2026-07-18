@@ -66,6 +66,10 @@ class NyaProxyCore:
         )
 
         self.request_queue.register_processor(self._process_queued_request)
+        # ``NyaProxyApp`` already closes the executor during shutdown. Attach
+        # queue cleanup there so worker and delayed-retry tasks share the same
+        # lifecycle without requiring a second application-level hook.
+        self.request_executor.add_close_callback(self.request_queue.close)
 
     async def handle_request(
         self, request: "ProxyRequest"
@@ -87,12 +91,9 @@ class NyaProxyCore:
                 status_code, message = denial
                 return self._error_response(message, status_code)
 
-            # If rate limit does not apply, get a random key and process immediately
-            if not request._rate_limited:
-                request.api_key = self.control.select_any_key(request.api_name)
-                return await self._process_queued_request(request)
-
-            # All requests go through the queue for consistent processing
+            # Every request uses the same execution pipeline. The queue skips
+            # quota windows for exempt paths, while preserving configured load
+            # balancing, retries, key concurrency, and observability.
             future = await self.request_queue.enqueue_request(request)
             timeout = self.config.get_api_default_timeout(request.api_name)
             return await asyncio.wait_for(future, timeout=timeout)

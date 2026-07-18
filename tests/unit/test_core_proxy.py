@@ -70,3 +70,26 @@ async def test_proxy_core_maps_known_exceptions_to_responses():
         core.request_queue.enqueue_request = raise_exc
         response = await core.handle_request(make_request())
         assert response.status_code == expected
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_exempt_requests_keep_retry_and_load_balancing(monkeypatch):
+    config = CoreConfig()
+    config.rate_limit_enabled = False
+    config.retry_enabled = True
+    config.retry_after = 0
+    core = NyaProxyCore(config)
+    seen_keys = []
+    statuses = iter((429, 200, 200))
+
+    async def fake_execute(request):
+        seen_keys.append(request.api_key)
+        return Response(status_code=next(statuses))
+
+    monkeypatch.setattr("nya.core.queue.random.uniform", lambda a, b: 0)
+    core.request_executor.execute = fake_execute
+
+    assert (await core.handle_request(make_request())).status_code == 200
+    assert (await core.handle_request(make_request())).status_code == 200
+    assert seen_keys == ["key-a", "key-b", "key-a"]
+    await core.request_executor.close()

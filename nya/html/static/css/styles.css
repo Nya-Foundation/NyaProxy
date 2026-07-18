@@ -41,6 +41,10 @@
   --neutral: #a9acd6;
   --neutral-bg: #262a4e;
   --shadow: 0 8px 24px rgba(21, 23, 50, 0.28);
+  --shadow-soft: 0 18px 50px rgba(8, 9, 26, 0.18);
+  --header-bg: rgba(21, 23, 50, 0.82);
+  --surface-glass: rgba(28, 31, 62, 0.76);
+  --grid-line: rgba(138, 141, 235, 0.035);
 
   --sp-1: 4px;
   --sp-2: 8px;
@@ -81,6 +85,10 @@
   --neutral: #4a4e78;
   --neutral-bg: #edeef7;
   --shadow: 0 8px 24px rgba(35, 38, 75, 0.14);
+  --shadow-soft: 0 18px 50px rgba(35, 38, 75, 0.08);
+  --header-bg: rgba(246, 246, 251, 0.84);
+  --surface-glass: rgba(255, 255, 255, 0.82);
+  --grid-line: rgba(108, 111, 224, 0.035);
 }
 
 /* --- reset / base --------------------------------------------------------- */
@@ -932,7 +940,7 @@ table.data tbody tr:last-child td {
     grid-template-columns: repeat(2, 1fr);
   }
   .detail-tables {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 @media (max-width: 560px) {
@@ -945,7 +953,7 @@ table.data tbody tr:last-child td {
     display: none;
   }
   .pulse-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .section-controls {
     width: 100%;
@@ -953,5 +961,1536 @@ table.data tbody tr:last-child td {
   }
   .section-controls .field {
     flex: 1;
+  }
+}
+
+/* --- dashboard shell refresh -------------------------------------------------
+   The original components remain dependency-free; these rules reorganize them
+   into a clearer overview / upstreams / activity hierarchy. */
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 92px;
+}
+
+body {
+  min-height: 100vh;
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px),
+    radial-gradient(circle at 50% -20%, var(--accent-tint), transparent 42%);
+  background-size: 48px 48px, 48px 48px, 100% 560px;
+}
+
+.container {
+  max-width: 1240px;
+  padding-inline: var(--sp-6);
+}
+
+main.container {
+  padding-top: var(--sp-7);
+  padding-bottom: var(--sp-8);
+}
+
+.band {
+  margin-bottom: var(--sp-6);
+}
+
+/* Header */
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--header-bg);
+  border-bottom-color: color-mix(in srgb, var(--border) 78%, transparent);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+}
+
+.header-inner {
+  height: 72px;
+  gap: var(--sp-6);
+}
+
+.brand {
+  color: var(--text);
+  flex: none;
+}
+
+.brand:hover {
+  color: var(--text);
+}
+
+.brand .logo {
+  width: 32px;
+  height: 32px;
+  filter: drop-shadow(0 6px 10px rgba(108, 111, 224, 0.22));
+}
+
+.brand-copy {
+  display: grid;
+  line-height: 1.05;
+  gap: 4px;
+}
+
+.wordmark {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.brand-subtitle {
+  color: var(--text-3);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.header-nav {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin-right: auto;
+}
+
+.header-nav a {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 var(--sp-3);
+  color: var(--text-3);
+  font-size: 12.5px;
+  font-weight: 500;
+  transition: color 120ms ease;
+}
+
+.header-nav a::after {
+  content: "";
+  position: absolute;
+  right: var(--sp-3);
+  bottom: -1px;
+  left: var(--sp-3);
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--accent);
+  opacity: 0;
+  transform: scaleX(0.45);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.header-nav a:hover {
+  color: var(--text);
+}
+
+.header-nav a:hover::after,
+.header-nav a:focus-visible::after {
+  opacity: 1;
+  transform: scaleX(1);
+}
+
+.header-actions {
+  flex: none;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  background: var(--surface-glass);
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.status-pill .dot {
+  width: 7px;
+  height: 7px;
+}
+
+.status-pill.is-stale {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 32%, var(--border));
+  background: var(--warn-bg);
+}
+
+.stamp {
+  max-width: 138px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.refresh-btn {
+  width: auto;
+  padding: 0 var(--sp-3);
+  gap: var(--sp-2);
+  border-radius: var(--r-full);
+}
+
+.refresh-btn .btn-label {
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+/* Page intro */
+
+.page-intro {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: var(--sp-6);
+  margin-bottom: var(--sp-6);
+}
+
+.eyebrow,
+.section-kicker,
+.panel-kicker {
+  color: var(--accent-strong);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
+
+.eyebrow-line {
+  width: 22px;
+  height: 2px;
+  border-radius: var(--r-full);
+  background: var(--accent);
+}
+
+.page-intro h1 {
+  font-size: clamp(30px, 4vw, 42px);
+  font-weight: 450;
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+}
+
+.page-intro p {
+  margin-top: var(--sp-2);
+  color: var(--text-3);
+  font-size: 14px;
+}
+
+/* Two ledger stats sharing the horizon rule with the headline. */
+.intro-meta {
+  display: flex;
+  gap: var(--sp-6);
+  padding-bottom: var(--sp-1);
+}
+
+.intro-meta > div {
+  display: grid;
+  gap: 3px;
+  padding-left: var(--sp-4);
+  border-left: 1px solid var(--border);
+}
+
+.intro-meta dt {
+  color: var(--text-3);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.intro-meta dd {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 450;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Overview composition */
+
+.pulse-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--sp-4);
+}
+
+.tile,
+.panel {
+  background: var(--surface-glass);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-soft);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+.tile {
+  min-height: 154px;
+  padding: var(--sp-5);
+  overflow: hidden;
+  transition: border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
+}
+
+.tile:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+  box-shadow: 0 20px 38px rgba(21, 23, 50, 0.12);
+}
+
+.tile-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.metric-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+  border-radius: var(--r-full);
+  background: var(--accent-tint);
+  color: var(--accent-strong);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.metric-icon-live {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 30%, var(--border));
+  background: var(--ok-bg);
+  font-size: 8px;
+}
+
+.tile-value {
+  margin-top: var(--sp-3);
+  font-size: clamp(30px, 3vw, 38px);
+  font-weight: 350;
+}
+
+.tile-sub {
+  margin-top: var(--sp-2);
+}
+
+.horizon-bar {
+  height: 11px;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+}
+
+.hz-legend {
+  gap: var(--sp-2) var(--sp-4);
+  margin-top: var(--sp-3);
+}
+
+.hz-key {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1h);
+}
+
+.hz-key i {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--r-full);
+  background: var(--neutral);
+}
+
+.hz-key.c2xx i {
+  background: var(--ok);
+}
+
+.hz-key.c4xx i {
+  background: var(--warn);
+}
+
+.hz-key.c5xx i {
+  background: var(--err);
+}
+
+.hz-key strong {
+  color: var(--text-2);
+  font-weight: 500;
+}
+
+/* Content panels */
+
+.panel {
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.panel .section-head {
+  min-height: 94px;
+  margin: 0;
+  padding: var(--sp-5);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: nowrap;
+}
+
+.panel .section-head::before {
+  display: none;
+}
+
+.section-heading {
+  min-width: 0;
+}
+
+.section-title {
+  margin-top: 3px;
+  color: var(--text);
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: -0.018em;
+  text-transform: none;
+}
+
+.section-heading > p {
+  margin-top: 3px;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.count-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 23px;
+  height: 20px;
+  margin-left: var(--sp-1);
+  padding: 0 7px;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  vertical-align: 2px;
+}
+
+.micro-status {
+  margin-left: var(--sp-1);
+}
+
+.search-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 214px;
+}
+
+.search-field > svg {
+  position: absolute;
+  left: var(--sp-3);
+  z-index: 1;
+  width: 16px;
+  height: 16px;
+  color: var(--text-3);
+  pointer-events: none;
+}
+
+.search-field .field {
+  width: 100%;
+  height: 38px;
+  padding: var(--sp-2) 38px var(--sp-2) 36px;
+  border-radius: var(--r-full);
+  background: var(--bg);
+  transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+}
+
+.search-field .field:focus {
+  border-color: var(--accent);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px var(--accent-tint);
+  outline: none;
+}
+
+.search-field kbd {
+  position: absolute;
+  right: var(--sp-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text-3);
+  font-family: inherit;
+  font-size: 11px;
+  pointer-events: none;
+}
+
+.ghost-btn {
+  min-height: 34px;
+  padding-inline: var(--sp-3);
+  border: 1px solid transparent;
+}
+
+.ghost-danger {
+  border-color: color-mix(in srgb, var(--err) 20%, transparent);
+}
+
+.ghost-warn {
+  border-color: color-mix(in srgb, var(--warn) 22%, transparent);
+}
+
+.panel .table-wrap {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+table.data th {
+  padding: var(--sp-3) var(--sp-5);
+  background: color-mix(in srgb, var(--surface-2) 42%, transparent);
+  border-bottom-color: var(--border);
+}
+
+table.data td {
+  height: 51px;
+  padding: var(--sp-3) var(--sp-5);
+}
+
+table.data tbody > tr:not(.detail-row) {
+  transition: background-color 100ms ease;
+}
+
+table.data tbody > tr:not(.detail-row):hover {
+  background: var(--accent-tint);
+}
+
+.api-row.is-open {
+  background: var(--accent-tint);
+}
+
+.chevron {
+  margin-left: -7px;
+  transition: color 100ms ease, background-color 100ms ease;
+}
+
+.api-row:hover .chevron {
+  background: var(--surface-2);
+  color: var(--accent-strong);
+}
+
+.detail-row td {
+  height: auto;
+  padding: 0 var(--sp-5) var(--sp-5) !important;
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-band {
+  background: color-mix(in srgb, var(--surface-2) 52%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.prop-fill {
+  right: var(--sp-5);
+  bottom: 7px;
+  max-width: calc(100% - 2 * var(--sp-5));
+  opacity: 0.42;
+}
+
+/* Activity split */
+
+.activity-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.7fr) minmax(0, 1.6fr);
+  align-items: start;
+  gap: var(--sp-4);
+}
+
+.activity-grid > .band {
+  margin-bottom: 0;
+}
+
+.panel-queues .section-head {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.panel-queues .section-controls {
+  width: auto;
+}
+
+.queue-strip {
+  display: grid;
+  align-content: start;
+  gap: var(--sp-2);
+  min-height: 260px;
+  padding: var(--sp-4);
+}
+
+.queue-strip .chip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  width: 100%;
+  min-height: 44px;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--warn-bg) 48%, var(--surface));
+}
+
+.queue-strip .chip .dot {
+  margin-right: 0;
+}
+
+.chip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.chip-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  border-radius: var(--r-full);
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+.idle-disclosure {
+  justify-self: start;
+  text-align: left;
+}
+
+.idle-disclosure::before {
+  content: "+";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-right: var(--sp-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+}
+
+.idle-disclosure[aria-expanded="true"]::before {
+  content: "−";
+}
+
+.idle-list {
+  padding: var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  line-height: 1.8;
+}
+
+.queue-strip .empty-state {
+  align-self: center;
+}
+
+.panel-history .section-head {
+  flex-wrap: wrap;
+}
+
+.panel-history .search-field {
+  min-width: 190px;
+}
+
+.chip-row {
+  margin: 0;
+  padding: var(--sp-3) var(--sp-5);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-2) 30%, transparent);
+}
+
+.chip-filter {
+  padding: 5px 10px;
+  background: var(--surface);
+}
+
+.chip-filter.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+.history-table-wrap {
+  max-height: 504px;
+  overflow: auto;
+}
+
+.history-table-wrap table.data thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.history-table-wrap table.data th {
+  background: var(--surface);
+}
+
+.app-footer {
+  background: color-mix(in srgb, var(--surface) 40%, transparent);
+}
+
+.app-footer .container {
+  display: flex;
+  justify-content: center;
+  padding-top: var(--sp-5);
+  padding-bottom: var(--sp-5);
+}
+
+/* --- microcharts -------------------------------------------------------------
+   Every chart in the dashboard sits on the horizon rule — the same hairline
+   the section heads lead with — so trend, spread, and share read as one
+   family instead of three unrelated chart styles. */
+
+.spark {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.spark-bar {
+  fill: var(--accent);
+  opacity: 0.75;
+}
+
+.spark-bar.is-zero {
+  fill: var(--text-3);
+  opacity: 0.25;
+}
+
+.spark-err .spark-bar {
+  fill: var(--err);
+  opacity: 0.8;
+}
+
+.spark-horizon {
+  stroke: var(--border);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.tile-spark {
+  height: 34px;
+  margin-top: var(--sp-3);
+}
+
+/* Pressure has counters but no per-event history, so it shows a split of
+   what it does know rather than a fabricated trend. */
+.split-bar {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  margin-top: var(--sp-4);
+  border-radius: var(--r-full);
+  overflow: hidden;
+}
+
+.split-bar.is-empty {
+  background: var(--surface-2);
+}
+
+.split-seg {
+  min-width: 3px;
+  transition: flex-grow 250ms ease-out;
+}
+
+.seg-limited {
+  background: var(--warn);
+}
+
+.seg-queued {
+  background: var(--accent);
+  opacity: 0.6;
+}
+
+/* --- response health panel ---------------------------------------------------- */
+
+.health-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  align-items: stretch;
+  gap: var(--sp-4);
+}
+
+/* The two blocks share the panel's full height so the chart grows with the
+   credential board beside it instead of leaving the panel half empty. */
+.health-body {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: var(--sp-6);
+  padding: var(--sp-5);
+}
+
+.health-body .health-block:last-child {
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+
+.health-block .lat-chart {
+  grid-template-rows: 1fr auto auto auto;
+  align-content: stretch;
+}
+
+/* Grows with the panel, but never past the point where the distribution
+   stops being readable as a shape. */
+.health-block .lat-hist {
+  height: 100%;
+  min-height: 96px;
+  max-height: 168px;
+}
+
+.block-label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.block-note {
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  text-transform: none;
+}
+
+/* The latency chart — the one place the horizon motif becomes the chart
+   itself: the distribution rests on the rule, the percentiles hang beneath
+   it, and both share a single 0→p99 scale. */
+.latency-axis {
+  padding-top: var(--sp-2);
+}
+
+.lat-chart {
+  display: grid;
+}
+
+.lat-hist {
+  display: block;
+  width: 100%;
+  height: 84px;
+  overflow: visible;
+}
+
+.hist-bar {
+  fill: var(--accent);
+  opacity: 0.55;
+}
+
+.lat-rule {
+  height: 1px;
+  background: var(--border);
+}
+
+.lat-pins {
+  position: relative;
+  height: 42px;
+}
+
+.axis-pin {
+  position: absolute;
+  top: 0;
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.axis-pin i {
+  width: 1px;
+  height: 9px;
+  background: var(--accent);
+}
+
+.pin-value {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.pin-key {
+  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* p50 sits at the low end and p99 at the far right; nudge their labels
+   inward so neither can overflow the panel. */
+.axis-p50 {
+  transform: translateX(-20%);
+}
+
+.axis-p99 {
+  transform: translateX(-80%);
+}
+
+.axis-scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: var(--sp-2);
+  color: var(--text-3);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.axis-empty {
+  padding: var(--sp-5) 0;
+  color: var(--text-3);
+  font-size: 12.5px;
+}
+
+/* --- credential board ---------------------------------------------------------- */
+
+.key-board {
+  display: grid;
+  align-content: start;
+  padding: var(--sp-4) var(--sp-5) var(--sp-5);
+}
+
+.key-legend,
+.key-row {
+  display: grid;
+  grid-template-columns: minmax(72px, 1.1fr) minmax(0, 2fr) 44px 44px 68px;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.key-legend {
+  padding: 0 var(--sp-2) var(--sp-2);
+  color: var(--text-3);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.key-legend .key-share,
+.key-legend .key-err,
+.key-legend .key-last {
+  text-align: right;
+}
+
+/* Large pools scroll inside the board rather than stretching the overview. */
+.key-list {
+  display: grid;
+  gap: 2px;
+  max-height: 316px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.key-row {
+  width: 100%;
+  padding: var(--sp-2) var(--sp-2);
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 100ms ease, border-color 100ms ease;
+}
+
+.key-row:hover {
+  background: var(--accent-tint);
+}
+
+.key-row.is-on {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: var(--accent-tint);
+}
+
+.key-id {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Scoped to a row: the legend reuses .key-track purely to line its label up
+   with the column, and must not pick up the bar's height or clipping. */
+.key-row .key-track {
+  height: 6px;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.key-legend .key-track {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.key-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 250ms ease-out;
+}
+
+.key-fill.is-warn {
+  background: var(--warn);
+}
+
+.key-fill.is-bad {
+  background: var(--err);
+}
+
+.key-share,
+.key-err,
+.key-last {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.key-share {
+  font-weight: 500;
+}
+
+.key-err.is-ok {
+  color: var(--text-3);
+}
+
+.key-err.is-warn {
+  color: var(--warn);
+}
+
+.key-err.is-bad {
+  color: var(--err);
+  font-weight: 500;
+}
+
+.key-last {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.key-note {
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--border);
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.key-note strong {
+  color: var(--text-2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.94em;
+  font-weight: 500;
+}
+
+/* --- sortable ledger ------------------------------------------------------------ */
+
+.th-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+  transition: color 100ms ease;
+}
+
+.th-sort:hover {
+  color: var(--text);
+}
+
+.col-num .th-sort {
+  flex-direction: row-reverse;
+}
+
+/* The caret is present but transparent on every sortable header, so the
+   heading row never reflows when the sort column changes. */
+.th-sort::before {
+  content: "▾";
+  font-size: 9px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 100ms ease, transform 140ms ease;
+}
+
+.th-sort:hover::before {
+  opacity: 0.35;
+}
+
+.th-sort.is-sorted {
+  color: var(--accent-strong);
+}
+
+.th-sort.is-sorted::before {
+  opacity: 1;
+}
+
+.th-sort.is-sorted.is-asc::before {
+  transform: rotate(180deg);
+}
+
+.col-trend,
+.cell-trend {
+  width: 92px;
+}
+
+.cell-trend {
+  height: 26px;
+  padding-block: var(--sp-2);
+}
+
+.cell-trend .spark {
+  height: 26px;
+}
+
+.trend-empty {
+  color: var(--text-3);
+}
+
+/* Active requests are the one genuinely live number in the ledger. */
+.live-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: var(--r-full);
+  background: var(--accent-tint);
+  color: var(--accent-strong);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.detail-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+
+.detail-head .detail-title {
+  margin-bottom: 0;
+}
+
+.dd-note {
+  color: var(--text-3);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* --- traffic log cross-filters ---------------------------------------------------- */
+
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-5);
+  border-bottom: 1px solid var(--border);
+  background: var(--accent-tint);
+}
+
+.filter-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1h);
+  padding: 4px 4px 4px var(--sp-3);
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border));
+  border-radius: var(--r-full);
+  background: var(--surface);
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.filter-tag strong {
+  max-width: 190px;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.filter-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: var(--r-full);
+  background: none;
+  color: var(--text-3);
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 100ms ease, color 100ms ease;
+}
+
+.filter-x:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+/* Any API or key in the log is a handle for narrowing the log. */
+.cell-link {
+  max-width: 100%;
+  padding: 2px 6px;
+  margin-inline: -6px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background-color 100ms ease, color 100ms ease;
+}
+
+.cell-link:hover {
+  background: var(--surface-2);
+  color: var(--accent-strong);
+}
+
+.cell-link.mono {
+  color: var(--text-2);
+}
+
+/* Latency reads against the slowest response currently on screen. */
+.cell-latency {
+  position: relative;
+}
+
+.lat-bar {
+  position: absolute;
+  right: var(--sp-5);
+  bottom: 7px;
+  height: 3px;
+  max-width: calc(100% - 2 * var(--sp-5));
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0.4;
+}
+
+.lat-bar.c4xx {
+  background: var(--warn);
+}
+
+.lat-bar.c5xx {
+  background: var(--err);
+}
+
+@media (max-width: 1040px) {
+  .pulse-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* minmax(0, 1fr), not 1fr: a bare 1fr track floors at the min-content of
+     the tables inside, which pushes these panels past the viewport. */
+  .health-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .activity-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .queue-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    min-height: 0;
+  }
+
+  .idle-disclosure,
+  .idle-list,
+  .queue-strip .empty-state {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 820px) {
+  .container {
+    padding-inline: var(--sp-5);
+  }
+
+  .header-nav,
+  .stamp {
+    display: none;
+  }
+
+  /* Uptime and sample window drop below the headline rather than off the
+     page — they are the context for every number on the screen. */
+  .page-intro {
+    flex-wrap: wrap;
+    align-items: start;
+  }
+
+  .intro-meta {
+    gap: var(--sp-5);
+  }
+
+  .header-actions {
+    margin-left: auto;
+  }
+
+  .panel .section-head {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .panel .section-controls {
+    width: 100%;
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 620px) {
+  html {
+    scroll-padding-top: 78px;
+  }
+
+  .container {
+    padding-inline: var(--sp-4);
+  }
+
+  main.container {
+    padding-top: var(--sp-6);
+    padding-bottom: var(--sp-7);
+  }
+
+  .header-inner {
+    height: 64px;
+  }
+
+  .brand-subtitle,
+  .status-pill,
+  .refresh-btn .btn-label {
+    display: none;
+  }
+
+  .refresh-btn {
+    width: 36px;
+    padding: 0;
+  }
+
+  .page-intro {
+    margin-bottom: var(--sp-5);
+  }
+
+  .page-intro h1 {
+    font-size: 30px;
+  }
+
+  .pulse-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--sp-3);
+  }
+
+  .tile {
+    min-height: 138px;
+    padding: var(--sp-4);
+  }
+
+  .tile-value {
+    font-size: 28px;
+  }
+
+  .panel .section-head {
+    min-height: 0;
+    padding: var(--sp-4);
+  }
+
+  .section-controls {
+    flex-wrap: wrap;
+  }
+
+  .search-field {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  table.data th,
+  table.data td {
+    padding-inline: var(--sp-4);
+  }
+
+  /* Down to API / Requests / Err % — the three that answer "is it healthy". */
+  .panel-apis table th:nth-child(3),
+  .panel-apis table td:nth-child(3),
+  .panel-apis table th:nth-child(5),
+  .panel-apis table td:nth-child(5),
+  .panel-apis table th:nth-child(6),
+  .panel-apis table td:nth-child(6),
+  .panel-apis table th:nth-child(7),
+  .panel-apis table td:nth-child(7),
+  .panel-apis table th:nth-child(8),
+  .panel-apis table td:nth-child(8),
+  .panel-apis table th:nth-child(9),
+  .panel-apis table td:nth-child(9) {
+    display: none;
+  }
+
+  .detail-row td {
+    display: table-cell !important;
+    padding-inline: var(--sp-4) !important;
+  }
+
+  .detail-tables {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .queue-strip {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .queue-strip > * {
+    grid-column: 1;
+  }
+
+  .chip-row {
+    padding-inline: var(--sp-4);
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  .chip-filter {
+    flex: none;
+  }
+
+  .panel-history table th:nth-child(5),
+  .panel-history table td:nth-child(5) {
+    display: none;
+  }
+
+  .app-footer .container {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 370px) {
+  .pulse-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* --- responsive: added surfaces -------------------------------------------------
+   Placed last so these win over the base component rules above. */
+
+@media (max-width: 960px) {
+  /* p95 and Last are the first ledger columns to go: both stay reachable in
+     the row's detail band. */
+  .panel-apis table th:nth-child(6),
+  .panel-apis table td:nth-child(6),
+  .panel-apis table th:nth-child(9),
+  .panel-apis table td:nth-child(9) {
+    display: none;
+  }
+
+  .key-legend,
+  .key-row {
+    grid-template-columns: minmax(64px, 1fr) minmax(0, 1.4fr) 42px 42px;
+  }
+
+  .key-last {
+    display: none;
+  }
+}
+
+@media (max-width: 620px) {
+  .tile-spark {
+    height: 26px;
+  }
+
+  .health-body {
+    gap: var(--sp-5);
+    padding: var(--sp-4);
+  }
+
+  .key-board {
+    padding: var(--sp-3) var(--sp-4) var(--sp-4);
+  }
+
+  .key-legend,
+  .key-row {
+    grid-template-columns: minmax(60px, 1fr) minmax(0, 1fr) 40px 40px;
+    gap: var(--sp-2);
+  }
+
+  .filter-bar {
+    padding-inline: var(--sp-4);
+  }
+
+  .filter-tag strong {
+    max-width: 120px;
+  }
+
+  .lat-bar {
+    right: var(--sp-4);
+    max-width: calc(100% - 2 * var(--sp-4));
+  }
+}
+
+/* The axis pins carry real values; keep them legible on narrow screens by
+   letting the track breathe rather than shrinking the type. */
+@media (max-width: 420px) {
+  .pin-value {
+    font-size: 12px;
+  }
+
+  .lat-pins {
+    height: 38px;
   }
 }

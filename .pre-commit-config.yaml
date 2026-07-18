@@ -12,16 +12,12 @@ repos:
       - id: check-merge-conflict
       - id: check-added-large-files
 
-  - repo: https://github.com/psf/black
-    rev: 24.10.0
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.22
     hooks:
-      - id: black
-
-  - repo: https://github.com/pycqa/isort
-    rev: 5.13.2
-    hooks:
-      - id: isort
-        args: ["--profile", "black"]
+      - id: ruff-check
+        args: ["--fix"]
+      - id: ruff-format
 
   # mypy runs via the project interpreter so it picks up the `files`
   # ratchet configured in pyproject.toml [tool.mypy].

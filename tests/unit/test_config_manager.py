@@ -1,6 +1,3 @@
-import os
-from types import SimpleNamespace
-
 import pytest
 
 from nya.common.exceptions import ConfigurationError
@@ -112,6 +109,11 @@ def sample_data():
                 "retry_status_codes": [429, 500],
                 "retry_request_methods": ["GET"],
             },
+            "key_blocking": {
+                "enabled": True,
+                "status_codes": [401, 403],
+                "duration_seconds": 60,
+            },
             "request_body_substitution": {"enabled": False, "rules": []},
         },
         "apis": {
@@ -128,6 +130,7 @@ def sample_data():
                     "enabled": True,
                     "rules": [{"name": "drop", "operation": "remove", "path": "x"}],
                 },
+                "key_blocking": {"status_codes": [403, 429]},
             },
             "fallback": {"variables": {}},
         },
@@ -184,6 +187,9 @@ def test_api_getters_fall_back_to_default_settings_and_api_overrides():
     assert manager.get_api_retry_after_seconds("openai") == 0.5
     assert manager.get_api_retry_status_codes("openai") == [429, 500]
     assert manager.get_api_retry_request_methods("openai") == ["GET"]
+    assert manager.get_api_key_blocking_enabled("openai") is True
+    assert manager.get_api_key_blocking_status_codes("openai") == [403, 429]
+    assert manager.get_api_key_blocking_duration_seconds("openai") == 60
     assert manager.get_api_rate_limit_paths("openai") == ["/v1/*"]
 
 
@@ -214,6 +220,27 @@ def test_api_key_scalar_is_normalized_to_string():
     manager = make_manager({"server": {"api_key": 123}, "apis": {"x": {}}})
 
     assert manager.get_api_key() == "123"
+
+
+def test_key_blocking_has_safe_builtin_defaults():
+    manager = make_manager({"default_settings": {}, "apis": {"mock": {}}})
+
+    assert manager.get_api_key_blocking_enabled("mock") is False
+    assert manager.get_api_key_blocking_status_codes("mock") == [403]
+    assert manager.get_api_key_blocking_duration_seconds("mock") == 300
+
+
+def test_key_blocking_semantic_validation_rejects_invalid_error_policy():
+    data = sample_data()
+    data["default_settings"]["key_blocking"]["status_codes"] = [399, 600]
+    data["apis"]["openai"]["key_blocking"]["duration_seconds"] = 0
+
+    errors = ConfigManager._semantic_validation_errors(FakeNachoConfig(data))
+
+    assert any(
+        "default_settings.key_blocking.status_codes" in error for error in errors
+    )
+    assert any("apis.openai.key_blocking.duration_seconds" in error for error in errors)
 
 
 def test_missing_config_path_fails_before_nacho_initialization(tmp_path):

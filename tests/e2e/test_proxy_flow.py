@@ -17,7 +17,8 @@ def proxy_headers() -> dict[str, str]:
 def test_round_robin_injects_credentials_and_transforms_body(
     proxy_server, upstream_server
 ):
-    proxy_url = proxy_server(request_body_substitution="""
+    proxy_url = proxy_server(
+        request_body_substitution="""
       enabled: true
       rules:
         - name: "Remove unsupported field"
@@ -26,7 +27,8 @@ def test_round_robin_injects_credentials_and_transforms_body(
           conditions:
             - field: "drop_me"
               operator: "exists"
-""")
+"""
+    )
     _, upstream = upstream_server
 
     for index in range(6):
@@ -93,6 +95,43 @@ def test_retryable_chain_rotates_across_all_keys(proxy_server, upstream_server):
     ]
 
 
+@pytest.mark.parametrize("blocked_status", [401, 403])
+def test_configured_error_quarantines_key_across_requests(
+    blocked_status, proxy_server, upstream_server
+):
+    proxy_url = proxy_server(
+        retry_enabled=False,
+        rate_limit_enabled=False,
+        key_blocking_enabled=True,
+        key_blocking_status_codes=(401, 403),
+        key_blocking_duration_seconds=30,
+    )
+    _, upstream = upstream_server
+    upstream.statuses_by_key = {"key-a": [blocked_status]}
+
+    responses = [
+        httpx.get(
+            f"{proxy_url}/api/mock/v1/key-quarantine/{index}",
+            headers=proxy_headers(),
+            timeout=5,
+        )
+        for index in range(4)
+    ]
+
+    assert [response.status_code for response in responses] == [
+        blocked_status,
+        200,
+        200,
+        200,
+    ]
+    assert [record["key"] for record in upstream.records] == [
+        "key-a",
+        "key-b",
+        "key-c",
+        "key-b",
+    ]
+
+
 def test_concurrent_requests_rotate_credentials_evenly(proxy_server, upstream_server):
     proxy_url = proxy_server(max_workers=9, key_rate_limit="1000/m")
     _, upstream = upstream_server
@@ -121,12 +160,14 @@ def test_concurrent_requests_rotate_credentials_evenly(proxy_server, upstream_se
 
 
 def test_disallowed_path_is_rejected_before_upstream(proxy_server, upstream_server):
-    proxy_url = proxy_server(allowed_paths="""
+    proxy_url = proxy_server(
+        allowed_paths="""
     enabled: true
     mode: whitelist
     paths:
       - "/v1/allowed/*"
-""")
+"""
+    )
     _, upstream = upstream_server
 
     response = httpx.get(

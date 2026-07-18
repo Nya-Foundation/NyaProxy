@@ -24,10 +24,28 @@ def test_handler_prepares_requests_aliases_priority_and_rate_limit_paths():
 
     assert request.api_name == "mock"
     assert request.url == "https://upstream.test/v1/chat"
-    assert request.ip == "203.0.113.10"
+    # Forwarding headers are ignored unless the direct peer is trusted.
+    assert request.ip == "198.51.100.1"
     assert request.user == "master"
     assert request.priority == 2
     assert request._rate_limited is True
+
+
+def test_handler_preserves_query_normalizes_alias_and_trusts_configured_proxy():
+    config = CoreConfig()
+    config.apis["mock"]["aliases"] = ["/alias/"]
+    config.get_trusted_proxies = lambda: ["198.51.100.0/24"]
+    handler = RequestHandler(config)
+    request = make_request(
+        "/api/alias/v1/search?q=one&q=two&encoded=a%2Fb",
+        headers={"x-forwarded-for": "203.0.113.10"},
+    )
+
+    handler.prepare_request(request)
+
+    assert request.api_name == "mock"
+    assert request.url == ("https://upstream.test/v1/search?q=one&q=two&encoded=a%2Fb")
+    assert request.ip == "203.0.113.10"
 
 
 def _policy_denial(handler, path, method="GET"):
@@ -71,6 +89,8 @@ def test_handler_blacklist_mode_and_rate_limit_path_matching():
     assert _policy_denial(handler, "/api/mock/v1/private")[0] == 403
     assert handler.should_enforce_rate_limit("mock", "/v1/limited/chat") is True
     assert handler.should_enforce_rate_limit("mock", "/v1/free") is False
+    assert handler._matches_path("/administrator", ["/admin"]) is False
+    assert handler._matches_path("/administrator", ["/admin*"]) is True
     config.rate_limit_enabled = False
     assert handler.should_enforce_rate_limit("mock", "/v1/limited/chat") is False
 
@@ -106,6 +126,28 @@ async def test_handler_process_headers_and_json_body_substitution():
 
 
 @pytest.mark.asyncio
+async def test_custom_upstream_header_does_not_forward_gateway_authorization():
+    config = CoreConfig()
+    config.headers = {"X-API-Key": "${{api_key}}"}
+    handler = RequestHandler(config)
+    request = make_request(
+        headers={
+            "authorization": "Bearer internal-proxy-key",
+            "x-client-header": "preserved",
+        }
+    )
+    request.api_name = "mock"
+    request.url = "https://upstream.test/v1/chat"
+    request.api_key = "upstream-key"
+
+    await handler.process_request_headers(request)
+
+    assert "authorization" not in request.headers
+    assert request.headers["x-api-key"] == "upstream-key"
+    assert request.headers["x-client-header"] == "preserved"
+
+
+@pytest.mark.asyncio
 async def test_handler_process_headers_reports_missing_and_bad_variable_config():
     config = CoreConfig()
     handler = RequestHandler(config)
@@ -117,6 +159,11 @@ async def test_handler_process_headers_reports_missing_and_bad_variable_config()
         await handler.process_request_headers(request)
 
     request.api_key = "key-a"
+    config.headers = {"X-Missing": "${{missing}}"}
+    with pytest.raises(VariablesConfigurationError, match="has no configured values"):
+        await handler.process_request_headers(request)
+
+    config.headers = {"Authorization": "Bearer ${{api_key}}"}
     original_process_headers = HeaderUtils.process_headers
     HeaderUtils.process_headers = staticmethod(
         lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("bad template"))

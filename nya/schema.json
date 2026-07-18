@@ -114,7 +114,8 @@
                 },
                 "randomness": {
                     "type": "number",
-                    "description": "Random delay of (0.0-x)s to introduce variability in request timing and avoid detection"
+                    "minimum": 0,
+                    "description": "Maximum random delay in seconds before an upstream request"
                 },
                 "load_balancing_strategy": {
                     "type": "string",
@@ -146,7 +147,7 @@
                             "type": "array",
                             "items": {
                                 "type": "string",
-                                "description": "List of allowed or blocked paths, regex supported"
+                                "description": "Allowed or blocked path. A trailing * performs a prefix match."
                             }
                         }
                     },
@@ -189,7 +190,8 @@
                             "description": "How long to keep requests in queue before expiry",
                             "minimum": 1
                         }
-                    }
+                    },
+                    "additionalProperties": false
                 },
                 "rate_limit": {
                     "type": "object",
@@ -225,7 +227,8 @@
                                 "description": "Path patterns to apply rate limits to (prefix match, trailing * wildcard)"
                             }
                         }
-                    }
+                    },
+                    "additionalProperties": false
                 },
                 "retry": {
                     "type": "object",
@@ -279,6 +282,32 @@
                     },
                     "additionalProperties": false
                 },
+                "key_blocking": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "description": "Temporarily quarantine an upstream API key after configured error responses"
+                        },
+                        "status_codes": {
+                            "type": "array",
+                            "minItems": 1,
+                            "uniqueItems": true,
+                            "items": {
+                                "type": "integer",
+                                "minimum": 400,
+                                "maximum": 599
+                            },
+                            "description": "Upstream HTTP error statuses that quarantine the selected API key"
+                        },
+                        "duration_seconds": {
+                            "type": "number",
+                            "exclusiveMinimum": 0,
+                            "description": "How long a matching API key remains unavailable"
+                        }
+                    },
+                    "additionalProperties": false
+                },
                 "timeouts": {
                     "type": "object",
                     "properties": {
@@ -324,7 +353,8 @@
                                     "PUT",
                                     "DELETE",
                                     "PATCH",
-                                    "OPTIONS"
+                                    "OPTIONS",
+                                    "HEAD"
                                 ]
                             }
                         },
@@ -334,7 +364,8 @@
                                 "type": "string"
                             }
                         }
-                    }
+                    },
+                    "additionalProperties": false
                 },
                 "api_key": {
                     "anyOf": [
@@ -342,12 +373,15 @@
                             "type": "null"
                         },
                         {
-                            "type": "string"
+                            "type": "string",
+                            "minLength": 1
                         },
                         {
                             "type": "array",
+                            "minItems": 1,
                             "items": {
-                                "type": "string"
+                                "type": "string",
+                                "minLength": 1
                             }
                         }
                     ],
@@ -378,7 +412,8 @@
                             "type": "string",
                             "description": "Log file name"
                         }
-                    }
+                    },
+                    "additionalProperties": false
                 },
                 "proxy": {
                     "type": "object",
@@ -391,7 +426,8 @@
                             "type": "string",
                             "description": "Proxy address URI"
                         }
-                    }
+                    },
+                    "additionalProperties": false
                 },
                 "dashboard": {
                     "type": "object",
@@ -400,15 +436,29 @@
                             "type": "boolean",
                             "description": "Enable/disable the metrics dashboard"
                         }
-                    }
+                    },
+                    "additionalProperties": false
+                },
+                "trusted_proxies": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    "description": "Proxy IP addresses or CIDR networks trusted to supply client-IP headers"
+                },
+                "timeouts": {
+                    "$ref": "#/$defs/default_settings/properties/timeouts"
                 }
-            }
+            },
+            "additionalProperties": false
         },
         "default_settings": {
             "$ref": "#/$defs/default_settings"
         },
         "apis": {
             "type": "object",
+            "minProperties": 1,
             "patternProperties": {
                 "^[a-zA-Z0-9_-]+$": {
                     "type": "object",
@@ -416,7 +466,6 @@
                         "name",
                         "endpoint",
                         "headers",
-                        "key_variable",
                         "variables"
                     ],
                     "properties": {
@@ -428,12 +477,13 @@
                             "type": "string",
                             "description": "Target API endpoint URL",
                             "format": "uri",
-                            "pattern": "^(http|https|ws|wss)://.+"
+                            "pattern": "^https?://.+"
                         },
                         "aliases": {
                             "type": "array",
                             "items": {
                                 "type": "string",
+                                "pattern": "^/?[a-zA-Z0-9_-]+$",
                                 "description": "URL path aliases for this API"
                             }
                         },
@@ -460,6 +510,7 @@
                                 "oneOf": [
                                     {
                                         "type": "array",
+                                        "minItems": 1,
                                         "items": {
                                             "oneOf": [
                                                 {
@@ -504,6 +555,9 @@
                         "retry": {
                             "$ref": "#/$defs/default_settings/properties/retry"
                         },
+                        "key_blocking": {
+                            "$ref": "#/$defs/default_settings/properties/key_blocking"
+                        },
                         "timeouts": {
                             "$ref": "#/$defs/default_settings/properties/timeouts"
                         },
@@ -516,5 +570,6 @@
             },
             "additionalProperties": false
         }
-    }
+    },
+    "additionalProperties": false
 }

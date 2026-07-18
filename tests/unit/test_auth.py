@@ -147,9 +147,21 @@ def build_client(api_key):
     return TestClient(app)
 
 
-def test_middleware_allows_options_requests():
+def test_middleware_allows_cors_preflight_requests():
     client = build_client("secret")
-    assert client.options("/api/v1/thing").status_code != 403
+    response = client.options(
+        "/api/v1/thing",
+        headers={
+            "Origin": "https://example.test",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert response.status_code != 403
+
+
+def test_middleware_authenticates_non_preflight_options_requests():
+    client = build_client("secret")
+    assert client.options("/api/v1/thing").status_code == 403
 
 
 def test_middleware_allows_excluded_paths_without_auth():

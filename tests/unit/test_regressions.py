@@ -10,10 +10,8 @@ from collections import Counter
 
 import pytest
 from httpx import Headers
-from starlette.datastructures import URL
 from starlette.responses import Response
 
-from nya.common.models import ProxyRequest
 from nya.core.control import TrafficManager
 from nya.core.queue import RequestQueue
 from nya.services.limit import RateLimiter
