@@ -41,10 +41,49 @@ jobs:
 
       - name: Build and smoke-test the wheel
         run: |
+          # `make build` does not clean dist/, so a stale artifact would make
+          # the dist/*.whl glob ambiguous.
+          rm -rf dist
           make build
-          python -m pip install --force-reinstall --no-deps dist/*.whl
-          nyaproxy --version
-          python -c "from importlib.resources import files; assert (files('nya') / 'config.yaml').is_file(); assert (files('nya') / 'schema.json').is_file()"
+
+          # Install into a throwaway venv rather than over the editable
+          # install used by lint and typecheck. That install owns the
+          # `nyaproxy` script, so testing in place cannot distinguish a
+          # working wheel from a wheel whose console script is missing.
+          # Installing with dependencies also asserts that the declared
+          # runtime requirements are actually sufficient.
+          SMOKE="${RUNNER_TEMP:-/tmp}/smoke-venv"
+          rm -rf "$SMOKE"
+          python -m venv "$SMOKE"
+          "$SMOKE/bin/python" -m pip install --quiet dist/*.whl
+
+          # Check the entry point through metadata first: a wheel missing its
+          # console script otherwise surfaces only as "command not found".
+          "$SMOKE/bin/python" - <<'PY'
+          import importlib.metadata as md
+          scripts = {e.name for e in md.entry_points(group="console_scripts")}
+          assert "nyaproxy" in scripts, f"wheel is missing the nyaproxy console script; found {scripts or 'none'}"
+          PY
+
+          "$SMOKE/bin/nyaproxy" --version
+
+          # Data files are not picked up by imports, so they need asserting
+          # explicitly — including the dashboard assets, which the service
+          # serves at runtime and would 404 on if they were dropped.
+          "$SMOKE/bin/python" - <<'PY'
+          from importlib.resources import files
+          root = files("nya")
+          required = [
+              "config.yaml",
+              "schema.json",
+              "html/index.html",
+              "html/login.html",
+              "html/static/css/styles.css",
+              "html/static/js/dashboard.js",
+          ]
+          missing = [p for p in required if not (root / p).is_file()]
+          assert not missing, f"wheel is missing packaged data files: {missing}"
+          PY
 
   test:
     name: Python ${{ matrix.python-version }}
