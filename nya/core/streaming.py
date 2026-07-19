@@ -44,13 +44,23 @@ async def handle_streaming_response(response: httpx.Response) -> StreamingRespon
         if finalized:
             return
         finalized = True
-        if hasattr(response, "_stream_ctx") and response._stream_ctx:
-            await response._stream_ctx.__aexit__(None, None, None)
-            response._stream_ctx = None
-        for callback in finalizers:
-            result = callback()
-            if result is not None:
-                await result
+        try:
+            if hasattr(response, "_stream_ctx") and response._stream_ctx:
+                await response._stream_ctx.__aexit__(None, None, None)
+                response._stream_ctx = None
+        finally:
+            # Finalizers release the credential. Closing an already-broken
+            # upstream stream can raise, and cancellation can interrupt the
+            # await above; either way the key must still go back into
+            # rotation, because nothing else ever expires the lock taken by
+            # key_concurrency: false.
+            for callback in finalizers:
+                try:
+                    result = callback()
+                    if result is not None:
+                        await result
+                except Exception as exc:  # pragma: no cover - defensive
+                    logger.error(f"Stream finalizer failed: {exc}")
 
     def add_finalizer(
         callback: Callable[[], Optional[Awaitable[None]]],
