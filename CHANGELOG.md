@@ -1,6 +1,40 @@
 # CHANGELOG
 
 
+## v0.7.2 (2026-07-19)
+
+### Bug Fixes
+
+- Release the credential when stream teardown fails
+  ([`b9d5cb5`](https://github.com/Nya-Foundation/NyaProxy/commit/b9d5cb55befe0ecb7400e316b9b454953ad0f3a8))
+
+finalize() marked itself done, then awaited the upstream stream's __aexit__, and only afterwards ran
+  the finalizers. The finalizers are what release the key locked by `key_concurrency: false`, so if
+  that await raised — a broken upstream connection, or cancellation from the request timeout — the
+  release was skipped. `finalized` was already True, so no later call could recover it, and nothing
+  expires a key lock: the key left rotation permanently. With a two-key pool that is an outage.
+
+Run the finalizers from a finally block, and swallow errors within each so one bad finalizer cannot
+  strand the rest.
+
+Add e2e coverage for credential release under key_concurrency: false, driving a real proxy process
+  against a real upstream — client hangs up mid-stream, upstream fails mid-stream, request timeout
+  cancels a stalled stream, and the happy path so a fix cannot work by never locking. These already
+  passed before the change, which is worth recording: the paths I could drive end to end were
+  releasing correctly, and the defect above is one I could only reproduce by forcing teardown to
+  fail. The two unit tests do fail without the fix.
+
+Also document the behaviour that actually looks like a stuck queue. Key rate limits are not a
+  fast-fail path like the IP and user quotas: a request waits for a key until the queue expiry and
+  then 504s. Sustained demand above `keys x key_rate_limit` therefore leaves a permanently full
+  queue, and a max_size far above `rate x expiry` only buys a longer wait before the same failure.
+  Measured: 1 key at 1/2s with a 6s expiry serves 3 of 12 concurrent requests and expires the other
+  9 at 6.1s.
+
+Test harness gains key_concurrency and request_timeout_seconds knobs and a stream-hang upstream
+  endpoint.
+
+
 ## v0.7.1 (2026-07-18)
 
 ### Bug Fixes
