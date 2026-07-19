@@ -105,6 +105,15 @@ def upstream_server():
 
             return StreamingResponse(events(), media_type="text/event-stream")
 
+        if path == "stream-hang":
+
+            async def hanging_events():
+                yield b"data: first\n\n"
+                await asyncio.sleep(120)
+                yield b"data: never\n\n"
+
+            return StreamingResponse(hanging_events(), media_type="text/event-stream")
+
         if path == "stream-error":
 
             async def broken_events():
@@ -159,6 +168,7 @@ def proxy_server(tmp_path: Path, upstream_server):
     def start_proxy(
         *,
         load_balancing_strategy: str = "round_robin",
+        key_concurrency: bool = True,
         key_rate_limit: str = "1000/m",
         endpoint_rate_limit: str = "1000/m",
         ip_rate_limit: str = "1000/m",
@@ -176,6 +186,7 @@ def proxy_server(tmp_path: Path, upstream_server):
     paths:
       - "*"
 """,
+        request_timeout_seconds: float = 10,
         queue_expiry_seconds: int = 5,
         queue_max_size: int = 20,
         max_workers: int = 3,
@@ -207,7 +218,7 @@ server:
 
 default_settings:
   key_variable: keys
-  key_concurrency: true
+  key_concurrency: {str(key_concurrency).lower()}
   randomness: 0.0
   load_balancing_strategy: {load_balancing_strategy}
   allowed_paths:
@@ -236,7 +247,7 @@ default_settings:
     status_codes: [{", ".join(str(code) for code in key_blocking_status_codes)}]
     duration_seconds: {key_blocking_duration_seconds}
   timeouts:
-    request_timeout_seconds: 10
+    request_timeout_seconds: {request_timeout_seconds}
 
 apis:
   mock:
