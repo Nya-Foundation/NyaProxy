@@ -49,8 +49,10 @@ def test_all_keys_locked_recovers_instead_of_deadlocking():
     for key in config.keys:
         control.get_key_limiter("mock", key).lock(ttl=0.05)
 
-    # The signature operators saw: a wait that never changes and never clears.
-    assert control.time_to_key_ready("mock") == 1.0
+    # The wait is now the honest lock deadline, not the old hardcoded 1.0
+    # that told operators nothing.
+    wait = control.time_to_key_ready("mock")
+    assert 0 < wait <= 0.05
 
     time.sleep(0.06)
 

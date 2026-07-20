@@ -41,6 +41,7 @@ const state = {
   metrics: null,
   history: null,
   queues: null,
+  queueWaiting: {},
   derived: null, // computed from history on every successful fetch
   apiFilter: "",
   historyFilter: "",
@@ -1069,6 +1070,7 @@ function renderApis() {
   }
 
   const queues = state.queues || {};
+  const queueWaiting = state.queueWaiting || {};
   const d = state.derived;
   const dir = state.sort.dir === "asc" ? 1 : -1;
   const names = allNames
@@ -1097,7 +1099,7 @@ function renderApis() {
       const rate = a.requests ? (a.errors / a.requests) * 100 : 0;
       const kind = rate > 5 ? "badge-err" : rate > 0 ? "badge-warn" : "badge-ok";
       const open = state.openApi === name;
-      const qSize = queues[name];
+      const qSize = (queues[name] || 0) + (queueWaiting[name] || 0);
       const pct = ((a.requests || 0) / maxReq) * 100;
       const row = `<tr class="api-row${
         open ? " is-open" : ""
@@ -1165,7 +1167,7 @@ function toggleApi(name) {
 
 /* --- Band F: queue strip ------------------------------------------------------ */
 
-function queueChipHtml(name, size, controlEnabled) {
+function queueChipHtml(name, size, waiting, controlEnabled) {
   const armed = state.confirm === "queue:" + name;
   let controls = "";
   if (controlEnabled) {
@@ -1186,13 +1188,24 @@ function queueChipHtml(name, size, controlEnabled) {
            data-focus-key="qclear:${escapeHtml(name)}"
            aria-label="Clear ${escapeHtml(name)} queue">clear</button>`;
   }
-  return `<span class="chip" title="${size} requests queued">
+  const title = `${fmt.int(size)} queued, ${fmt.int(
+    waiting
+  )} claimed by a worker and waiting for a key`;
+  return `<span class="chip" title="${title}">
     <span class="dot dot-warn" aria-hidden="true"></span><span class="chip-name">${escapeHtml(
       name
-    )}</span>
-    <span class="chip-count">${fmt.int(
-      size
-    )}</span><span class="chip-actions">${controls}</span></span>`;
+    )}</span>${
+      waiting
+        ? `<span class="chip-waiting" title="${fmt.int(
+            waiting
+          )} waiting for a key">${fmt.int(waiting)}<span class="chip-waiting-label">on key</span></span>`
+        : ""
+    }
+    ${
+      size || !waiting
+        ? `<span class="chip-count">${fmt.int(size)}</span>`
+        : ""
+    }<span class="chip-actions">${controls}</span></span>`;
 }
 
 function renderQueues() {
@@ -1209,22 +1222,35 @@ function renderQueues() {
     return;
   }
 
-  const names = Object.keys(q).sort((a, b) => a.localeCompare(b));
+  const w = state.queueWaiting || {};
+  const names = [...new Set([...Object.keys(q), ...Object.keys(w)])].sort((a, b) =>
+    a.localeCompare(b)
+  );
   const queued = names.reduce(
     (sum, name) => sum + Math.max(0, Number(q[name]) || 0),
     0
   );
-  setCount("queue-count", queued, `${fmt.int(queued)} requests queued`);
+  const waiting = names.reduce(
+    (sum, name) => sum + Math.max(0, Number(w[name]) || 0),
+    0
+  );
+  setCount(
+    "queue-count",
+    queued + waiting,
+    `${fmt.int(queued)} queued, ${fmt.int(waiting)} claimed and waiting for a key`
+  );
   if (names.length === 0) {
     wrap.innerHTML = `<div class="empty-state">${COIN_GLYPH}No queues configured.</div>`;
     return;
   }
 
-  const active = names.filter((n) => q[n] > 0);
-  const idle = names.filter((n) => !(q[n] > 0));
+  const active = names.filter((n) => q[n] > 0 || w[n] > 0);
+  const idle = names.filter((n) => !(q[n] > 0 || w[n] > 0));
   const controlEnabled = document.body.dataset.control === "flex";
 
-  let html = active.map((n) => queueChipHtml(n, q[n], controlEnabled)).join("");
+  let html = active
+    .map((n) => queueChipHtml(n, q[n] || 0, w[n] || 0, controlEnabled))
+    .join("");
   if (idle.length) {
     const label =
       active.length === 0
@@ -1501,7 +1527,10 @@ async function fetchAll(manual = false) {
       section.lastSuccess = now;
       if (key === "metrics") state.metrics = r.value;
       else if (key === "history") state.history = r.value.history || [];
-      else state.queues = r.value.queue_sizes || {};
+      else {
+        state.queues = r.value.queue_sizes || {};
+        state.queueWaiting = r.value.waiting || {};
+      }
     } else {
       section.failed = true;
       anyFail = true;
