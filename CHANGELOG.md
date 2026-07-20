@@ -1,6 +1,101 @@
 # CHANGELOG
 
 
+## v0.8.2 (2026-07-20)
+
+### Bug Fixes
+
+- **dashboard**: Count requests a worker is holding for a key
+  ([`6ccf8f2`](https://github.com/Nya-Foundation/NyaProxy/commit/6ccf8f2ff345c16faf8cd5c6bf12ee96c00aca08))
+
+The queue panel read qsize() alone, but a worker takes a request out of the priority queue *before*
+  it waits for a key. With few concurrent clients every request is claimed instantly, so the panel
+  showed an empty queue while the log filled with "Resource Unavailable" — the two were describing
+  different populations, and the requests waiting hardest for upstream capacity were exactly the
+  invisible ones. Up to max_workers requests per API could hide this way.
+
+Track the claimed-and-waiting count in RequestQueue (incremented around _wait_for_key, decremented
+  in a finally), expose it as "waiting" on /api/queue, and render it as an "on key" badge in the
+  queue panel. The panel total, the idle/active split, and the API ledger's Queue column all include
+  it, so a saturated pool now reads "10 on key" instead of a dash. The zero queued-pill is hidden
+  when only the badge applies.
+
+The regression test reproduces the report directly: with every key locked, qsize() is 0 while the
+  waiting count is 1; freeing a key drains it. Verified against a running dashboard — an API with
+  nothing queued and ten held requests shows "10 on key", 19 in the panel total, and 10 in the
+  ledger.
+
+### Refactoring
+
+- Event-driven key wait in place of the polling loop
+  ([`1b854ba`](https://github.com/Nya-Foundation/NyaProxy/commit/1b854ba95a7c3793e056c285568db74391424bd5))
+
+_wait_for_key polled: every claimed request woke every 0.1-0.5s, re-checked everything, logged
+  "Resource Unavailable ... 0.50s", and slept again. The interval was also a guess — a locked key
+  reported a hardcoded 1.0s because nothing knew when it would free — and order among claimed
+  waiters was a tick lottery: whichever worker woke first took the key, regardless of arrival or
+  priority.
+
+The lock-TTL change made every wait computable, which is what enables this design: rate-limit
+  windows, cool-downs, client quotas, and now locks all have deadlines. Waiters park on a per-API
+  asyncio.Condition built over the traffic lock, sleeping exactly the true wait, and the two
+  explicit release paths (release_key, unlock_key) notify to wake them early. Sharing the lock makes
+  check-then-wait and grant-then-notify one serialized sequence, so a release cannot slip between
+  "no key free" and "start waiting". A done-callback on the client future wakes the waiter on
+  disconnect, so abandoned clients free their worker at once instead of holding a slot until the
+  next timed wake.
+
+Fairness improves as a side effect: asyncio.Condition wakes waiters in the order they began waiting,
+  which is the order workers claimed them from the priority heap — grants now approximate (priority,
+  arrival) instead of the lottery. Quota enforcement is untouched by construction: all checks stay
+  in the atomic acquire under the same lock; a notification only changes when a waiter re-checks,
+  never whether.
+
+A 30s heartbeat caps every park as insurance: a future release path that forgets to notify costs one
+  late wake, not a stall — the failure mode that used to be an unbounded spin. Logging is per state
+  change: one line entering the wait with the true duration, one on grant with the time actually
+  waited. Measured over 3s of full contention: 2 lines versus ~6 (and ~60/s at ten workers) before.
+
+Backed by real-world e2e against a live proxy and upstream: a 6-request burst on one exclusive 300ms
+  key serializes (wall >= 1.4s) without stalling (<15s); three requests through a 1/2s key take >=
+  3.8s, so a wake-up cannot leak past the limiter; abandoned clients with tiny timeouts do not wedge
+  a 2-worker pool. Unit tests pin the release notification beating the 30s deadline, grants in claim
+  order, and the disconnect callback — each verified by mutation: removing the notify or the
+  callback fails exactly the tests that claim them.
+
+### Testing
+
+- 200-request burst on five shared exclusive keys, end to end
+  ([`ca28985`](https://github.com/Nya-Foundation/NyaProxy/commit/ca289857f7b4184a11c71d5a028dccf15e790ada))
+
+The production shape this pins down: five credentials with key_concurrency off, requests holding a
+  key 5-7s, per-key pacing of 1/12s, and the credentials shared with consumers outside the gateway
+  so ~15% of attempts bounce off an upstream 429 regardless of NyaProxy's own accounting. Time is
+  scaled ~10x (holds 500-700ms, window 1/1s, retry cool-down 0.3s) so the ratios survive but the
+  test runs in ~44s instead of eight minutes.
+
+The upstream harness gains seeded external contention (a configurable chance any hit is rejected 429
+  at the gate) and per-hit timing records. Assertions are derived from the capacity arithmetic, not
+  tuned to observations:
+
+- every response is 200 or, rarely, a legitimately exhausted-retries 429; a 504, 503, or 500
+  anywhere is a gateway failure - after any successful use of a key, the next attempt on that key
+  waits out the window — a refunded 429 slot may retry sooner, which is correct, not a leak - the
+  upstream never sees two in-flight holds on one exclusive key - wall clock lands on the
+  (busiest-key successes - 1) x window floor from below and within 30s of it from above: the ceiling
+  is respected and grants do not stall - all five keys carry an even share
+
+Measured across runs: 200/200 served in ~43s against a ~40s floor, ~33 external rejections absorbed
+  by retries, per-key spread 39-41.
+
+Two calibration notes. The harness request timeout (10s) had to scale with everything else — which
+  surfaces a real production implication: at the unscaled ceiling of 25/min, a 200-burst's tail
+  waits ~480s, past the configured 300s request timeout, so a burst that size partially times out in
+  production by design. And the pacing assertion observes grants from the upstream's side, so its
+  tolerance is 0.3s: under 200 client threads the grant-to-arrival jitter reaches a few hundred ms,
+  while a genuine limiter leak would show sub-0.7s gaps and still be caught.
+
+
 ## v0.8.1 (2026-07-20)
 
 ### Bug Fixes
