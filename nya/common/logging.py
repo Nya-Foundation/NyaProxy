@@ -54,6 +54,16 @@ _MANAGED_LOGGERS = (
     "nacho",
 )
 
+#: Loggers pinned above their default level. watchfiles reports every raw
+#: filesystem event at INFO ("1 change detected"), and Uvicorn's reloader
+#: watches the working directory — which is where the log file usually lives.
+#: Left at INFO, writing a log line produces an event, which logs a line: a
+#: feedback loop that fills the log and the disk with nothing.
+_QUIET_LOGGERS = {
+    "watchfiles": logging.WARNING,
+    "watchfiles.main": logging.WARNING,
+}
+
 
 class Formatter(logging.Formatter):
     """Shared formatter, optionally colouring the level for a terminal."""
@@ -133,4 +143,4 @@ def _reset_managed_loggers() -> None:
         for handler in std_logger.handlers[:]:
             std_logger.removeHandler(handler)
         std_logger.propagate = True
-        std_logger.setLevel(logging.NOTSET)
+        std_logger.setLevel(_QUIET_LOGGERS.get(name, logging.NOTSET))

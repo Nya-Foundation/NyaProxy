@@ -2,12 +2,20 @@
 Simple rate limiting with time-based recovery.
 """
 
+import logging
 import re
 import time
 from collections import deque
 from typing import Any, Deque, Dict, Optional, Tuple
 
 from ..common.exceptions import ConfigurationError
+
+logger = logging.getLogger(__name__)
+
+#: Fallback ceiling on a concurrency lock when the caller names no deadline.
+#: A lock is released explicitly when the request finishes; this only bounds
+#: the damage when that release is missed.
+DEFAULT_LOCK_TTL_SECONDS = 300.0
 
 
 class RateLimiter:
@@ -34,7 +42,10 @@ class RateLimiter:
         self.request_timestamps: Deque[float] = deque()
         self.last_accessed = time.time()
 
-        self.locked = False
+        # Deadline for the concurrency lock, or None when unlocked. A lock
+        # that could not expire took a credential out of rotation for the
+        # lifetime of the process whenever a release was missed.
+        self._locked_until: Optional[float] = None
         # Explicit cool-down deadline (block_for), independent of the
         # request-window limit so it also works on unlimited limiters.
         self.blocked_until = 0.0
@@ -125,19 +136,42 @@ class RateLimiter:
         # Remove the most recent timestamp
         self.request_timestamps.pop()
 
-    def lock(self) -> None:
+    @property
+    def locked(self) -> bool:
         """
-        Lock the rate limiter to prevent any further requests.
+        Whether a request currently holds this limiter exclusively.
+
+        The lock expires on its own. Every exit from a request releases it
+        explicitly, so an expiry means a release was missed — a bug, but one
+        that must not cost the credential permanently.
+        """
+        if self._locked_until is None:
+            return False
+        if time.time() >= self._locked_until:
+            self._locked_until = None
+            logger.warning(
+                "Concurrency lock on %r expired without being released; "
+                "returning the credential to rotation",
+                self,
+            )
+            return False
+        return True
+
+    def lock(self, ttl: Optional[float] = None) -> None:
+        """
+        Take the limiter exclusively for at most ``ttl`` seconds.
         """
         self.touch()
-        self.locked = True
+        if ttl is None or ttl <= 0:
+            ttl = DEFAULT_LOCK_TTL_SECONDS
+        self._locked_until = time.time() + ttl
 
     def unlock(self) -> None:
         """
         Unlock the rate limiter to allow requests again.
         """
         self.touch()
-        self.locked = False
+        self._locked_until = None
 
     def block_for(self, duration: float) -> None:
         """

@@ -11,7 +11,7 @@ import time
 import pytest
 
 from nya.common.exceptions import ConfigurationError
-from nya.services.limit import RateLimiter
+from nya.services.limit import DEFAULT_LOCK_TTL_SECONDS, RateLimiter
 
 # --------------------------------------------------------------------------
 # Rate-limit string parsing
@@ -167,3 +167,44 @@ def test_time_until_reset_zero_when_not_limited():
 
 def test_repr_includes_rate_limit():
     assert "10/m" in repr(RateLimiter("10/m"))
+
+
+def test_lock_expires_so_a_missed_release_cannot_strand_a_key():
+    """
+    Every exit from a request releases the lock explicitly. An expiry means
+    that was missed — a bug, but one that must not cost the credential for
+    the lifetime of the process.
+    """
+    limiter = RateLimiter("0")
+    limiter.lock(ttl=0.05)
+    assert limiter.locked
+
+    time.sleep(0.06)
+
+    assert limiter.locked is False
+    assert limiter.is_limited() is False
+
+
+def test_lock_holds_until_its_deadline():
+    limiter = RateLimiter("0")
+    limiter.lock(ttl=30)
+
+    assert limiter.locked
+    assert limiter.is_limited()
+
+
+def test_explicit_unlock_still_releases_immediately():
+    limiter = RateLimiter("0")
+    limiter.lock(ttl=300)
+    limiter.unlock()
+
+    assert limiter.locked is False
+
+
+def test_lock_without_a_ttl_still_expires():
+    """No caller should be able to create a lock that lives forever."""
+    limiter = RateLimiter("0")
+    limiter.lock()
+
+    assert limiter._locked_until is not None
+    assert limiter._locked_until <= time.time() + DEFAULT_LOCK_TTL_SECONDS + 1
