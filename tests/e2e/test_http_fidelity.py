@@ -82,3 +82,68 @@ def test_untrusted_forwarded_for_cannot_evade_ip_quota(proxy_server):
 
     assert first.status_code == 200
     assert second.status_code == 429
+
+
+def test_trusted_proxy_applies_quota_per_forwarded_client(proxy_server):
+    """
+    Behind a trusted reverse proxy, quotas must apply to the real client.
+
+    The socket peer is the proxy, so without this every user shares one
+    bucket. Note the uvicorn access log always shows the peer address — the
+    resolved client is only observable through behaviour like this.
+    """
+    proxy_url = proxy_server(
+        ip_rate_limit="2/m",
+        queue_expiry_seconds=1,
+        trusted_proxies=("127.0.0.1/32", "::1/128"),
+    )
+
+    # Two requests from one client consume that client's quota.
+    for _ in range(2):
+        response = httpx.get(
+            f"{proxy_url}/api/mock/v1/quota",
+            headers=proxy_headers(**{"X-Forwarded-For": "203.0.113.10"}),
+            timeout=5,
+        )
+        assert response.status_code == 200
+
+    exhausted = httpx.get(
+        f"{proxy_url}/api/mock/v1/quota",
+        headers=proxy_headers(**{"X-Forwarded-For": "203.0.113.10"}),
+        timeout=5,
+    )
+    assert exhausted.status_code == 429, "the forwarded client was not rate limited"
+
+    # A different client must still have its own quota.
+    other = httpx.get(
+        f"{proxy_url}/api/mock/v1/quota",
+        headers=proxy_headers(**{"X-Forwarded-For": "203.0.113.99"}),
+        timeout=5,
+    )
+    assert other.status_code == 200, (
+        "a second client shared the first client's quota, so the forwarded "
+        "address was ignored and everyone is bucketed as the proxy"
+    )
+
+
+def test_x_real_ip_is_honoured_from_a_trusted_proxy(proxy_server):
+    """nginx's X-Real-IP alone is enough; X-Forwarded-For is not required."""
+    proxy_url = proxy_server(
+        ip_rate_limit="1/m",
+        queue_expiry_seconds=1,
+        trusted_proxies=("127.0.0.1/32", "::1/128"),
+    )
+
+    first = httpx.get(
+        f"{proxy_url}/api/mock/v1/quota",
+        headers=proxy_headers(**{"X-Real-IP": "198.51.100.7"}),
+        timeout=5,
+    )
+    second = httpx.get(
+        f"{proxy_url}/api/mock/v1/quota",
+        headers=proxy_headers(**{"X-Real-IP": "198.51.100.8"}),
+        timeout=5,
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200, "X-Real-IP from a trusted proxy was ignored"
