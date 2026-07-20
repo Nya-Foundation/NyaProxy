@@ -7,13 +7,15 @@ is an internal helper for that engine.
 """
 
 import json
+import logging
 import re
 from typing import Any, Dict, List, Union
 
 import jmespath
 import orjson
 from jmespath.exceptions import JMESPathError
-from loguru import logger
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["apply_body_substitutions"]
 

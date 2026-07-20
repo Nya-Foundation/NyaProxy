@@ -2,11 +2,11 @@
 Simplified request executor focused on HTTP execution only.
 """
 
+import logging
 import time
 from typing import TYPE_CHECKING, Optional, Union
 
 import httpx
-from loguru import logger
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
 from ..utils.formatting import format_elapsed_time, json_safe_dumps
@@ -17,6 +17,8 @@ from .streaming import (
     detect_streaming_content,
     handle_streaming_response,
 )
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ..common.models import ProxyRequest
@@ -84,7 +86,9 @@ class RequestExecutor:
         track = bool(self.metrics_collector)
 
         if track:
-            self.metrics_collector.record_request(api_name, request.api_key)
+            self.metrics_collector.record_request(
+                api_name, request.api_key, request.trail_path
+            )
 
         logger.debug(f"[Request] Method: {request.method.upper()}, URL: {request.url}")
 
@@ -100,6 +104,7 @@ class RequestExecutor:
                     request.api_key,
                     0,
                     time.time() - actual_start_time,
+                    request.trail_path,
                 )
             raise
 
@@ -128,6 +133,7 @@ class RequestExecutor:
                         request.api_key,
                         response.status_code,
                         time.time() - actual_start_time,
+                        request.trail_path,
                     )
                 )
             return streaming
@@ -141,6 +147,7 @@ class RequestExecutor:
                     request.api_key,
                     0,
                     time.time() - actual_start_time,
+                    request.trail_path,
                 )
             raise
 
@@ -150,6 +157,7 @@ class RequestExecutor:
                 request.api_key,
                 response.status_code,
                 time.time() - actual_start_time,
+                request.trail_path,
             )
         return result
 

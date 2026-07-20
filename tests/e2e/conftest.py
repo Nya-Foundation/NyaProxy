@@ -191,6 +191,7 @@ def proxy_server(tmp_path: Path, upstream_server):
         queue_max_size: int = 20,
         max_workers: int = 3,
         dashboard_enabled: bool = False,
+        trusted_proxies: tuple[str, ...] = (),
         extra_api_config: str = "",
         keys: tuple = UPSTREAM_KEYS,
         endpoint_override: str | None = None,
@@ -210,6 +211,7 @@ server:
     log_file: {log_path}
   dashboard:
     enabled: {str(dashboard_enabled).lower()}
+  trusted_proxies: [{", ".join(f'"{p}"' for p in trusted_proxies)}]
   cors:
     allow_origins: ["*"]
     allow_credentials: false

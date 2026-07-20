@@ -2,18 +2,20 @@
 Request handler for intercepting and forwarding HTTP requests with token rotation.
 """
 
+import logging
 import random
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 import orjson
-from loguru import logger
 
 from ..common.constants import API_PATH_PREFIX
 from ..common.exceptions import MissingAPIKeyError, VariablesConfigurationError
 from ..common.models import ProxyRequest
 from ..utils.header import HeaderUtils
 from ..utils.substitution import apply_body_substitutions
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ..config.manager import ConfigManager
@@ -67,7 +69,20 @@ class RequestHandler:
         )
         if HeaderUtils.is_trusted_proxy(request.ip, trusted_proxies):
             proxy_ip = HeaderUtils.parse_source_ip_address(request.headers)
-            request.ip = proxy_ip if proxy_ip else request.ip
+            if proxy_ip:
+                # The access log only ever shows the socket peer, so without
+                # this there is no way to tell whether forwarding headers are
+                # being honoured or every client is sharing one quota.
+                logger.debug(
+                    f"Resolved client IP {proxy_ip} from headers "
+                    f"(trusted peer {request.ip})"
+                )
+                request.ip = proxy_ip
+        elif trusted_proxies:
+            logger.debug(
+                f"Peer {request.ip} is not in trusted_proxies; "
+                "forwarding headers ignored and quotas apply to the peer"
+            )
 
         request.user = self.get_proxy_api_key(request)
 

@@ -5,11 +5,13 @@ These are only registered when the dashboard is started with
 ``enable_control=True``.
 """
 
+import logging
 from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
-from loguru import logger
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ..api import DashboardAPI

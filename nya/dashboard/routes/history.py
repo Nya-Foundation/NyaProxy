@@ -6,11 +6,13 @@ current state only, and historical trends are served by Prometheus/Grafana
 via the ``/metrics`` endpoint.
 """
 
+import logging
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
-from loguru import logger
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ..api import DashboardAPI

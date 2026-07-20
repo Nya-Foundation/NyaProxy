@@ -3,13 +3,15 @@ Header processing utilities for NyaProxy.
 """
 
 import ipaddress
+import logging
 import re
 from typing import Any, Dict, Iterable, Optional, Set, Union
 
 from httpx import Headers
-from loguru import logger
 
 from ..common.constants import EXCLUDED_REQUEST_HEADERS
+
+logger = logging.getLogger(__name__)
 
 
 class HeaderUtils:

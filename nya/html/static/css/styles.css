@@ -2210,6 +2210,55 @@ table.data tbody > tr:not(.detail-row):hover {
   color: var(--text-2);
 }
 
+/* Paths are the widest, least predictable column: give it the slack and
+   truncate from the left so the distinguishing tail stays visible. */
+/* Constrain the button, not the cell: a max-width on a <td> is advisory
+   under automatic table layout, so the column would still push its
+   neighbours out. */
+.cell-path .cell-link {
+  display: block;
+  max-width: 190px;
+  direction: rtl;
+  text-align: left;
+}
+
+/* The masked key is short and fixed-width; never let it collapse. */
+.table-history td:last-child,
+.table-history th:last-child {
+  white-space: nowrap;
+}
+
+.cell-path .cell-link::before {
+  content: "\200E"; /* keep the leading slash on the left under rtl */
+}
+
+.path-table {
+  margin-top: var(--sp-4);
+}
+
+.path-table th {
+  padding: 0 0 var(--sp-1);
+  color: var(--text-3);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: left;
+}
+
+.path-table th.col-num {
+  text-align: right;
+}
+
+.path-table .path-filter-btn {
+  max-width: 100%;
+  padding: 0;
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Latency reads against the slowest response currently on screen. */
 .cell-latency {
   position: relative;
@@ -2410,8 +2459,11 @@ table.data tbody > tr:not(.detail-row):hover {
     flex: none;
   }
 
-  .panel-history table th:nth-child(5),
-  .panel-history table td:nth-child(5) {
+  /* Drop the key, then the path: both are recoverable from the API detail. */
+  .panel-history table th:nth-child(6),
+  .panel-history table td:nth-child(6),
+  .panel-history table th:nth-child(3),
+  .panel-history table td:nth-child(3) {
     display: none;
   }
 

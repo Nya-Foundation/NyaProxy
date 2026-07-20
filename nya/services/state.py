@@ -14,12 +14,14 @@ would spend upstream quota on a response nobody is waiting for.
 
 import hashlib
 import json
+import logging
 import os
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
-from loguru import logger
+logger = logging.getLogger(__name__)
+
 
 STATE_VERSION = 1
 

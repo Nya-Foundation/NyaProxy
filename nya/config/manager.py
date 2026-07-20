@@ -2,15 +2,17 @@
 Configuration manager for NyaProxy using Nacho.
 """
 
+import logging
 import os
 import re
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
-from loguru import logger
 from nacho import FileStorageBackend, Nacho, NachoOrchestrator, RemoteStorageBackend
 
 from nya.common.constants import DEFAULT_HOST, DEFAULT_PORT
 from nya.common.exceptions import ConfigurationError
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 

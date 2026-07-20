@@ -47,6 +47,7 @@ const state = {
   statusChip: "all",
   historyApi: null, // cross-filter: show only this API in the traffic log
   historyKey: null, // cross-filter: show only this credential
+  historyPath: null, // cross-filter: show only this upstream path
   sort: { key: "requests", dir: "desc" },
   openApi: null,
   idleOpen: false,
@@ -247,6 +248,7 @@ function deriveAnalytics(history, metrics) {
           total: 0,
           errors: 0,
           latencies: [],
+          paths: new Map(),
         };
         perApi.set(e.api_name, a);
       }
@@ -254,6 +256,17 @@ function deriveAnalytics(history, metrics) {
       a.total += 1;
       if (err) a.errors += 1;
       if (ms) a.latencies.push(ms);
+
+      // Which endpoints an upstream is actually serving, and how well.
+      const route = e.path || "/";
+      let p = a.paths.get(route);
+      if (!p) {
+        p = { total: 0, errors: 0, latencies: [] };
+        a.paths.set(route, p);
+      }
+      p.total += 1;
+      if (err) p.errors += 1;
+      if (ms) p.latencies.push(ms);
     }
 
     if (e.key_id != null) {
@@ -291,12 +304,25 @@ function deriveAnalytics(history, metrics) {
   const apis = {};
   for (const [name, a] of perApi) {
     const sorted = a.latencies.slice().sort((x, y) => x - y);
+    const paths = [...a.paths.entries()]
+      .map(([route, p]) => ({
+        path: route,
+        total: p.total,
+        errors: p.errors,
+        errorRate: p.total ? (p.errors / p.total) * 100 : 0,
+        p95: percentile(
+          p.latencies.slice().sort((x, y) => x - y),
+          95
+        ),
+      }))
+      .sort((x, y) => y.total - x.total || x.path.localeCompare(y.path));
     apis[name] = {
       series: a.buckets,
       total: a.total,
       errors: a.errors,
       errorRate: a.total ? (a.errors / a.total) * 100 : 0,
       p95: percentile(sorted, 95),
+      paths,
     };
   }
 
@@ -905,6 +931,29 @@ function detailRowHtml(name, a) {
     )
     .join("");
 
+  // Which endpoints this upstream actually serves. Derived from the recent
+  // sample, so it is labelled as such rather than shown beside all-time counts.
+  const pathRows = ((trend && trend.paths) || [])
+    .slice(0, 8)
+    .map(
+      (p) =>
+        `<tr><td class="mono cell-muted"><button type="button" class="link-btn path-filter-btn"
+            data-path="${escapeHtml(p.path)}"
+            title="Show ${escapeHtml(p.path)} in the traffic log">${escapeHtml(
+          p.path
+        )}</button></td>
+        <td class="cell-num">${fmt.int(p.total)}</td>
+        <td class="cell-num">${
+          p.errorRate > 0
+            ? `<span class="badge ${
+                p.errorRate > 5 ? "badge-err" : "badge-warn"
+              }">${p.errorRate.toFixed(1)}%</span>`
+            : '<span class="cell-muted">—</span>'
+        }</td>
+        <td class="cell-num cell-muted">${fmt.latency(p.p95)}</td></tr>`
+    )
+    .join("");
+
   return `<tr class="detail-row" id="${detailId(name)}"><td colspan="9">
     <div class="detail-band">
       <div class="detail-head">
@@ -939,6 +988,17 @@ function detailRowHtml(name, a) {
             : ""
         }
       </div>`
+          : ""
+      }
+      ${
+        pathRows
+          ? `<div class="mini-table path-table">
+          <h4>Top paths <span class="dd-note">recent</span></h4>
+          <table>
+            <thead><tr><th>Path</th><th class="col-num">Requests</th><th class="col-num">Err</th><th class="col-num">p95</th></tr></thead>
+            <tbody>${pathRows}</tbody>
+          </table>
+        </div>`
           : ""
       }
     </div>
@@ -1208,6 +1268,8 @@ function renderActiveFilters() {
     chips.push({ kind: "api", label: "API", value: state.historyApi });
   if (state.historyKey)
     chips.push({ kind: "key", label: "Key", value: state.historyKey });
+  if (state.historyPath)
+    chips.push({ kind: "path", label: "Path", value: state.historyPath });
 
   if (!chips.length) {
     bar.hidden = true;
@@ -1220,7 +1282,7 @@ function renderActiveFilters() {
       .map(
         (c) =>
           `<span class="filter-tag">${c.label}
-        <strong class="${c.kind === "key" ? "mono" : ""}">${escapeHtml(
+        <strong class="${c.kind === "key" || c.kind === "path" ? "mono" : ""}">${escapeHtml(
             c.value
           )}</strong>
         <button type="button" class="filter-x" data-clear="${c.kind}"
@@ -1238,7 +1300,7 @@ function renderHistory() {
     const s = state.sections.history;
     if (!s.attempted) return; // keep skeletons
     if (s.failed && !s.lastSuccess) {
-      body.innerHTML = `<tr class="empty-row"><td colspan="5"><div class="empty-state">${COIN_GLYPH}Couldn't load request history — retrying automatically.</div></td></tr>`;
+      body.innerHTML = `<tr class="empty-row"><td colspan="6"><div class="empty-state">${COIN_GLYPH}Couldn't load request history — retrying automatically.</div></td></tr>`;
       return 0;
     }
   }
@@ -1255,7 +1317,7 @@ function renderHistory() {
   renderChips(counts, responses.length);
 
   if (responses.length === 0) {
-    body.innerHTML = `<tr class="empty-row"><td colspan="5"><div class="empty-state">${COIN_GLYPH}No requests yet.</div></td></tr>`;
+    body.innerHTML = `<tr class="empty-row"><td colspan="6"><div class="empty-state">${COIN_GLYPH}No requests yet.</div></td></tr>`;
     return 0;
   }
 
@@ -1268,10 +1330,12 @@ function renderHistory() {
     )
     .filter((e) => !state.historyApi || e.api_name === state.historyApi)
     .filter((e) => !state.historyKey || e.key_id === state.historyKey)
+    .filter((e) => !state.historyPath || (e.path || "/") === state.historyPath)
     .filter(
       (e) =>
         !filter ||
-        [e.api_name, e.status_code, e.key_id, fmt.time(e.timestamp)].some((v) =>
+        [e.api_name, e.path, e.status_code, e.key_id, fmt.time(e.timestamp)].some(
+          (v) =>
           String(v ?? "")
             .toLowerCase()
             .includes(filter)
@@ -1284,7 +1348,7 @@ function renderHistory() {
     const label = filter
       ? `No matches for “${escapeHtml(filter)}”.`
       : `No responses match the current filters.`;
-    body.innerHTML = `<tr class="empty-row"><td colspan="5"><div class="empty-state">${label}
+    body.innerHTML = `<tr class="empty-row"><td colspan="6"><div class="empty-state">${label}
       <button type="button" class="link-btn clear-search-btn">Clear filters</button></div></td></tr>`;
     return 0;
   }
@@ -1304,6 +1368,11 @@ function renderHistory() {
         )}" title="Filter the log by ${escapeHtml(
         e.api_name
       )}">${escapeHtml(e.api_name)}</button></td>
+        <td class="cell-path"><button type="button" class="cell-link mono"
+          data-filter-path="${escapeHtml(e.path || "/")}"
+          title="Filter the log by ${escapeHtml(
+            e.path || "/"
+          )}">${escapeHtml(e.path || "/")}</button></td>
         <td><span class="badge ${BADGE_BY_CLASS[cls]}">${escapeHtml(
         e.status_code
       )}</span></td>
@@ -1569,9 +1638,16 @@ function setHistoryKey(id) {
   announce(`${n ?? 0} requests shown`);
 }
 
+function setHistoryPath(path) {
+  state.historyPath = state.historyPath === path ? null : path;
+  const n = renderHistory();
+  announce(`${n ?? 0} requests shown`);
+}
+
 function clearHistoryFilters() {
   state.historyApi = null;
   state.historyKey = null;
+  state.historyPath = null;
   state.historyFilter = "";
   state.statusChip = "all";
   $("history-search").value = "";
@@ -1601,6 +1677,16 @@ function wireApiTable() {
     const view = e.target.closest(".view-traffic-btn");
     if (view) {
       state.historyApi = view.dataset.api;
+      renderHistory();
+      scrollToHistory();
+      return;
+    }
+    const pathBtn = e.target.closest(".path-filter-btn");
+    if (pathBtn) {
+      state.historyApi = pathBtn.closest("tr.detail-row")
+        ? state.openApi
+        : state.historyApi;
+      state.historyPath = pathBtn.dataset.path;
       renderHistory();
       scrollToHistory();
       return;
@@ -1707,6 +1793,7 @@ function wireHistory() {
     const x = e.target.closest(".filter-x");
     if (!x) return;
     if (x.dataset.clear === "api") state.historyApi = null;
+    else if (x.dataset.clear === "path") state.historyPath = null;
     else state.historyKey = null;
     writeHash();
     renderHistory();
@@ -1722,6 +1809,11 @@ function wireHistory() {
     const apiBtn = e.target.closest("[data-filter-api]");
     if (apiBtn) {
       setHistoryApi(apiBtn.dataset.filterApi);
+      return;
+    }
+    const pathBtn = e.target.closest("[data-filter-path]");
+    if (pathBtn) {
+      setHistoryPath(pathBtn.dataset.filterPath);
       return;
     }
     const keyBtn = e.target.closest("[data-filter-key]");
@@ -1746,7 +1838,7 @@ function wireShortcuts() {
         disarmAll();
         return;
       }
-      if (state.historyApi || state.historyKey) {
+      if (state.historyApi || state.historyKey || state.historyPath) {
         clearHistoryFilters();
         return;
       }

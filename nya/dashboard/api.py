@@ -7,13 +7,13 @@ this module only constructs the app and wires those route groups in.
 """
 
 import importlib.resources
+import logging
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from loguru import logger
 
 from .._version import __version__
 from .routes import (
@@ -23,6 +23,8 @@ from .routes import (
     register_page_routes,
     register_queue_routes,
 )
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ..config.manager import ConfigManager
