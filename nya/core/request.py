@@ -84,7 +84,9 @@ class RequestExecutor:
         track = bool(self.metrics_collector)
 
         if track:
-            self.metrics_collector.record_request(api_name, request.api_key)
+            self.metrics_collector.record_request(
+                api_name, request.api_key, request.trail_path
+            )
 
         logger.debug(f"[Request] Method: {request.method.upper()}, URL: {request.url}")
 
@@ -100,6 +102,7 @@ class RequestExecutor:
                     request.api_key,
                     0,
                     time.time() - actual_start_time,
+                    request.trail_path,
                 )
             raise
 
@@ -128,6 +131,7 @@ class RequestExecutor:
                         request.api_key,
                         response.status_code,
                         time.time() - actual_start_time,
+                        request.trail_path,
                     )
                 )
             return streaming
@@ -141,6 +145,7 @@ class RequestExecutor:
                     request.api_key,
                     0,
                     time.time() - actual_start_time,
+                    request.trail_path,
                 )
             raise
 
@@ -150,6 +155,7 @@ class RequestExecutor:
                 request.api_key,
                 response.status_code,
                 time.time() - actual_start_time,
+                request.trail_path,
             )
         return result
 

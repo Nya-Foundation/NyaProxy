@@ -10,7 +10,7 @@ bounded ring buffer of recent requests, used purely for the dashboard's
 
 import time
 from collections import defaultdict, deque
-from typing import Any, Deque, Dict, List
+from typing import Any, Deque, Dict, List, Optional
 
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
@@ -122,8 +122,16 @@ class MetricsCollector:
 
     # ----------------------------------------------------------------- write
 
-    def record_request(self, api_name: str, api_key: str) -> None:
-        """Record a request being sent to an upstream API."""
+    def record_request(
+        self, api_name: str, api_key: str, path: Optional[str] = None
+    ) -> None:
+        """
+        Record a request being sent to an upstream API.
+
+        ``path`` is kept in the history buffer only, never as a Prometheus
+        label: paths are unbounded, and one label per distinct path would grow
+        the metric series without limit.
+        """
         key_id = mask_secret(api_key)
         now = time.time()
 
@@ -137,12 +145,18 @@ class MetricsCollector:
                 "type": "request",
                 "api_name": api_name,
                 "key_id": key_id,
+                "path": path or "/",
                 "timestamp": now,
             }
         )
 
     def record_response(
-        self, api_name: str, api_key: str, status_code: int, elapsed: float
+        self,
+        api_name: str,
+        api_key: str,
+        status_code: int,
+        elapsed: float,
+        path: Optional[str] = None,
     ) -> None:
         """Record a response received from an upstream API."""
         self._responses.labels(api=api_name, status=str(status_code)).inc()
@@ -156,6 +170,7 @@ class MetricsCollector:
                 "key_id": mask_secret(api_key),
                 "status_code": status_code,
                 "elapsed_ms": elapsed * 1000,
+                "path": path or "/",
                 "timestamp": time.time(),
             }
         )
