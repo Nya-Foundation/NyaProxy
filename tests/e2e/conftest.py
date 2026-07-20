@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import random
 import socket
 import subprocess
 import sys
@@ -48,7 +49,19 @@ class UpstreamState:
     records: list[dict[str, Any]] = field(default_factory=list)
     statuses_by_key: dict[str, list[int]] = field(default_factory=dict)
     default_status: int = 200
+    #: Probability that any request is rejected 429 — models the credential
+    #: being shared with consumers outside NyaProxy. Seeded so a run's total
+    #: rejection count is stable.
+    shared_key_429_rate: float = 0.0
+    rng: random.Random = field(default_factory=lambda: random.Random(42))
     lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def externally_limited(self) -> bool:
+        with self.lock:
+            return (
+                self.shared_key_429_rate > 0
+                and self.rng.random() < self.shared_key_429_rate
+            )
 
     def next_status(self, key: str) -> int:
         with self.lock:
@@ -85,17 +98,16 @@ def upstream_server():
         except json.JSONDecodeError:
             body = raw_body.decode("utf-8", errors="replace")
 
-        state.add_record(
-            {
-                "method": request.method,
-                "path": f"/{path}",
-                "query": request.url.query,
-                "authorization": auth,
-                "x_api_key": request.headers.get("x-api-key", ""),
-                "key": key,
-                "body": body,
-            }
-        )
+        record = {
+            "method": request.method,
+            "path": f"/{path}",
+            "query": request.url.query,
+            "authorization": auth,
+            "x_api_key": request.headers.get("x-api-key", ""),
+            "key": key,
+            "body": body,
+        }
+        state.add_record(record)
 
         if path == "stream":
 
@@ -121,6 +133,22 @@ def upstream_server():
                 raise RuntimeError("upstream stream failure")
 
             return StreamingResponse(broken_events(), media_type="text/event-stream")
+
+        if path.startswith("sleep-"):
+            # Controllable hold time, e.g. /sleep-300 holds the key for
+            # 300ms — the shape of an image-generation call. When the key is
+            # "shared" with external consumers, the upstream may reject at
+            # the gate without doing any work.
+            record["at"] = time.time()
+            if state.externally_limited():
+                record["status"] = 429
+                record["done_at"] = time.time()
+                return JSONResponse(status_code=429, content={"error": "busy"})
+            duration_ms = int(path.rsplit("-", 1)[1])
+            await asyncio.sleep(duration_ms / 1000)
+            record["status"] = 200
+            record["done_at"] = time.time()
+            return JSONResponse(content={"slept_ms": duration_ms, "key": key})
 
         if path == "slow":
             await asyncio.sleep(4)

@@ -173,6 +173,18 @@ class RateLimiter:
         self.touch()
         self._locked_until = None
 
+    def time_until_unlocked(self) -> float:
+        """
+        Seconds until the concurrency lock expires on its own.
+
+        This is what makes a locked key a *timed* wait rather than an unknown:
+        a waiter can sleep exactly this long as its worst case, with an early
+        wake-up when the holder releases first.
+        """
+        if self._locked_until is None:
+            return 0.0
+        return max(0.0, self._locked_until - time.time())
+
     def block_for(self, duration: float) -> None:
         """
         Block requests for a specific duration (e.g. key cool-down after a
