@@ -57,6 +57,12 @@ class RequestQueue:
         # visible in the priority queue.
         self._retry_tasks: Dict[asyncio.Task, "ProxyRequest"] = {}
 
+        # Requests a worker has claimed and is holding while it waits for a
+        # key or quota. They are no longer in the priority queue, so qsize()
+        # alone under-reports how much work is actually waiting — with few
+        # concurrent clients it reads zero while every worker spins.
+        self._waiting: Dict[str, int] = {}
+
         # Registered processor
         self._processor: Optional[Callable[["ProxyRequest"], Awaitable["Response"]]] = (
             None
@@ -135,7 +141,11 @@ class RequestQueue:
                     )
                     continue
 
-                key = await self._wait_for_key(api_name, request)
+                self._waiting[api_name] = self._waiting.get(api_name, 0) + 1
+                try:
+                    key = await self._wait_for_key(api_name, request)
+                finally:
+                    self._waiting[api_name] = max(0, self._waiting.get(api_name, 1) - 1)
                 if key is None:
                     continue
 
@@ -475,6 +485,18 @@ class RequestQueue:
         Get queue sizes for all APIs.
         """
         return {api_name: queue.qsize() for api_name, queue in self._queues.items()}
+
+    def get_all_waiting_counts(self) -> Dict[str, int]:
+        """
+        Requests currently held by a worker while it waits for a key.
+
+        These left the priority queue when the worker claimed them, so they
+        are invisible to get_all_queue_sizes — yet they are exactly the
+        requests waiting hardest for upstream capacity.
+        """
+        return {
+            api_name: count for api_name, count in self._waiting.items() if count > 0
+        }
 
     def register_processor(
         self, processor: Callable[["ProxyRequest"], Awaitable[Any]]

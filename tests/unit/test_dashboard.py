@@ -64,6 +64,9 @@ class FakeRequestQueue:
     def get_all_queue_sizes(self):
         return {"openai": 2, "gemini": 0}
 
+    def get_all_waiting_counts(self):
+        return {"openai": 3}
+
     async def clear_queue(self, api_name):
         return 2
 
@@ -192,7 +195,11 @@ def test_api_history_scoped_to_one_api(client):
 def test_queue_status_returns_sizes(client):
     resp = client.get("/api/queue")
     assert resp.status_code == 200
-    assert resp.json()["queue_sizes"]["openai"] == 2
+    body = resp.json()
+    assert body["queue_sizes"]["openai"] == 2
+    # Requests claimed by a worker and waiting for a key left the priority
+    # queue, so without this field the dashboard reads zero while workers spin.
+    assert body["waiting"] == {"openai": 3}
 
 
 def test_queue_status_503_without_queue(bare_client):

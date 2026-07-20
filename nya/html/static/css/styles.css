@@ -1541,7 +1541,9 @@ table.data tbody > tr:not(.detail-row):hover {
 
 .queue-strip .chip {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  /* dot · name · (waiting-for-key, optional) · queued · actions — empty
+     tracks collapse to zero width when the waiting badge is absent. */
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
   width: 100%;
   min-height: 44px;
   padding: var(--sp-2) var(--sp-3);
@@ -1575,6 +1577,30 @@ table.data tbody > tr:not(.detail-row):hover {
   border-radius: var(--r-full);
   background: var(--warn-bg);
   color: var(--warn);
+}
+
+/* Requests a worker has claimed and is holding for a key — waiting on the
+   upstream's capacity rather than on a free worker. */
+.chip-waiting {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--r-full);
+  background: var(--accent-tint);
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.chip-waiting-label {
+  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .idle-disclosure {

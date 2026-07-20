@@ -339,3 +339,50 @@ async def test_queue_resource_limit_checks_endpoint_and_key_waits():
         0, result=("key-a", 0)
     )
     assert await queue._check_for_resource_limit("mock") == ("key-a", 0.0)
+
+
+@pytest.mark.asyncio
+async def test_waiting_requests_are_counted_after_a_worker_claims_them():
+    """
+    A worker takes a request out of the priority queue *before* it waits for
+    a key, so qsize() reads zero while every worker spins. The dashboard sat
+    on qsize alone and showed an empty queue panel against a log full of
+    "Resource Unavailable" — the waiting count is what closes that gap.
+    """
+    config = CoreConfig()
+    config.key_concurrency = False
+    config.queue_expiry = 30
+    control = TrafficManager(config)
+
+    # Every key locked: the worker will claim the request and then wait.
+    for key in config.keys:
+        control.get_key_limiter("mock", key).lock(ttl=30)
+
+    queue = RequestQueue(config, control)
+    queue.register_processor(lambda request: asyncio.sleep(0, result=Response()))
+
+    request = make_request()
+    request.api_name = "mock"
+    request._rate_limited = False
+    await queue.enqueue_request(request)
+
+    # Give the worker a moment to claim it and enter the wait loop.
+    for _ in range(50):
+        await asyncio.sleep(0.01)
+        if queue.get_all_waiting_counts().get("mock"):
+            break
+
+    assert queue.get_all_queue_sizes().get("mock", 0) == 0  # the user's report
+    assert queue.get_all_waiting_counts() == {"mock": 1}  # the missing number
+
+    # Free a key: the request completes and the waiting count drains.
+    control.unlock_key("mock", config.keys[0])
+    await asyncio.wait_for(request.future, timeout=5)
+
+    for _ in range(50):
+        await asyncio.sleep(0.01)
+        if not queue.get_all_waiting_counts():
+            break
+    assert queue.get_all_waiting_counts() == {}
+
+    await queue.close()

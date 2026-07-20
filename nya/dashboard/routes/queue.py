@@ -25,7 +25,20 @@ def register_queue_routes(app: FastAPI, dashboard: "DashboardAPI") -> None:
                 status_code=503, content={"error": "Request queue not available"}
             )
         try:
-            return {"queue_sizes": dashboard.request_queue.get_all_queue_sizes()}
+            # queue_sizes counts requests still in the priority queue;
+            # waiting counts requests a worker has claimed and is holding
+            # until a key or quota frees up. Both are work that has not
+            # reached the upstream yet.
+            queue = dashboard.request_queue
+            waiting = (
+                queue.get_all_waiting_counts()
+                if hasattr(queue, "get_all_waiting_counts")
+                else {}
+            )
+            return {
+                "queue_sizes": queue.get_all_queue_sizes(),
+                "waiting": waiting,
+            }
         except Exception as e:
             logger.error(f"Error retrieving queue status: {str(e)}")
             return JSONResponse(
