@@ -1,6 +1,117 @@
 # CHANGELOG
 
 
+## v0.8.0 (2026-07-20)
+
+### Features
+
+- **dashboard**: Show the upstream path in the traffic log
+  ([`8813534`](https://github.com/Nya-Foundation/NyaProxy/commit/881353458dbb3c519e7ec5543d6f58dd38decf95))
+
+The traffic log could tell you an API returned a 401 but not which endpoint it was calling, which is
+  the first thing you want when one route on an upstream starts failing.
+
+Record the trail path — the segment after the API name, no query string — on every history entry,
+  and surface it two ways: a Path column in the traffic log, and a per-API "Top paths" breakdown
+  with request count, error rate and p95 in the detail band. Paths in both are click-to-filter
+  handles like the API and key columns, and stack with them.
+
+The path is kept in the history buffer only, never as a Prometheus label: paths are unbounded, and a
+  series per distinct path would grow the registry without limit. A test asserts it stays out of the
+  exposition output.
+
+The breakdown is derived from the recent sample rather than a new counter, so it needs no extra
+  endpoint and is labelled "recent" beside the all-time figures it sits next to.
+
+Path cells constrain the inner control rather than the cell, since a max-width on a <td> is advisory
+  under automatic table layout and the column would otherwise squeeze the key column down to
+  "sk-...o". Long paths truncate from the left so the distinguishing tail stays readable.
+
+Verified against a running dashboard: headers read Time/API/Path/Status/ Latency/Key, rows show the
+  real path, clicking one filters the log to that path alone, and the API detail lists its top paths
+  with error rates and p95. No console errors.
+
+### Refactoring
+
+- Drop loguru for the standard library
+  ([`7db9137`](https://github.com/Nya-Foundation/NyaProxy/commit/7db9137f66537577a9122ffa4d0a0f611502c47b))
+
+Uvicorn, Starlette, watchfiles, httpx, and nacho all log through the standard library, so logging
+  through loguru meant bridging the two with an intercepting handler. That bridge was pure
+  accidental complexity, and it was where both of yesterday's logging bugs lived: the frame walk
+  that reported logging's own internals as the origin, and third-party loggers keeping an explicit
+  level that quietly outranked the configured one.
+
+The coupling turned out to be one file deep. All 84 call sites used only debug/info/warning/error,
+  which are identical in the standard library, and every loguru-specific call lived in
+  nya/common/logging.py. Nothing else in the dependency tree wanted loguru, so it leaves the install
+  entirely.
+
+Also simplify the format. The emitting function and line were noise on every line:
+
+before: ... | INFO | nya.server.app:setup_proxy_routes:370 - Setting up routes
+
+after: ... | INFO | nya.server.app - Setting up routes
+
+The logger name already says which subsystem spoke, and anything worth locating precisely arrives
+  with a traceback carrying the exact position. Levels are still padded and coloured on a terminal,
+  never in the file, and NO_COLOR is honoured. rotation="10 MB"/retention=5 becomes
+  RotatingFileHandler(maxBytes=10MiB, backupCount=5).
+
+Verified with loguru uninstalled from the environment: every module imports, the server starts, and
+  stderr and app.log carry one format for both sources:
+
+2026-07-19 23:17:47.507 | INFO | nya.server.app - Setting up generic proxy routes 2026-07-19
+  23:17:55.203 | INFO | uvicorn.access - 127.0.0.1:37762 - "GET /health HTTP/1.1" 200
+
+- Unify the log format across NyaProxy and Uvicorn
+  ([`77d751b`](https://github.com/Nya-Foundation/NyaProxy/commit/77d751b513f4cf7f227734bdd61d73b418f30ca1))
+
+NyaProxy logs through loguru while Uvicorn, Starlette, and watchfiles log through the standard
+  library, so a running gateway interleaved two shapes:
+
+2026-07-18 19:10:01.938 | INFO | nya.server.app:trigger_reload:536 - ... INFO: 172.17.0.1:44650 -
+  "GET /api/novelai/... HTTP/1.0" 200 OK
+
+The second carries neither a timestamp nor a logger name, so the two cannot be correlated and the
+  access log cannot be parsed alongside everything else.
+
+Route the standard library through loguru with an intercepting handler so every line shares one
+  format. Applied at import as well as after the configuration is read, so Uvicorn's own startup
+  lines are covered, and log_config=None is passed to uvicorn.run — its default config would
+  otherwise reinstall its formatters over ours.
+
+Two details worth recording, both found by running a server rather than by reading the code:
+
+- The origin is taken from the LogRecord instead of by walking frames. The usual frame walk reports
+  logging's own internals, so every intercepted line read "logging:callHandlers:1736"; the record
+  already knows it came from uvicorn.access, which is the more useful name. - Managed loggers are
+  reset to NOTSET. Uvicorn sets an explicit level on them (that is what --log-level does) and an
+  explicit level beats the root's, so the level from the configuration file was being silently
+  overridden. This surfaced as two tests failing only when the e2e suite ran first, because its
+  in-process Uvicorn had left uvicorn.access pinned at WARNING.
+
+Access logs now read:
+
+2026-07-19 23:08:50.770 | INFO | uvicorn.access:send:482 - 127.0.0.1 - "GET /health HTTP/1.1" 200
+
+### Testing
+
+- Cover forwarded client IPs from a trusted proxy
+  ([`3365905`](https://github.com/Nya-Foundation/NyaProxy/commit/33659054880b19cb9ad1c0b7f5ca6caf22c18c51))
+
+Behind a reverse proxy the socket peer is the proxy, so if forwarding headers are ignored every user
+  shares one IP quota. Only the negative case was covered — an untrusted peer cannot spoof its
+  address — and nothing asserted that a trusted peer's headers are actually honoured.
+
+Add e2e coverage for both header shapes nginx sends: quotas apply per X-Forwarded-For client, and
+  X-Real-IP alone is enough. The harness gains a trusted_proxies knob.
+
+Also log the resolution at debug level. The uvicorn access log always prints the socket peer, which
+  makes a correctly configured deployment look broken and gives an operator no way to tell the two
+  apart. Both branches are logged, so an untrusted peer says so rather than staying silent.
+
+
 ## v0.7.2 (2026-07-19)
 
 ### Bug Fixes
