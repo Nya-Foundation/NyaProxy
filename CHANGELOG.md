@@ -1,6 +1,44 @@
 # CHANGELOG
 
 
+## v0.8.1 (2026-07-20)
+
+### Bug Fixes
+
+- Expire concurrency locks so a missed release cannot deadlock an API
+  ([`d325671`](https://github.com/Nya-Foundation/NyaProxy/commit/d32567164fb52acb0d3c2e53bdfb60b42e01c018))
+
+With key_concurrency: false a key is locked for the duration of a request, and nothing ever expired
+  that lock. Any path that failed to release one took the credential out of rotation for the
+  lifetime of the process; once every key had leaked, the API stopped serving entirely and stayed
+  that way.
+
+The reported symptom was a queue stuck for 30 minutes logging a wait that never changed:
+
+DEBUG | nya.core.queue - Resource Unavailable for novelai endpoint - wait time: 0.50s
+
+That constant is diagnostic. time_to_key_ready treats a locked key as inf, and falls through to a
+  hardcoded `return 1.0` when every key is inf, which the queue halves to 0.50s. A rate-limit wait
+  would count down; only an all-locked pool produces a fixed value forever.
+
+Make the lock a deadline rather than a flag. `locked` becomes a property that expires on its own, so
+  every existing reader — is_limited, _key_is_unavailable, time_to_key_ready — picks up the recovery
+  with no change. The ceiling is twice the API's request timeout, floored at 60s: generous on
+  purpose, because releasing a key still in use would put two requests on one credential, which is
+  the thing key_concurrency: false exists to prevent, and a streamed response can outlive the
+  request timeout since that bounds only the upstream call. An expiry logs a warning: it means a
+  release was missed, which is a bug worth seeing rather than silently absorbing.
+
+Also stop watchfiles logging every filesystem event at INFO. Uvicorn's reloader watches the working
+  directory, which is where log_file usually lives, so writing a log line produced an event that
+  logged a line — a feedback loop visible in the same report as "1 change detected" every 350ms.
+  That was a regression from routing the standard library through the shared handler, which put
+  those records into the log file for the first time.
+
+Verified by mutation: with the expiry removed, both new tests fail with exactly the production
+  signature — time_to_key_ready pinned at 1.0.
+
+
 ## v0.8.0 (2026-07-20)
 
 ### Features
