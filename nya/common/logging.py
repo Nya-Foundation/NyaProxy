@@ -1,35 +1,45 @@
 """
 One logging configuration for the whole process.
 
-NyaProxy logs through loguru while Uvicorn, Starlette, and watchfiles log
-through the standard library, so a running gateway emitted two different
-formats interleaved:
+Everything logs through the standard library — NyaProxy, Uvicorn, Starlette,
+watchfiles, httpx, and nacho — so a single root handler gives every line the
+same shape without any bridging between logging frameworks.
 
-    2026-07-18 19:10:01.938 | INFO     | nya.server.app:trigger_reload:536 - ...
-    INFO:     172.17.0.1:44650 - "GET /api/novelai/... HTTP/1.0" 200 OK
+The format deliberately stops at the logger name:
 
-The second form carries no timestamp and no logger name, which makes the two
-impossible to correlate and awkward to parse. Routing the standard library
-through loguru gives every line the same shape, timestamps included.
+    2026-07-19 23:08:44.076 | INFO     | nya.server.app - Setting up routes
+    2026-07-19 23:08:50.770 | INFO     | uvicorn.access - 127.0.0.1 - "GET /health" 200
+
+The emitting module, function, and line are omitted: the name already says
+which subsystem spoke, and anything worth locating precisely arrives with a
+traceback that carries the exact position.
 """
 
 import logging
+import logging.handlers
+import os
 import sys
 from typing import Optional
 
-from loguru import logger
+#: Shared line format. ``levelcolor`` is filled in by the formatter so the
+#: level can be padded before any escape codes are added.
+LOG_FORMAT = "%(asctime)s.%(msecs)03d | %(levelcolor)s | %(name)s - %(message)s"
+DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
-#: Shared line format. Kept identical to loguru's default so NyaProxy's own
-#: output is unchanged and only the standard-library loggers move to match it.
-LOG_FORMAT = (
-    "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
-    "<level>{level: <8}</level> | "
-    "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
-    "<level>{message}</level>"
-)
+#: Size-based rotation, matching what the configuration documents.
+_MAX_BYTES = 10 * 1024 * 1024
+_BACKUP_COUNT = 5
 
-#: Third-party loggers that install handlers of their own. Their handlers are
-#: removed so records reach the root interceptor exactly once.
+_RESET = "\033[0m"
+_LEVEL_COLORS = {
+    "DEBUG": "\033[36m",  # cyan
+    "INFO": "\033[32m",  # green
+    "WARNING": "\033[33m",  # yellow
+    "ERROR": "\033[31m",  # red
+    "CRITICAL": "\033[1;31m",  # bold red
+}
+
+#: Third-party loggers that install handlers or pin levels of their own.
 _MANAGED_LOGGERS = (
     "uvicorn",
     "uvicorn.error",
@@ -45,29 +55,27 @@ _MANAGED_LOGGERS = (
 )
 
 
-class InterceptHandler(logging.Handler):
-    """Forward standard-library records to loguru."""
+class Formatter(logging.Formatter):
+    """Shared formatter, optionally colouring the level for a terminal."""
 
-    def emit(self, record: logging.LogRecord) -> None:
-        try:
-            level = logger.level(record.levelname).name
-        except ValueError:
-            # A numeric or custom level with no loguru equivalent.
-            level = record.levelno
+    def __init__(self, *, color: bool = False) -> None:
+        super().__init__(LOG_FORMAT, datefmt=DATE_FORMAT)
+        self.color = color
 
-        # Take the origin from the record itself. Letting loguru infer it by
-        # walking frames reports logging's own internals
-        # ("logging:callHandlers:1736"), and the record already carries the
-        # logger name — "uvicorn.access" is far more useful for correlation
-        # than whichever Uvicorn module happened to emit the line.
-        patched = logger.patch(
-            lambda r: r.update(
-                name=record.name,
-                function=record.funcName,
-                line=record.lineno,
-            )
-        )
-        patched.opt(exception=record.exc_info).log(level, record.getMessage())
+    def format(self, record: logging.LogRecord) -> str:
+        # Pad first, then colour: escape codes count towards a %-width and
+        # would otherwise break the column alignment.
+        level = f"{record.levelname:<8}"
+        if self.color:
+            level = f"{_LEVEL_COLORS.get(record.levelname, '')}{level}{_RESET}"
+        record.levelcolor = level
+        return super().format(record)
+
+
+def _supports_color(stream) -> bool:
+    if os.environ.get("NO_COLOR"):
+        return False
+    return bool(getattr(stream, "isatty", lambda: False)())
 
 
 def configure_logging(
@@ -78,47 +86,51 @@ def configure_logging(
     """
     Install the shared configuration. Safe to call more than once.
 
-    Called at import time so Uvicorn's own startup lines are formatted, and
-    again once the configuration file has been read.
+    Called at import so Uvicorn's startup lines are covered, and again once
+    the configuration file has been read.
     """
     normalized = (level or "INFO").upper()
+    root = logging.getLogger()
 
-    logger.remove()
+    for handler in root.handlers[:]:
+        root.removeHandler(handler)
+        handler.close()
 
     if not enabled:
-        # Silence loguru and keep the standard library from falling back to
-        # its own basicConfig output.
-        logging.basicConfig(handlers=[logging.NullHandler()], level=0, force=True)
-        for name in _MANAGED_LOGGERS:
-            logging.getLogger(name).handlers = []
+        root.addHandler(logging.NullHandler())
+        root.setLevel(logging.CRITICAL + 1)
+        _reset_managed_loggers()
         return
 
-    logger.add(sys.stderr, level=normalized, format=LOG_FORMAT)
+    stream = logging.StreamHandler(sys.stderr)
+    stream.setFormatter(Formatter(color=_supports_color(sys.stderr)))
+    root.addHandler(stream)
+
     if log_file:
-        logger.add(
+        file_handler = logging.handlers.RotatingFileHandler(
             log_file,
-            level=normalized,
-            format=LOG_FORMAT,
-            rotation="10 MB",
-            retention=5,
+            maxBytes=_MAX_BYTES,
+            backupCount=_BACKUP_COUNT,
+            encoding="utf-8",
         )
+        file_handler.setFormatter(Formatter(color=False))
+        root.addHandler(file_handler)
 
-    # Filter at the standard-library boundary too, so a quiet level also
-    # quietens third-party libraries instead of forwarding everything and
-    # dropping it at the sink.
-    logging.basicConfig(
-        handlers=[InterceptHandler()],
-        level=logging.getLevelName(normalized),
-        force=True,
-    )
+    root.setLevel(logging.getLevelName(normalized))
+    _reset_managed_loggers()
 
+
+def _reset_managed_loggers() -> None:
+    """
+    Hand the managed loggers back to the root configuration.
+
+    Uvicorn attaches its own handlers and pins an explicit level (that is what
+    --log-level does). An explicit level beats the root's, so leaving one in
+    place would silently override the level from the configuration file.
+    """
     for name in _MANAGED_LOGGERS:
         std_logger = logging.getLogger(name)
-        std_logger.handlers = []
+        for handler in std_logger.handlers[:]:
+            std_logger.removeHandler(handler)
         std_logger.propagate = True
-        # Reset to NOTSET so the level configured here is the one that
-        # applies. Uvicorn sets an explicit level on these loggers (its
-        # --log-level does exactly that), and an explicit level wins over the
-        # root's — leaving it in place would silently override the
-        # configuration file.
         std_logger.setLevel(logging.NOTSET)

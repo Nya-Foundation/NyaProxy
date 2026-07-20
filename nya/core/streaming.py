@@ -2,13 +2,15 @@
 Streaming response handling utilities for NyaProxy.
 """
 
+import logging
 import traceback
 from collections.abc import Callable
 from typing import Awaitable, Optional
 
 import httpx
-from loguru import logger
 from starlette.responses import StreamingResponse
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "handle_streaming_response",

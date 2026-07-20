@@ -2,18 +2,20 @@
 Request handler for intercepting and forwarding HTTP requests with token rotation.
 """
 
+import logging
 import random
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 import orjson
-from loguru import logger
 
 from ..common.constants import API_PATH_PREFIX
 from ..common.exceptions import MissingAPIKeyError, VariablesConfigurationError
 from ..common.models import ProxyRequest
 from ..utils.header import HeaderUtils
 from ..utils.substitution import apply_body_substitutions
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ..config.manager import ConfigManager

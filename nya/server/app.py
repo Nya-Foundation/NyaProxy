@@ -5,13 +5,13 @@ NyaProxy - A lightweight, header-based API proxy for managing authenticated upst
 
 import argparse
 import contextlib
+import logging
 import os
 import time
 from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, Request
-from loguru import logger
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse, Response
 
@@ -32,6 +32,8 @@ from ..dashboard.api import DashboardAPI
 from ..services.metrics import PROMETHEUS_CONTENT_TYPE, MetricsCollector
 from ..services.state import load_state, resolve_state_path, save_state
 from .auth import AuthManager, AuthMiddleware
+
+logger = logging.getLogger(__name__)
 
 # Applied at import so Uvicorn's startup lines share the format too; the
 # configured level and file sink are applied again once config is loaded.

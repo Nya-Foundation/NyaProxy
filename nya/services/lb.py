@@ -2,10 +2,12 @@
 Load balancer for selecting API keys based on various strategies.
 """
 
+import logging
 import random
 from typing import Callable, Dict, List, Optional, TypeVar
 
-from loguru import logger
+logger = logging.getLogger(__name__)
+
 
 T = TypeVar("T")
 

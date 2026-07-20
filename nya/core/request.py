@@ -2,11 +2,11 @@
 Simplified request executor focused on HTTP execution only.
 """
 
+import logging
 import time
 from typing import TYPE_CHECKING, Optional, Union
 
 import httpx
-from loguru import logger
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
 from ..utils.formatting import format_elapsed_time, json_safe_dumps
@@ -17,6 +17,8 @@ from .streaming import (
     detect_streaming_content,
     handle_streaming_response,
 )
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ..common.models import ProxyRequest

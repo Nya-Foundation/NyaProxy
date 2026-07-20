@@ -3,12 +3,11 @@ Simple priority queue for handling requests with built-in retry priority.
 """
 
 import asyncio
+import logging
 import random
 import time
 import traceback
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, List, Optional, Tuple
-
-from loguru import logger
 
 from ..common.exceptions import (
     QueueFullError,
@@ -17,6 +16,8 @@ from ..common.exceptions import (
     RequestExpiredError,
 )
 from ..utils.redaction import mask_secret
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from starlette.responses import Response
