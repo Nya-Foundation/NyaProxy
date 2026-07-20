@@ -9,6 +9,7 @@ import time
 import traceback
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
+from ..common.constants import QUEUE_WAIT_HEARTBEAT_SECONDS
 from ..common.exceptions import (
     QueueFullError,
     ReachedMaxQuotaError,
@@ -164,59 +165,108 @@ class RequestQueue:
     ) -> Optional[str]:
         """
         Wait until endpoint and key quota are available for a queued request.
+
+        Event-driven rather than polled: every constraint has a computable
+        deadline (rate-limit window, cool-down, lock TTL, client quota), so
+        the waiter sleeps exactly that long — and an explicit key release
+        notifies the API's condition to wake it early. The condition shares
+        the traffic lock, so checking, granting, and releasing are serialized
+        and a release cannot slip between "no key free" and "start waiting".
+
+        Waiters wake in the order they began waiting (asyncio.Condition keeps
+        a FIFO of waiters), which matches the order workers claimed them from
+        the priority heap — so grants approximate (priority, arrival) order
+        instead of the old fixed-tick lottery.
         """
         recorded_hit = False
-        while True:
-            proxy_wait = (
-                await self._check_for_proxy_limit(api_name, request)
-                if request._rate_limited
-                else 0.0
-            )
-            remaining = self.config.get_api_queue_expiry(api_name) - (
-                time.time() - request.added_at
-            )
-            if proxy_wait > max(remaining, 0.0):
-                if not request.future.done():
-                    request.future.set_exception(
-                        ReachedMaxQuotaError(api_name, proxy_wait)
+        logged_wait = False
+        started_waiting = time.time()
+        cond = self.control.get_wait_condition(api_name)
+
+        def _wake_on_client_exit(_future) -> None:
+            # A timed-out or disconnected client cancels the future; wake the
+            # waiter now so the worker is freed immediately instead of holding
+            # a slot until its next timed wake-up.
+            self.control.notify_key_released(api_name)
+
+        request.future.add_done_callback(_wake_on_client_exit)
+        try:
+            async with cond:
+                while True:
+                    proxy_wait = (
+                        await self._check_for_proxy_limit(api_name, request)
+                        if request._rate_limited
+                        else 0.0
                     )
-                return None
+                    remaining = self.config.get_api_queue_expiry(api_name) - (
+                        time.time() - request.added_at
+                    )
+                    if proxy_wait > max(remaining, 0.0):
+                        if not request.future.done():
+                            request.future.set_exception(
+                                ReachedMaxQuotaError(api_name, proxy_wait)
+                            )
+                        return None
 
-            if proxy_wait <= 0:
-                key, resource_wait = await self._check_for_resource_limit(
-                    api_name, enforce_rate_limits=request._rate_limited
-                )
-            else:
-                key, resource_wait = None, 0.0
-
-            wait_time = max(proxy_wait, resource_wait)
-            if key is not None and wait_time <= 0:
-                if request._rate_limited:
-                    self.control.record_ip_request(api_name, request.ip)
-                    self.control.record_user_request(api_name, request.user)
-                return key
-
-            # Count one rate-limit hit per request that has to wait, not one
-            # per spin of this loop.
-            if not recorded_hit and self.metrics_collector:
-                self.metrics_collector.record_rate_limit_hit(api_name)
-                recorded_hit = True
-
-            if request.future.done() or self._is_request_expired(request):
-                if not request.future.done():
-                    request.future.set_exception(
-                        RequestExpiredError(
-                            api_name=api_name,
-                            wait_time=time.time() - request.added_at,
+                    if proxy_wait <= 0:
+                        # The condition holds the traffic lock, so this is the
+                        # atomic check-and-grant.
+                        key, resource_wait = self.control.try_acquire_key(
+                            api_name, enforce_rate_limits=request._rate_limited
                         )
-                    )
-                return None
+                    else:
+                        key, resource_wait = None, 0.0
 
-            wait_time = max(wait_time / 2, 0.1)
-            logger.debug(
-                f"Resource Unavailable for {api_name} endpoint - wait time: {wait_time:.2f}s"
-            )
-            await asyncio.sleep(wait_time)
+                    wait_time = max(proxy_wait, resource_wait)
+                    if key is not None and wait_time <= 0:
+                        if request._rate_limited:
+                            self.control.record_ip_request(api_name, request.ip)
+                            self.control.record_user_request(api_name, request.user)
+                        if logged_wait:
+                            logger.debug(
+                                f"Acquired {api_name} key after waiting "
+                                f"{time.time() - started_waiting:.2f}s"
+                            )
+                        return key
+
+                    # Count one rate-limit hit per request that has to wait,
+                    # not one per pass through this loop.
+                    if not recorded_hit and self.metrics_collector:
+                        self.metrics_collector.record_rate_limit_hit(api_name)
+                        recorded_hit = True
+
+                    if request.future.done() or self._is_request_expired(request):
+                        if not request.future.done():
+                            request.future.set_exception(
+                                RequestExpiredError(
+                                    api_name=api_name,
+                                    wait_time=time.time() - request.added_at,
+                                )
+                            )
+                        return None
+
+                    if not logged_wait:
+                        # One line per waiting request, with the true wait —
+                        # not one per tick with a synthetic one.
+                        logger.debug(
+                            f"Waiting for {api_name} capacity: "
+                            f"~{wait_time:.2f}s until a key or quota frees"
+                        )
+                        logged_wait = True
+
+                    timeout = min(
+                        max(wait_time, 0.05),
+                        max(remaining, 0.05),
+                        QUEUE_WAIT_HEARTBEAT_SECONDS,
+                    )
+                    try:
+                        # wait() releases the traffic lock while parked and
+                        # re-acquires it on wake, timeout included.
+                        await asyncio.wait_for(cond.wait(), timeout)
+                    except TimeoutError:
+                        pass
+        finally:
+            request.future.remove_done_callback(_wake_on_client_exit)
 
     async def _process_with_worker(
         self, api_name: str, request: "ProxyRequest"
@@ -361,22 +411,18 @@ class RequestQueue:
         self, api_name: str, *, enforce_rate_limits: bool = True
     ) -> Tuple[Optional[str], float]:
         """
-        Wait for resources to become available before processing the request.
-        """
-        # Check endpoint availability
-        if enforce_rate_limits:
-            endpoint_wait = self.control.time_to_endpoint_ready(api_name)
-            if endpoint_wait > 0:
-                return None, endpoint_wait  # Endpoint not ready
+        One atomic attempt to acquire endpoint quota and a key.
 
-        # Check key availability
-        key, key_wait = await self.control.acquire_key(
+        Kept for compatibility with callers outside the wait loop; the loop
+        itself calls ``try_acquire_key`` directly while holding the wait
+        condition.
+        """
+        key, wait_time = await self.control.acquire_key(
             api_name, enforce_rate_limits=enforce_rate_limits
         )
-        if key_wait > 0:
-            return None, key_wait  # Key not available
-
-        return key, 0.0  # Resources available
+        if wait_time > 0:
+            return None, wait_time
+        return key, 0.0
 
     async def _handle_retry(self, request: "ProxyRequest", retry_delay: float) -> None:
         """

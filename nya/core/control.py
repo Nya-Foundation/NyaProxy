@@ -46,6 +46,10 @@ class TrafficManager:
         self._restorable_state: Dict[str, Any] = {}
 
         self._lock = asyncio.Lock()
+        # One wakeup channel per API, sharing the traffic lock so that a
+        # waiter's check-then-wait and a releaser's grant-then-notify are
+        # serialized: a release can never slip between the two.
+        self._wait_conditions: Dict[str, asyncio.Condition] = {}
 
     def get_load_balancer(self, api_name: str) -> LoadBalancer:
         """
@@ -244,6 +248,46 @@ class TrafficManager:
         user_limiter = self.get_user_limiter(api_name, user)
         return user_limiter.time_until_reset()
 
+    def get_wait_condition(self, api_name: str) -> asyncio.Condition:
+        """
+        The condition a queued request waits on for this API's capacity.
+
+        Built over the traffic lock itself, so holding the condition is
+        holding the lock: try_acquire_key can be called directly and a
+        release cannot race the decision to wait.
+        """
+        cond = self._wait_conditions.get(api_name)
+        if cond is None:
+            cond = asyncio.Condition(lock=self._lock)
+            self._wait_conditions[api_name] = cond
+        return cond
+
+    def notify_key_released(self, api_name: str) -> None:
+        """
+        Wake waiters after a key was explicitly freed.
+
+        Release paths are synchronous, and notifying requires the condition's
+        lock, so the notification is scheduled as a task. Callers outside an
+        event loop (tests, shutdown stragglers) have no waiters to wake.
+
+        Only *explicit* releases need this. Every other wait — rate-limit
+        windows, cool-downs, lock TTLs — has a computable deadline, and
+        waiters already sleep exactly that long.
+        """
+        cond = self._wait_conditions.get(api_name)
+        if cond is None:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+
+        async def _notify() -> None:
+            async with cond:
+                cond.notify_all()
+
+        loop.create_task(_notify())
+
     async def acquire_key(
         self, api_name: str, *, enforce_rate_limits: bool = True
     ) -> Tuple[Union[str, None], float]:
@@ -254,39 +298,51 @@ class TrafficManager:
             api_name: The name of the API to acquire a key for.
         """
         async with self._lock:
-            endpoint_limiter = (
-                self.get_endpoint_limiter(api_name) if enforce_rate_limits else None
-            )
-
-            endpoint_wait_time = (
-                endpoint_limiter.time_until_reset() if endpoint_limiter else 0.0
-            )
-            key_wait_time = self.time_to_key_ready(
+            return self.try_acquire_key(
                 api_name, enforce_rate_limits=enforce_rate_limits
             )
 
-            # If endpoint or key is not available, return None and wait time
-            if endpoint_wait_time > 0 or key_wait_time > 0:
-                return None, max(endpoint_wait_time, key_wait_time)
+    def try_acquire_key(
+        self, api_name: str, *, enforce_rate_limits: bool = True
+    ) -> Tuple[Union[str, None], float]:
+        """
+        Acquire attempt for callers already holding the wait condition.
 
-            lb = self.get_load_balancer(api_name)
-            for _ in range(len(lb.keys)):
-                key = lb.next()
-                key_limiter = self.get_key_limiter(api_name, key)
+        The caller MUST hold the traffic lock (via ``get_wait_condition`` or
+        ``acquire_key``); nothing here awaits, so the check and the grant are
+        one atomic step.
+        """
+        endpoint_limiter = (
+            self.get_endpoint_limiter(api_name) if enforce_rate_limits else None
+        )
 
-                if self._key_is_unavailable(
-                    key_limiter, enforce_rate_limits=enforce_rate_limits
-                ):
-                    continue
+        endpoint_wait_time = (
+            endpoint_limiter.time_until_reset() if endpoint_limiter else 0.0
+        )
+        key_wait_time = self.time_to_key_ready(
+            api_name, enforce_rate_limits=enforce_rate_limits
+        )
 
-                self.record_key_usage(
-                    api_name, key, enforce_rate_limit=enforce_rate_limits
-                )
-                if endpoint_limiter:
-                    endpoint_limiter.record()
-                return key, 0
+        # If endpoint or key is not available, return None and wait time
+        if endpoint_wait_time > 0 or key_wait_time > 0:
+            return None, max(endpoint_wait_time, key_wait_time)
 
-            return None, 1.0
+        lb = self.get_load_balancer(api_name)
+        for _ in range(len(lb.keys)):
+            key = lb.next()
+            key_limiter = self.get_key_limiter(api_name, key)
+
+            if self._key_is_unavailable(
+                key_limiter, enforce_rate_limits=enforce_rate_limits
+            ):
+                continue
+
+            self.record_key_usage(api_name, key, enforce_rate_limit=enforce_rate_limits)
+            if endpoint_limiter:
+                endpoint_limiter.record()
+            return key, 0
+
+        return None, 1.0
 
     def select_any_key(self, api_name: str) -> Optional[str]:
         """
@@ -317,6 +373,7 @@ class TrafficManager:
         if refund_rate_limit:
             key_limiter.release()
         key_limiter.unlock()
+        self.notify_key_released(api_name)
 
     def release_ip(self, api_name: str, ip: str) -> None:
         """
@@ -352,6 +409,7 @@ class TrafficManager:
         """
         key_limiter = self.get_key_limiter(api_name, key)
         key_limiter.unlock()
+        self.notify_key_released(api_name)
 
     @staticmethod
     def _key_is_unavailable(key_limiter, *, enforce_rate_limits: bool) -> bool:
@@ -376,12 +434,15 @@ class TrafficManager:
             if not key_limiter:
                 continue
 
-            if key_limiter.locked:
-                reset_time = float("inf")
-            elif enforce_rate_limits:
+            if enforce_rate_limits:
                 reset_time = key_limiter.time_until_reset()
             else:
                 reset_time = max(0.0, key_limiter.blocked_until - time.time())
+            if key_limiter.locked:
+                # A held key is a timed wait too: the TTL is its worst case,
+                # and an explicit release wakes waiters earlier. This is what
+                # replaced the old hardcoded 1.0-second guess.
+                reset_time = max(reset_time, key_limiter.time_until_unlocked())
             # return 0 immediately if any key is available
             if reset_time == 0:
                 return 0

@@ -276,9 +276,10 @@ async def test_queue_wait_for_key_expires_and_basic_status_methods():
     request.api_name = "mock"
     request.future = asyncio.Future()
     request.added_at = time.time() - 10
-    queue._check_for_resource_limit = lambda api_name, **kwargs: asyncio.sleep(
-        0, result=(None, 1)
-    )
+    # Every key held: the request has nothing to acquire and is already past
+    # the queue expiry, so the wait must end in RequestExpiredError.
+    for held in config.keys:
+        control.get_key_limiter("mock", held).lock(ttl=30)
 
     key = await queue._wait_for_key("mock", request)
 
@@ -291,8 +292,14 @@ async def test_queue_wait_for_key_expires_and_basic_status_methods():
 
 
 @pytest.mark.asyncio
-async def test_queue_wait_for_key_sleeps_once_before_expiring(monkeypatch):
+async def test_queue_wait_parks_until_expiry_and_counts_one_hit():
+    """
+    A waiter that never gets a key parks on the condition (no polling), is
+    woken by its expiry bound, and records exactly one rate-limit hit — not
+    one per wake-up as the old fixed-tick loop was prone to.
+    """
     config = CoreConfig()
+    config.queue_expiry = 0.3
     control = TrafficManager(config)
     metrics = SimpleNamespace(
         hits=[],
@@ -302,21 +309,18 @@ async def test_queue_wait_for_key_sleeps_once_before_expiring(monkeypatch):
     request = make_request()
     request.api_name = "mock"
     request.future = asyncio.Future()
-    sleeps = []
+    for held in config.keys:
+        control.get_key_limiter("mock", held).lock(ttl=30)
 
-    async def limited_resource(api_name, **kwargs):
-        return None, 0.4
-
-    queue._check_for_resource_limit = limited_resource
-
-    async def fake_sleep(delay):
-        sleeps.append(delay)
-        request.added_at = time.time() - 10
-
-    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
-
+    started = time.time()
     assert await queue._wait_for_key("mock", request) is None
-    assert sleeps == [0.2]
+    elapsed = time.time() - started
+
+    with pytest.raises(RequestExpiredError):
+        request.future.result()
+    # Bounded by the queue expiry, far below the 30s lock deadline: the
+    # timed wait honoured min(true wait, remaining expiry).
+    assert elapsed < 2.0
     assert metrics.hits == ["mock"]
 
 
@@ -326,10 +330,6 @@ async def test_queue_resource_limit_checks_endpoint_and_key_waits():
     control = TrafficManager(config)
     queue = RequestQueue(config, control)
 
-    control.time_to_endpoint_ready = lambda api_name: 0.25
-    assert await queue._check_for_resource_limit("mock") == (None, 0.25)
-
-    control.time_to_endpoint_ready = lambda api_name: 0
     control.acquire_key = lambda api_name, **kwargs: asyncio.sleep(
         0, result=(None, 0.5)
     )
@@ -385,4 +385,114 @@ async def test_waiting_requests_are_counted_after_a_worker_claims_them():
             break
     assert queue.get_all_waiting_counts() == {}
 
+    await queue.close()
+
+
+@pytest.mark.asyncio
+async def test_release_wakes_a_waiter_long_before_its_timed_deadline():
+    """
+    The point of the event-driven wait: a freed key is picked up immediately,
+    not on the next tick and not at the lock's 30s deadline.
+    """
+    config = CoreConfig()
+    config.key_concurrency = False
+    config.queue_expiry = 30
+    control = TrafficManager(config)
+    for held in config.keys:
+        control.get_key_limiter("mock", held).lock(ttl=30)
+
+    queue = RequestQueue(config, control)
+    queue.register_processor(lambda request: asyncio.sleep(0, result=Response()))
+    request = make_request()
+    request.api_name = "mock"
+    request._rate_limited = False
+    await queue.enqueue_request(request)
+
+    await asyncio.sleep(0.1)  # let the worker claim and park
+    started = time.time()
+    control.unlock_key("mock", config.keys[0])
+
+    await asyncio.wait_for(request.future, timeout=5)
+    woke_after = time.time() - started
+
+    # Timed fallback alone would sleep until the 30s lock deadline; the
+    # notification must beat it by orders of magnitude.
+    assert woke_after < 1.0
+    await queue.close()
+
+
+@pytest.mark.asyncio
+async def test_waiters_are_granted_in_claim_order():
+    """
+    Priority-FIFO among claimed waiters: the condition wakes waiters in the
+    order they began waiting, which is the order workers claimed them from
+    the priority heap. The old fixed-tick loop resolved this by lottery.
+    """
+    config = CoreConfig()
+    config.key_concurrency = False
+    config.keys = ["only-key"]
+    config.queue_expiry = 30
+    control = TrafficManager(config)
+    completed: list[str] = []
+
+    async def processor(request):
+        # Hold the key briefly so waiters stack up behind it.
+        await asyncio.sleep(0.05)
+        completed.append(request.label)
+        return Response()
+
+    queue = RequestQueue(config, control)
+    queue.register_processor(processor)
+
+    requests = []
+    for label in ["first", "second", "third", "fourth"]:
+        request = make_request()
+        request.api_name = "mock"
+        request._rate_limited = False
+        request.label = label
+        requests.append(request)
+        await queue.enqueue_request(request)
+        await asyncio.sleep(0.01)  # deterministic claim order
+
+    await asyncio.wait_for(asyncio.gather(*(r.future for r in requests)), timeout=10)
+
+    assert completed == ["first", "second", "third", "fourth"]
+    await queue.close()
+
+
+@pytest.mark.asyncio
+async def test_cancelled_client_frees_its_worker_immediately():
+    """
+    A disconnected client cancels its future; the done-callback must wake the
+    waiter at once so the worker is released, instead of the worker holding a
+    slot until its next timed wake-up (up to the 30s heartbeat).
+    """
+    config = CoreConfig()
+    config.key_concurrency = False
+    config.queue_expiry = 60
+    control = TrafficManager(config)
+    for held in config.keys:
+        control.get_key_limiter("mock", held).lock(ttl=60)
+
+    queue = RequestQueue(config, control)
+    queue.register_processor(lambda request: asyncio.sleep(0, result=Response()))
+    request = make_request()
+    request.api_name = "mock"
+    request._rate_limited = False
+    await queue.enqueue_request(request)
+
+    for _ in range(50):
+        await asyncio.sleep(0.01)
+        if queue.get_all_waiting_counts().get("mock"):
+            break
+    assert queue.get_all_waiting_counts() == {"mock": 1}
+
+    request.future.cancel()
+
+    # Worker freed well inside a second — not at a 30s/60s deadline.
+    for _ in range(100):
+        await asyncio.sleep(0.01)
+        if not queue.get_all_waiting_counts():
+            break
+    assert queue.get_all_waiting_counts() == {}
     await queue.close()

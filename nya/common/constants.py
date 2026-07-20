@@ -59,3 +59,9 @@ WATCH_FILE = "watch.txt"
 # A single save in the config UI can emit several change events. Restarts drop
 # in-flight requests, so a burst of edits is collapsed into one reload.
 RELOAD_DEBOUNCE_SECONDS = 2.0
+
+# Ceiling on one event-wait interval in the queue. Waits are computed from
+# real limiter deadlines and cut short by release notifications; this cap is
+# insurance so a future release path that forgets to notify costs at most one
+# late wake-up instead of a stall.
+QUEUE_WAIT_HEARTBEAT_SECONDS = 30.0

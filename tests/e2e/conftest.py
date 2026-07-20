@@ -122,6 +122,13 @@ def upstream_server():
 
             return StreamingResponse(broken_events(), media_type="text/event-stream")
 
+        if path.startswith("sleep-"):
+            # Controllable hold time, e.g. /sleep-300 holds the key for
+            # 300ms — the shape of an image-generation call.
+            duration_ms = int(path.rsplit("-", 1)[1])
+            await asyncio.sleep(duration_ms / 1000)
+            return JSONResponse(content={"slept_ms": duration_ms, "key": key})
+
         if path == "slow":
             await asyncio.sleep(4)
             return JSONResponse(content={"status": "finally"})
