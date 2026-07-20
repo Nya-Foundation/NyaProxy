@@ -2,11 +2,13 @@
 Metrics routes: aggregate metrics, per-API metrics, and key-usage stats.
 """
 
+import logging
 from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
-from loguru import logger
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ..api import DashboardAPI

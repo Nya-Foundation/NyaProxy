@@ -17,9 +17,11 @@ async def test_request_executor_normal_streaming_proxy_and_metrics_paths(monkeyp
     metrics = SimpleNamespace(
         requests=[],
         responses=[],
-        record_request=lambda api, key: metrics.requests.append((api, key)),
-        record_response=lambda api, key, status, elapsed: metrics.responses.append(
-            (api, key, status)
+        record_request=lambda api, key, path=None: metrics.requests.append(
+            (api, key, path)
+        ),
+        record_response=lambda api, key, status, elapsed, path=None: (
+            metrics.responses.append((api, key, status, path))
         ),
     )
     executor = RequestExecutor(config, metrics)
@@ -37,7 +39,9 @@ async def test_request_executor_normal_streaming_proxy_and_metrics_paths(monkeyp
     executor.execute_request = fake_execute_request
     response = await executor.execute(request)
     assert response.body == b"hello"
-    assert metrics.requests == [("mock", "key-a")]
+    # The path travels with the metric so the dashboard can group by it.
+    assert metrics.requests == [("mock", "key-a", request.trail_path)]
+    assert metrics.responses[0][3] == request.trail_path
     assert metrics.responses[0][:3] == ("mock", "key-a", 200)
 
     async def fake_stream(request, timeout):

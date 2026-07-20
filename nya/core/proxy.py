@@ -3,13 +3,13 @@ The NyaProxyCore class handles the main proxy logic with queue-first architectur
 """
 
 import asyncio
+import logging
 import math
 import random
 import traceback
 from typing import TYPE_CHECKING, Dict, Optional, Union
 
 import httpx
-from loguru import logger
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
 from ..common.exceptions import (
@@ -23,6 +23,8 @@ from .control import TrafficManager
 from .handler import RequestHandler
 from .queue import RequestQueue
 from .request import RequestExecutor
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ..common.models import ProxyRequest

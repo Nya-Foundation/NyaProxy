@@ -1,5 +1,6 @@
 import argparse
 import contextlib
+import logging
 import os
 import time
 from types import SimpleNamespace
@@ -265,10 +266,15 @@ async def test_init_services_calls_each_initializer_in_order(monkeypatch):
 
 
 def test_warn_if_unauthenticated_fires_only_on_public_bind(monkeypatch):
-    from loguru import logger
-
     messages = []
-    sink_id = logger.add(lambda m: messages.append(str(m)), level="WARNING")
+
+    class _Capture(logging.Handler):
+        def emit(self, record):
+            messages.append(record.getMessage())
+
+    handler = _Capture(level=logging.WARNING)
+    root = logging.getLogger()
+    root.addHandler(handler)
     try:
         instance = make_app_instance()
 
@@ -299,7 +305,7 @@ def test_warn_if_unauthenticated_fires_only_on_public_bind(monkeypatch):
         instance._warn_if_unauthenticated()
         assert any("no master key is configured" in m for m in messages)
     finally:
-        logger.remove(sink_id)
+        root.removeHandler(handler)
 
 
 @pytest.mark.asyncio
