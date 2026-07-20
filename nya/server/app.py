@@ -6,7 +6,6 @@ NyaProxy - A lightweight, header-based API proxy for managing authenticated upst
 import argparse
 import contextlib
 import os
-import sys
 import time
 from pathlib import Path
 
@@ -25,6 +24,7 @@ from ..common.constants import (
     RELOAD_DEBOUNCE_SECONDS,
     WATCH_FILE,
 )
+from ..common.logging import configure_logging
 from ..common.models import ProxyRequest
 from ..config.manager import ConfigManager
 from ..core.proxy import NyaProxyCore
@@ -33,8 +33,9 @@ from ..services.metrics import PROMETHEUS_CONTENT_TYPE, MetricsCollector
 from ..services.state import load_state, resolve_state_path, save_state
 from .auth import AuthManager, AuthMiddleware
 
-logger.remove()
-logger.add(sys.stderr, level="INFO")
+# Applied at import so Uvicorn's startup lines share the format too; the
+# configured level and file sink are applied again once config is loaded.
+configure_logging()
 
 
 class NyaProxyApp:
@@ -261,19 +262,10 @@ class NyaProxyApp:
         Initialize logging.
         """
         log_config = self.config.get_logging_config()
-        logger.remove()  # Remove default logger
-        if not log_config.get("enabled", True):
-            return
-
-        logger.add(
-            sys.stderr,
-            level=log_config.get("level", "INFO").upper(),
-        )
-        logger.add(
-            log_config.get("log_file", "app.log"),
-            level=log_config.get("level", "INFO").upper(),
-            rotation="10 MB",
-            retention=5,
+        configure_logging(
+            level=log_config.get("level", "INFO"),
+            log_file=log_config.get("log_file", "app.log"),
+            enabled=log_config.get("enabled", True),
         )
 
     def init_metrics_collector(self) -> None:
@@ -627,6 +619,9 @@ def main():
         reload_includes=None if args.no_reload else [WATCH_FILE],
         timeout_keep_alive=30,
         server_header=False,
+        # Uvicorn's default config would replace the shared handlers with its
+        # own formatters; None leaves our interceptor in place.
+        log_config=None,
         # Forwarded client addresses are resolved by NyaProxy after checking
         # server.trusted_proxies. Letting Uvicorn do this first would allow a
         # direct client to influence request.client.host.
