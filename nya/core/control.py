@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union
 
 from ..common.exceptions import APIKeyNotConfiguredError
 from ..services.lb import LoadBalancer
-from ..services.limit import RateLimiter
+from ..services.limit import DEFAULT_LOCK_TTL_SECONDS, RateLimiter
 from ..services.state import state_key
 
 if TYPE_CHECKING:
@@ -192,11 +192,29 @@ class TrafficManager:
         key_concurrency = self.config.get_api_key_concurrency(api_name)
         # Lock key if per-key concurrency is not allowed
         if not key_concurrency:
-            key_limiter.lock()
+            key_limiter.lock(self._lock_ttl(api_name))
 
         # additional metrics update to support the key selection (least_requests)
         key_lb = self.get_load_balancer(api_name)
         key_lb.update_request_count(key, 1)
+
+    def _lock_ttl(self, api_name: str) -> float:
+        """
+        Ceiling on how long one request may hold a key exclusively.
+
+        Generous on purpose: releasing a key that is still in use would put
+        two requests on one credential, which is the very thing
+        key_concurrency: false exists to prevent. A streamed response can also
+        outlive the request timeout, since that bounds only the upstream call.
+        This is a safety net for a missed release, not a scheduling knob.
+        """
+        try:
+            timeout = float(self.config.get_api_default_timeout(api_name))
+        except Exception:
+            return DEFAULT_LOCK_TTL_SECONDS
+        if timeout <= 0:
+            return DEFAULT_LOCK_TTL_SECONDS
+        return max(timeout * 2, 60.0)
 
     def record_ip_request(self, api_name: str, ip: str) -> None:
         """
