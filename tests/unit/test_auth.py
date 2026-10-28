@@ -17,17 +17,21 @@ from nya.server.auth import AuthManager, AuthMiddleware
 
 
 class FakeConfig:
-    """Minimal stand-in for ConfigManager exposing only ``get_api_key``."""
+    """Minimal stand-in for ConfigManager: the two key getters auth reads."""
 
-    def __init__(self, api_key):
+    def __init__(self, api_key, dashboard_key=None):
         self._api_key = api_key
+        self._dashboard_key = dashboard_key
 
     def get_api_key(self):
         return self._api_key
 
+    def get_dashboard_api_key(self):
+        return self._dashboard_key
 
-def make_manager(api_key):
-    return AuthManager(config=FakeConfig(api_key))
+
+def make_manager(api_key, dashboard_key=None):
+    return AuthManager(config=FakeConfig(api_key, dashboard_key))
 
 
 # --------------------------------------------------------------------------
@@ -128,7 +132,7 @@ def test_verify_api_key_header_missing_is_rejected():
 # --------------------------------------------------------------------------
 
 
-def build_client(api_key):
+def build_client(api_key, dashboard_key=None):
     """Build a TestClient for a tiny app guarded by AuthMiddleware."""
 
     async def ok(request):
@@ -143,7 +147,7 @@ def build_client(api_key):
         Route("/config/api/apps", ok),
     ]
     app = Starlette(routes=routes)
-    app.add_middleware(AuthMiddleware, auth=make_manager(api_key))
+    app.add_middleware(AuthMiddleware, auth=make_manager(api_key, dashboard_key))
     return TestClient(app)
 
 
@@ -349,6 +353,14 @@ def test_single_string_key_is_its_own_master():
         ("/api/svc/dashboard/widget", "", False),
         # a sibling path that merely shares the prefix string is not admin
         ("/dashboard-public", "", False),
+        # a mounted admin sub-app carries its mount prefix in root_path
+        ("/api/config/clients", "/dashboard", True),
+        ("/anything", "/dashboard", True),
+        # reverse proxy prepending its own segment: composite root_path
+        ("/api/x", "/proxy/dashboard", True),
+        # siblings / unrelated prefixes must not match via endswith
+        ("/api/x", "/dashboard-public", False),
+        ("/api/x", "/prefix", False),
     ],
 )
 def test_is_admin_surface_path_resolution(path, root_path, expected):
@@ -381,6 +393,56 @@ def test_proxy_path_containing_dashboard_segment_is_not_admin():
     assert resp.status_code == 200
 
 
+def test_mounted_admin_sub_app_accepts_dashboard_key_end_to_end():
+    """Two AuthMiddlewares (outer + mounted sub), as wired in app.py.
+
+    Regression for the 403 on mounted admin sub-apps: the inner middleware
+    sees the full path but root_path="/dashboard", which used to strip the
+    admin prefix away and turn the dashboard key into a proxy-key check.
+    """
+
+    async def ok(request):
+        return PlainTextResponse("ok")
+
+    auth = make_manager(["master-key", "client-key"], dashboard_key=["dash-1"])
+
+    # Inner app: its own AuthMiddleware, routes relative to the mount (like
+    # dashboard_app) -> answers GET /dashboard/api/ping from the outside.
+    sub = Starlette(routes=[Route("/api/ping", ok)])
+    sub.add_middleware(AuthMiddleware, auth=auth)
+
+    # Outer app: its own AuthMiddleware + a proxy route and a plain probe.
+    outer = Starlette(
+        routes=[Route("/api/proxy/thing", ok), Route("/dashboard_probe", ok)]
+    )
+    outer.add_middleware(AuthMiddleware, auth=auth)
+    outer.mount("/dashboard", sub)
+    client = TestClient(outer)
+
+    # The bug itself: the dashboard key must pass BOTH middleware layers.
+    assert (
+        client.get(
+            "/dashboard/api/ping", headers={"Authorization": "dash-1"}
+        ).status_code
+        == 200
+    )
+    # A proxy key is stopped by the outer admin gate (login page, 401).
+    resp = client.get("/dashboard/api/ping", headers={"Authorization": "client-key"})
+    assert resp.status_code == 401
+    assert resp.headers["content-type"].startswith("text/html")
+    # The dashboard key must not reach proxy routes outside the mount.
+    resp = client.get("/api/proxy/thing", headers={"Authorization": "dash-1"})
+    assert resp.status_code == 403
+    assert "error" in resp.json()
+    # Proxy traffic is unaffected by the fix.
+    assert (
+        client.get(
+            "/api/proxy/thing", headers={"Authorization": "client-key"}
+        ).status_code
+        == 200
+    )
+
+
 def test_login_page_returns_500_when_template_missing(monkeypatch):
     """A missing login template degrades to a JSON 500, not a crash."""
     import importlib.resources
@@ -392,3 +454,180 @@ def test_login_page_returns_500_when_template_missing(monkeypatch):
     client = build_client("secret")
     resp = client.get("/dashboard")
     assert resp.status_code == 500
+
+
+# --------------------------------------------------------------------------
+# Dedicated dashboard keys (server.dashboard.api_key): admin login is
+# decoupled from the client keys the proxy accepts. Rotating a client key
+# must never log the operator out, and a dashboard key must never proxy.
+# --------------------------------------------------------------------------
+
+
+def test_dashboard_keys_take_over_admin_and_exclude_proxy_keys():
+    """List form: only dashboard keys administer; proxy keys unchanged."""
+    manager = make_manager(
+        ["master-key", "app-key"], dashboard_key=["dash-1", "dash-2"]
+    )
+    assert manager.dashboard_configured() is True
+
+    # both dashboard keys reach the admin surfaces
+    assert manager.verify_api_key("dash-1", verify_master=True) is True
+    assert manager.verify_api_key("dash-2", verify_master=True) is True
+    # the old master and every client key stop administering the UI
+    assert manager.verify_api_key("master-key", verify_master=True) is False
+    assert manager.verify_api_key("app-key", verify_master=True) is False
+
+    # proxy traffic is untouched: client keys work, dashboard keys do not
+    assert manager.verify_api_key("master-key") is True
+    assert manager.verify_api_key("app-key") is True
+    assert manager.verify_api_key("dash-1") is False
+    assert manager.verify_api_key("dash-2") is False
+    # usable_keys reads ONLY server.api_key — the core of the decoupling
+    assert manager.usable_keys() == ["master-key", "app-key"]
+
+
+def test_dashboard_key_string_form():
+    manager = make_manager("master-key", dashboard_key="dash-only")
+    assert manager.verify_api_key("dash-only", verify_master=True) is True
+    assert manager.verify_api_key("master-key", verify_master=True) is False
+
+
+def test_blank_dashboard_entries_fall_back_to_master():
+    """A blank-only dashboard setting must not lock the admin surfaces."""
+    manager = make_manager(["first", "second"], dashboard_key=["", "   "])
+    assert manager.dashboard_configured() is False
+    assert manager.verify_api_key("first", verify_master=True) is True
+    assert manager.verify_api_key("second", verify_master=True) is False
+
+
+def test_fallback_to_master_when_dashboard_key_unset():
+    """Unset dashboard key = today's behaviour: first api_key entry admins."""
+    manager = make_manager(["first", "second"])
+    assert manager.dashboard_configured() is False
+    assert manager.dashboard_keys() == []
+    assert manager.master_key() == "first"
+    assert manager.verify_api_key("first", verify_master=True) is True
+    assert manager.verify_api_key("second", verify_master=True) is False
+
+
+def test_dashboard_key_never_authenticates_proxy_traffic():
+    """Requirement: the proxy does not accept dashboard keys (verify_master=False)."""
+    manager = make_manager(["app-key"], dashboard_key="dash-only")
+    assert manager.verify_api_key("dash-only", verify_master=False) is False
+    assert manager.verify_api_key("app-key", verify_master=False) is True
+
+
+def test_verify_session_cookie_accepts_dashboard_key():
+    manager = make_manager(["master-key", "app-key"], dashboard_key="dash-only")
+    dash_cookie = FakeRequest(cookies={"nyaproxy_api_key": "dash-only"})
+    master_cookie = FakeRequest(cookies={"nyaproxy_api_key": "master-key"})
+    assert manager.verify_session_cookie(dash_cookie) is True
+    # rotated/old client key no longer keeps an admin session alive
+    assert manager.verify_session_cookie(master_cookie) is False
+
+
+def test_middleware_admin_gated_by_dashboard_key_when_auth_disabled():
+    """api_key unset + dashboard key set: proxy open, admin still guarded."""
+    manager = make_manager(None, dashboard_key="dash-only")
+    assert manager.is_auth_disabled() is True
+    assert manager.dashboard_configured() is True
+
+    # the combination the new dispatch logic must honour: a plain request on
+    # an admin surface is NOT passed through just because auth is disabled
+    assert manager.verify_api_key("", verify_master=True) is False
+    assert manager.verify_api_key("anything", verify_master=True) is False
+    assert manager.verify_api_key("dash-only", verify_master=True) is True
+
+    client = build_client(None, dashboard_key="dash-only")
+    # proxy path stays open
+    assert client.get("/api/v1/thing").status_code == 200
+    # admin surface without credentials -> login page, not a pass-through
+    resp = client.get("/dashboard")
+    assert resp.status_code == 401
+    assert resp.headers["content-type"].startswith("text/html")
+    # ...with the dashboard key it opens
+    assert (
+        client.get(
+            "/dashboard", headers={"Authorization": "Bearer dash-only"}
+        ).status_code
+        == 200
+    )
+    # ...and a session cookie with the dashboard key opens it too
+    client.cookies.set("nyaproxy_api_key", "dash-only")
+    assert client.get("/config").status_code == 200
+
+
+def test_middleware_dashboard_key_decoupled_from_client_keys():
+    """End-to-end: master locked out of admin, dashboard key locked out of proxy."""
+    client = build_client(["master", "app-key"], dashboard_key="dash-key")
+
+    # admin surfaces: dashboard key in, everyone else out (login page)
+    assert (
+        client.get(
+            "/dashboard", headers={"Authorization": "Bearer dash-key"}
+        ).status_code
+        == 200
+    )
+    resp = client.get("/dashboard", headers={"Authorization": "Bearer master"})
+    assert resp.status_code == 401
+    assert resp.headers["content-type"].startswith("text/html")
+
+    # proxy: client key in, dashboard key out (JSON 403)
+    assert (
+        client.get(
+            "/api/v1/thing", headers={"Authorization": "Bearer app-key"}
+        ).status_code
+        == 200
+    )
+    resp = client.get("/api/v1/thing", headers={"Authorization": "Bearer dash-key"})
+    assert resp.status_code == 403
+    assert "error" in resp.json()
+
+
+def test_middleware_auth_disabled_without_dashboard_key_stays_open():
+    """Regression: no api_key and no dashboard key = everything open."""
+    manager = make_manager(None)
+    assert manager.is_auth_disabled() is True
+    assert manager.verify_api_key("anything", verify_master=True) is True
+
+    client = build_client(None)
+    assert client.get("/api/v1/thing").status_code == 200
+    assert client.get("/dashboard").status_code == 200
+
+
+def test_schema_accepts_server_dashboard_api_key():
+    """server.dashboard.api_key validates against nya/schema.json (anyOf)."""
+    import json
+    from importlib import resources
+
+    import jsonschema
+
+    schema = json.loads(
+        (resources.files("nya") / "schema.json").read_text(encoding="utf-8")
+    )
+    base_config = {
+        "server": {"api_key": "proxy-key"},
+        "default_settings": {},
+        "apis": {
+            "mock": {
+                "name": "Mock API",
+                "endpoint": "https://upstream.test",
+                "headers": {"X-Key": "value"},
+                "variables": {"keys": ["k"]},
+            }
+        },
+    }
+
+    for dashboard_api_key in ("dash-only", ["dash-1", "dash-2"]):
+        config = json.loads(json.dumps(base_config))
+        config["server"]["dashboard"] = {
+            "enabled": True,
+            "api_key": dashboard_api_key,
+        }
+        jsonschema.validate(config, schema)
+
+    # blank keys stay rejected (minLength / minItems guards)
+    config = json.loads(json.dumps(base_config))
+    config["server"]["dashboard"] = {"api_key": ""}
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(config, schema)

@@ -159,6 +159,13 @@
               <p>How evenly traffic spreads across the pool, and which keys are failing.</p>
             </div>
             <span id="ms-keys" class="micro-status" hidden><span class="dot dot-warn" aria-hidden="true"></span></span>
+            <div class="section-controls">
+              <button id="add-client-key-btn" class="ghost-btn" type="button" style="display: {{ enable_control }}">Add client key</button>
+            </div>
+          </div>
+          <div id="client-access" hidden>
+            <div class="section-kicker">Client access</div>
+            <ul id="client-key-list"></ul>
           </div>
           <div id="key-board" class="key-board">
             <span class="skel skel-line skel-strip"></span>
@@ -180,6 +187,8 @@
               <input id="api-search" class="field" type="search" placeholder="Filter APIs…" aria-label="Filter APIs" title="Filter (/)" />
               <kbd>/</kbd>
             </label>
+            <button id="add-provider-btn" class="ghost-btn" type="button" style="display: {{ enable_control }}">Add provider</button>
+            <button id="manage-providers-btn" class="ghost-btn" type="button" style="display: {{ enable_control }}">Manage</button>
             <span class="confirm-group">
               <button id="reset-metrics-btn" class="ghost-btn ghost-danger" type="button" style="display: {{ enable_control }}">Reset metrics</button>
               <button id="reset-metrics-cancel" class="ghost-btn ghost-cancel" type="button" hidden aria-label="Cancel reset metrics">Cancel</button>
@@ -285,6 +294,134 @@
 
     <!-- Shared debounced live region for filter counts -->
     <div id="announcer" class="vh" aria-live="polite"></div>
+
+    <!-- Add upstream provider -->
+    <dialog id="add-provider-dialog" aria-labelledby="add-provider-title">
+      <form id="add-provider-form" class="dialog-form">
+        <div class="section-heading">
+          <div class="section-kicker">Upstreams</div>
+          <h2 id="add-provider-title" class="section-title">Add provider</h2>
+          <p>Registers a new upstream API in the config.</p>
+        </div>
+        <div>
+          <label class="block-label" for="provider-preset">Provider</label>
+          <select id="provider-preset" class="field" name="preset">
+            <option value="">Custom</option>
+          </select>
+        </div>
+        <div>
+          <label class="block-label" for="provider-name">Name</label>
+          <input id="provider-name" class="field" type="text" name="name" required autofocus placeholder="OpenAI" autocomplete="off" />
+        </div>
+        <div>
+          <label class="block-label" for="provider-endpoint">Endpoint</label>
+          <input id="provider-endpoint" class="field" type="url" name="endpoint" required placeholder="https://api.example.com/v1" autocomplete="off" />
+          <p class="block-note" id="endpoint-hint" hidden></p>
+        </div>
+        <div>
+          <label class="block-label" for="provider-keys">Upstream keys <span class="block-note">one key per line</span></label>
+          <textarea id="provider-keys" class="field" name="keys" rows="4" required placeholder="sk-…&#10;sk-…"></textarea>
+        </div>
+        <div>
+          <label class="block-label" for="provider-section-key">Section key <span class="block-note">optional — auto from name</span></label>
+          <input id="provider-section-key" class="field" type="text" name="key" pattern="[a-zA-Z0-9_-]*" placeholder="auto from name" autocomplete="off" />
+        </div>
+        <div class="dialog-actions">
+          <div class="section-controls">
+            <button class="ghost-btn btn-save" type="submit">Save</button>
+            <button class="ghost-btn ghost-cancel" type="button" data-close-dialog>Cancel</button>
+          </div>
+        </div>
+      </form>
+      <!-- Success state: shown in place of the form after a 200 from POST /config/apis -->
+      <div id="add-provider-success" class="dialog-form" hidden>
+        <div class="section-heading">
+          <div class="section-kicker">Upstreams</div>
+          <h2 class="section-title">Provider добавлен</h2>
+        </div>
+        <div>
+          <div class="block-label">Базовый URL</div>
+          <div class="block-note" id="success-endpoint"></div>
+        </div>
+        <div>
+          <div class="block-label">Для агента</div>
+          <div class="block-note" id="success-agent"></div>
+        </div>
+        <div class="dialog-actions">
+          <button class="ghost-btn" type="button" id="add-more-btn">Добавить ещё</button>
+          <button class="ghost-btn btn-save" type="button" id="success-done-btn">Готово</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- Manage providers: list → provider card, two states in one dialog -->
+    <dialog id="provider-manage-dialog" aria-labelledby="pm-list-title">
+      <div id="pm-list" class="dialog-form">
+        <div class="section-heading">
+          <div class="section-kicker">Upstreams</div>
+          <h2 id="pm-list-title" class="section-title">Manage providers</h2>
+          <p>Configured upstream APIs — open one to inspect its keys.</p>
+        </div>
+        <ul id="pm-list-rows" class="manage-list"></ul>
+        <div class="dialog-actions">
+          <button class="ghost-btn ghost-cancel" type="button" data-close-dialog>Close</button>
+        </div>
+      </div>
+      <div id="pm-card" class="dialog-form" hidden>
+        <div class="section-heading">
+          <div class="section-kicker">Provider</div>
+          <h2 id="pm-card-title" class="section-title"></h2>
+          <p id="pm-card-endpoint" class="block-note mono"></p>
+        </div>
+        <div>
+          <p class="block-note" id="pm-card-hint"></p>
+        </div>
+        <div>
+          <div class="block-label">Upstream keys <span class="block-note" id="pm-card-count"></span></div>
+          <ul id="pm-key-list" class="manage-keys"></ul>
+        </div>
+        <div>
+          <label class="block-label" for="pm-add-key">Add key <span class="block-note">one key, stored masked in lists</span></label>
+          <div class="pm-add-row">
+            <input id="pm-add-key" class="field" type="text" autocomplete="off" spellcheck="false" placeholder="sk-…" />
+            <button id="pm-add-key-btn" class="ghost-btn btn-save" type="button">Add key</button>
+          </div>
+        </div>
+        <div class="dialog-actions">
+          <button id="pm-back-btn" class="ghost-btn" type="button">← Back</button>
+          <div class="section-controls">
+            <span class="confirm-group" id="pm-delete-group">
+              <button id="pm-delete-btn" class="ghost-btn ghost-danger" type="button" style="display: {{ enable_control }}">Delete provider</button>
+              <button id="pm-delete-cancel" class="ghost-btn ghost-cancel" type="button" hidden aria-label="Cancel delete provider">Cancel</button>
+            </span>
+            <button class="ghost-btn ghost-cancel" type="button" data-close-dialog>Close</button>
+          </div>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- Add client key -->
+    <dialog id="add-client-dialog" aria-labelledby="add-client-title">
+      <form id="add-client-form" class="dialog-form">
+        <div class="section-heading">
+          <div class="section-kicker">Credentials</div>
+          <h2 id="add-client-title" class="section-title">Add client key</h2>
+          <p>The key is handed to a client to reach the proxy.</p>
+        </div>
+        <div>
+          <label class="block-label" for="client-key">Key <span class="block-note">give this key to the client</span></label>
+          <input id="client-key" class="field" type="text" name="key" required autofocus placeholder="sk-…" autocomplete="off" spellcheck="false" />
+        </div>
+        <div class="dialog-actions">
+          <button id="generate-key-btn" class="ghost-btn" type="button">Generate</button>
+          <button id="copy-key-btn" class="ghost-btn" type="button">Copy</button>
+          <div class="section-controls">
+            <button class="ghost-btn btn-save" type="submit">Save</button>
+            <button class="ghost-btn ghost-cancel" type="button" data-close-dialog>Cancel</button>
+          </div>
+        </div>
+      </form>
+    </dialog>
 
     <script src="{{ root_path }}/static/js/dashboard.js"></script>
   </body>

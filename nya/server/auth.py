@@ -41,12 +41,22 @@ class AuthManager:
         """
         Configured keys that can actually authenticate, in configured order.
 
-        Blank and non-string entries are dropped: an unset ``${VAR}`` or a
-        stray ``-`` in YAML must never authenticate anything. Returns an empty
-        list for an unrecognised config shape, which callers treat as
-        "nothing matches" rather than "no auth".
+        Reads ONLY ``server.api_key``: dedicated dashboard keys must never
+        reach the proxy. Blank and non-string entries are dropped: an unset
+        ``${VAR}`` or a stray ``-`` in YAML must never authenticate anything.
+        Returns an empty list for an unrecognised config shape, which callers
+        treat as "nothing matches" rather than "no auth".
         """
-        configured_key = self.get_api_key()
+        return self._normalize_key_entries(self.get_api_key())
+
+    @staticmethod
+    def _normalize_key_entries(configured_key) -> List[str]:
+        """
+        Normalize a raw ``None | str | list`` key setting into usable entries.
+
+        Shared by ``usable_keys`` and ``dashboard_keys`` so both surfaces
+        apply exactly the same blank/non-string filtering.
+        """
         if isinstance(configured_key, str):
             configured_key = [configured_key]
         elif not isinstance(configured_key, list):
@@ -57,6 +67,24 @@ class AuthManager:
             for entry in configured_key
             if isinstance(entry, str) and entry.strip()
         ]
+
+    def dashboard_keys(self) -> List[str]:
+        """
+        Dedicated admin-login keys from ``server.dashboard.api_key``.
+
+        Normalized exactly like ``usable_keys``. These keys are accepted ONLY
+        on the admin surfaces (dashboard, config UI) — the proxy never takes
+        them, which is the point of decoupling admin login from client keys.
+        """
+        if self.config is None:
+            return []
+        return self._normalize_key_entries(self.config.get_dashboard_api_key())
+
+    def dashboard_configured(self) -> bool:
+        """
+        True when at least one dedicated dashboard login key is configured.
+        """
+        return bool(self.dashboard_keys())
 
     def master_key(self) -> Optional[str]:
         """
@@ -97,7 +125,9 @@ class AuthManager:
 
         Args:
             key: The api key to verify
-            verify_master: If True, only verify against the master key
+            verify_master: If True, verify against the admin-login credential:
+                the dedicated ``server.dashboard.api_key`` entries when set,
+                otherwise the first ``server.api_key`` entry (master)
 
         Returns:
             bool: True if valid, False otherwise
@@ -108,16 +138,26 @@ class AuthManager:
         # Strip the key to ensure consistent comparison
         key = key.strip()
 
-        if self.is_auth_disabled():
-            return True
-
         if verify_master:
-            # Only the first configured key administers the proxy; a blank
+            # A dedicated dashboard key decouples admin login from the proxy
+            # keys: when configured, ONLY those keys administer the surfaces —
+            # not even the master entry of server.api_key, and regardless of
+            # whether proxy auth is disabled.
+            if self.dashboard_configured():
+                return any(self._secrets_equal(key, k) for k in self.dashboard_keys())
+
+            if self.is_auth_disabled():
+                return True
+
+            # Fallback: the first configured key administers the proxy; a blank
             # master entry locks the admin surfaces instead of opening them.
             master = self.master_key()
             if not master:
                 return False
             return self._secrets_equal(key, master)
+
+        if self.is_auth_disabled():
+            return True
 
         return any(self._secrets_equal(key, k) for k in self.usable_keys())
 
@@ -154,7 +194,8 @@ class AuthManager:
         # Trim any whitespace that might be added by some browsers
         cookie_key = unquote(cookie_key).strip() if cookie_key else ""
 
-        # Verify the cookie key against the configured master key only
+        # Verify the cookie key against the admin-login credential only
+        # (dedicated dashboard key when set, else the master key)
         return self.verify_api_key(cookie_key, verify_master=True)
 
     def verify_api_key_header(self, request: Request, verify_master: bool = False):
@@ -220,15 +261,21 @@ class AuthMiddleware(BaseHTTPMiddleware):
         ):
             return await call_next(request)
 
-        if self.auth.is_auth_disabled():
-            return await call_next(request)
-
         # The dashboard and the config UI are administrative surfaces: only the
-        # master key reaches them. Every other path is proxy traffic, which any
-        # configured key may use.
+        # admin credential reaches them (a dedicated server.dashboard.api_key,
+        # or the master key when none is set). Every other path is proxy
+        # traffic, which any configured key may use.
         is_admin_surface = self._is_admin_surface(request)
 
-        # First, check for valid session cookie (master key only)
+        # Proxy auth is disabled (no server.api_key): all proxy traffic is
+        # open. A dedicated dashboard key still locks the admin surfaces, so
+        # those must fall through to the credential checks below instead of
+        # being passed early.
+        if self.auth.is_auth_disabled():
+            if not (is_admin_surface and self.auth.dashboard_configured()):
+                return await call_next(request)
+
+        # First, check for valid session cookie (admin credential only)
         if self.auth.verify_session_cookie(request):
             return await call_next(request)
 
@@ -252,15 +299,29 @@ class AuthMiddleware(BaseHTTPMiddleware):
         True for the dashboard and config UI, which require the master key.
 
         The mount prefix is stripped first so the check still holds when the
-        app is served under a reverse-proxy path prefix.
+        app is served under a reverse-proxy path prefix. A mounted admin
+        sub-app also carries its mount prefix in root_path, so that value is
+        checked as an additional candidate surface name.
         """
         path = request.url.path
         root_path = request.scope.get("root_path", "")
+
+        def _matches(candidate: str) -> bool:
+            return any(
+                candidate == prefix or candidate.startswith(f"{prefix}/")
+                for prefix in ("/dashboard", "/config")
+            )
+
         if root_path and path.startswith(root_path):
             path = path[len(root_path) :] or "/"
 
-        return any(
-            path == prefix or path.startswith(f"{prefix}/")
+        # The root/mount prefix may itself name the surface: a mounted
+        # admin sub-app (dashboard, config) carries its mount prefix in
+        # root_path, and a reverse proxy may prepend its own segment
+        # ("/proxy/dashboard"). root_path is server configuration, and each
+        # prefix starts with "/", so endswith() stays segment-safe.
+        return _matches(path) or any(
+            root_path == prefix or root_path.endswith(prefix)
             for prefix in ("/dashboard", "/config")
         )
 

@@ -109,6 +109,7 @@ def make_app_instance(config=_DEFAULT_CONFIG):
         get_api_key=lambda: None,
         is_auth_disabled=lambda: True,
         master_key=lambda: None,
+        dashboard_configured=lambda: False,
     )
     app.dashboard = None
     app.metrics_collector = None
@@ -287,23 +288,51 @@ def test_warn_if_unauthenticated_fires_only_on_public_bind(monkeypatch):
         instance._warn_if_unauthenticated()
         assert not messages
 
-        # Auth enabled with a real master key: never warn, even on a public bind
+        # Auth enabled with a real master key and a dedicated dashboard key:
+        # admin login is decoupled — never warn, even on a public bind
         messages.clear()
         instance.auth = SimpleNamespace(
-            is_auth_disabled=lambda: False, master_key=lambda: "master"
+            is_auth_disabled=lambda: False,
+            master_key=lambda: "master",
+            dashboard_configured=lambda: True,
         )
         monkeypatch.setenv("SERVER_HOST", "0.0.0.0")
         instance._warn_if_unauthenticated()
         assert not messages
 
-        # Auth enabled but the master entry is blank: admin surfaces are
-        # locked, which needs to be said out loud.
+        # Auth enabled but no dashboard key: admin login silently falls back
+        # to the master key, which must be said out loud.
         messages.clear()
         instance.auth = SimpleNamespace(
-            is_auth_disabled=lambda: False, master_key=lambda: None
+            is_auth_disabled=lambda: False,
+            master_key=lambda: "master",
+            dashboard_configured=lambda: False,
+        )
+        instance._warn_if_unauthenticated()
+        assert any("server.dashboard.api_key is not set" in m for m in messages)
+
+        # Auth enabled but the master entry is blank and no dashboard key is
+        # set: admin surfaces are locked, which needs to be said out loud too.
+        messages.clear()
+        instance.auth = SimpleNamespace(
+            is_auth_disabled=lambda: False,
+            master_key=lambda: None,
+            dashboard_configured=lambda: False,
         )
         instance._warn_if_unauthenticated()
         assert any("no master key is configured" in m for m in messages)
+        assert any("server.dashboard.api_key is not set" in m for m in messages)
+
+        # Blank master but a dedicated dashboard key set: admin login works
+        # through the dashboard key, so the master warning is not needed.
+        messages.clear()
+        instance.auth = SimpleNamespace(
+            is_auth_disabled=lambda: False,
+            master_key=lambda: None,
+            dashboard_configured=lambda: True,
+        )
+        instance._warn_if_unauthenticated()
+        assert not messages
     finally:
         root.removeHandler(handler)
 

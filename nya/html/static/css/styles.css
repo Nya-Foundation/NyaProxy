@@ -865,6 +865,56 @@ table.data tbody tr:last-child td {
   border-left-color: var(--err);
 }
 
+/* --- config dialogs (add provider / add client key) ------------------------- */
+
+dialog {
+  width: min(480px, 92vw);
+  max-height: 88vh;
+  overflow: auto;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-soft);
+}
+dialog::backdrop {
+  background: rgba(8, 9, 26, 0.6);
+}
+.dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-5);
+}
+.dialog-form .field {
+  width: 100%;
+  box-sizing: border-box;
+}
+.dialog-form textarea.field {
+  min-height: 84px;
+  resize: vertical;
+}
+.dialog-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: var(--sp-1);
+}
+/* Live request-path hint under the Endpoint field (Add provider). */
+#endpoint-hint {
+  margin: var(--sp-1) 0 0;
+  white-space: pre-line;
+}
+.btn-save {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.btn-save:hover {
+  background: var(--accent-hover);
+}
+
 /* --- footer ------------------------------------------------------------------ */
 
 .app-footer {
@@ -2571,4 +2621,89 @@ table.data tbody > tr:not(.detail-row):hover {
   .lat-pins {
     height: 38px;
   }
+}
+
+/* --- Masked provider / client key management ------------------------------
+   Manage providers dialog (list → card) and the Client access list. */
+
+/* Divider above the masked client-key list inside the Credentials panel. */
+#client-access {
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--border);
+}
+
+/* Shared list shells: rows stack with the same rhythm as the key board. */
+.manage-list,
+.manage-keys,
+#client-key-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+/* Provider row: name → endpoint → key-count badge (click opens the card). */
+.manage-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-2);
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.manage-row:hover {
+  background: var(--accent-tint);
+}
+
+.manage-name {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.manage-endpoint {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-3);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Masked rows: mask left, actions right (client row carries Revoke). */
+.manage-key,
+.client-key-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-1) var(--sp-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+}
+
+.client-mask {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Add-key row: the input takes the room, the button keeps its own width. */
+.pm-add-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.pm-add-row .field {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
 }

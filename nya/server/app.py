@@ -221,6 +221,11 @@ class NyaProxyApp:
                 )
             return
 
+        # A dedicated dashboard key decouples admin login from the proxy keys;
+        # with it set, neither the master entry nor the fallback matters.
+        if self.auth.dashboard_configured():
+            return
+
         # Auth is on, but a blank first entry (an unset ${VAR}, a stray '-' in
         # YAML) leaves no master key. Proxying still works; the dashboard and
         # config UI are locked, which is safe but baffling without a warning.
@@ -230,6 +235,12 @@ class NyaProxyApp:
                 "configured: the dashboard and config UI will reject every key. "
                 "Proxy traffic still works with the remaining keys."
             )
+
+        logger.warning(
+            "server.dashboard.api_key is not set: dashboard and config UI login "
+            "falls back to the first server.api_key entry (master key). Set "
+            "server.dashboard.api_key to decouple admin login from proxy keys."
+        )
 
     async def init_nya_services(self):
         """

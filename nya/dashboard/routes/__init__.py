@@ -7,6 +7,7 @@ Routes read their dependencies (metrics collector, request queue) from the
 ``dashboard`` object at request time, so wiring order does not matter.
 """
 
+from .config import register_config_routes
 from .control import register_control_routes
 from .history import register_history_routes
 from .metrics import register_metrics_routes
@@ -14,6 +15,7 @@ from .pages import register_page_routes
 from .queue import register_queue_routes
 
 __all__ = [
+    "register_config_routes",
     "register_control_routes",
     "register_history_routes",
     "register_metrics_routes",

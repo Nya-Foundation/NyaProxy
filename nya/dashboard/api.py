@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .._version import __version__
 from .routes import (
+    register_config_routes,
     register_control_routes,
     register_history_routes,
     register_metrics_routes,
@@ -82,6 +83,7 @@ class DashboardAPI:
         register_queue_routes(self.app, self)
         if self.enable_control:
             register_control_routes(self.app, self)
+            register_config_routes(self.app, self)
 
     def get_html_directory(self) -> Path:
         """

@@ -318,6 +318,23 @@ class ConfigManager:
         else:
             return str(api_key)
 
+    def get_dashboard_api_key(self) -> Union[None, str, List[str]]:
+        """
+        Get the dedicated dashboard/config-UI login key(s), if configured.
+
+        Returned as-is (None | str | list); normalization to usable entries
+        happens in ``AuthManager.dashboard_keys``.
+        """
+
+        api_key = self.config.get("server.dashboard.api_key", None)
+
+        if api_key is None:
+            return None
+        elif isinstance(api_key, list):
+            return api_key
+        else:
+            return str(api_key)
+
     def _master_api_key(self) -> Optional[str]:
         """
         The first configured key, which is the only one allowed to administer
