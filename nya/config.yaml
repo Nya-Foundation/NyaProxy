@@ -42,6 +42,9 @@ default_settings:
     enabled: false
     endpoint_rate_limit: "0"
     key_rate_limit: "0"
+    # Enforce several windows on every key at once, e.g. a per-minute and a
+    # per-day quota. Takes precedence over key_rate_limit.
+    # key_rate_limits: ["40/m", "1000/d"]
     ip_rate_limit: "0"
     user_rate_limit: "0"
     rate_limit_paths:

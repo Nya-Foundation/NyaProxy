@@ -180,6 +180,7 @@ def test_api_getters_fall_back_to_default_settings_and_api_overrides():
     assert manager.get_api_rate_limit_enabled("openai") is True
     assert manager.get_api_endpoint_rate_limit("openai") == "10/m"
     assert manager.get_api_key_rate_limit("openai") == "1/s"
+    assert manager.get_api_key_rate_limits("openai") == ["1/s"]
     assert manager.get_api_ip_rate_limit("openai") == "2/s"
     assert manager.get_api_user_rate_limit("openai") == "3/s"
     assert manager.get_api_retry_enabled("openai") is True
@@ -191,6 +192,17 @@ def test_api_getters_fall_back_to_default_settings_and_api_overrides():
     assert manager.get_api_key_blocking_status_codes("openai") == [403, 429]
     assert manager.get_api_key_blocking_duration_seconds("openai") == 60
     assert manager.get_api_rate_limit_paths("openai") == ["/v1/*"]
+
+
+def test_key_rate_limits_list_takes_precedence_over_single_limit():
+    data = sample_data()
+    data["apis"]["openai"]["rate_limit"] = {
+        "key_rate_limit": "1/s",
+        "key_rate_limits": ["40/m", "1000/d"],
+    }
+    manager = make_manager(data)
+
+    assert manager.get_api_key_rate_limits("openai") == ["40/m", "1000/d"]
 
 
 def test_api_lookup_aliases_variables_and_disabled_substitutions():

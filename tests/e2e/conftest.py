@@ -198,6 +198,7 @@ def proxy_server(tmp_path: Path, upstream_server):
         load_balancing_strategy: str = "round_robin",
         key_concurrency: bool = True,
         key_rate_limit: str = "1000/m",
+        key_rate_limits: tuple[str, ...] = (),
         endpoint_rate_limit: str = "1000/m",
         ip_rate_limit: str = "1000/m",
         user_rate_limit: str = "1000/m",
@@ -228,6 +229,11 @@ def proxy_server(tmp_path: Path, upstream_server):
         port = get_free_port()
         config_path = tmp_path / f"nyaproxy-{port}.yaml"
         log_path = tmp_path / f"nyaproxy-{port}.log"
+        extra_key_rate_limits = ""
+        if key_rate_limits:
+            extra_key_rate_limits = "    key_rate_limits:\n" + "".join(
+                f'      - "{limit}"\n' for limit in key_rate_limits
+            )
         config_path.write_text(
             f"""
 server:
@@ -262,7 +268,7 @@ default_settings:
     enabled: {str(rate_limit_enabled).lower()}
     endpoint_rate_limit: "{endpoint_rate_limit}"
     key_rate_limit: "{key_rate_limit}"
-    ip_rate_limit: "{ip_rate_limit}"
+{extra_key_rate_limits}    ip_rate_limit: "{ip_rate_limit}"
     user_rate_limit: "{user_rate_limit}"
     rate_limit_paths:
       - "*"

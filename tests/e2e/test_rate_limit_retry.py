@@ -77,6 +77,37 @@ def test_key_rate_limit_spreads_burst_across_keys(proxy_server, upstream_server)
     assert all(count == 2 for count in usage.values())
 
 
+def test_multi_window_key_limit_exhausts_daily_quota(proxy_server, upstream_server):
+    """A per-key daily quota blocks the pool even when the minute window is free."""
+    proxy_url = proxy_server(
+        key_rate_limit="1000/m",
+        key_rate_limits=("1000/m", "1/d"),
+        max_workers=9,
+        queue_expiry_seconds=1,
+    )
+    _, upstream = upstream_server
+
+    for index in range(len(UPSTREAM_KEYS)):
+        response = httpx.get(
+            f"{proxy_url}/api/mock/v1/daily/{index}",
+            headers=proxy_headers(),
+            timeout=15,
+        )
+        assert response.status_code == 200
+
+    # Every key has spent its one request for the day, so the next call waits
+    # for a window that is a day away and expires from the queue instead of
+    # reaching the upstream.
+    exhausted = httpx.get(
+        f"{proxy_url}/api/mock/v1/daily/exhausted",
+        headers=proxy_headers(),
+        timeout=15,
+    )
+
+    assert exhausted.status_code in {429, 503, 504}
+    assert len(upstream.records) == len(UPSTREAM_KEYS)
+
+
 def test_queue_overflow_fails_fast_with_503(proxy_server, upstream_server):
     """When the queue is full new requests get 503, queued ones expire to 504."""
     proxy_url = proxy_server(

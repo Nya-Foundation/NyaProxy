@@ -95,6 +95,9 @@ class CoreConfig:
     def get_api_key_rate_limit(self, api_name):
         return "1/s"
 
+    def get_api_key_rate_limits(self, api_name):
+        return [self.get_api_key_rate_limit(api_name)]
+
     def get_api_endpoint_rate_limit(self, api_name):
         return "0"
 

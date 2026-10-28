@@ -6,7 +6,7 @@ import logging
 import re
 import time
 from collections import deque
-from typing import Any, Deque, Dict, Optional, Tuple
+from typing import Any, Deque, Dict, List, Optional, Tuple, Union
 
 from ..common.exceptions import ConfigurationError
 
@@ -30,15 +30,39 @@ class RateLimiter:
         "d": 86400,
     }
 
-    def __init__(self, rate_limit: Optional[str] = None):
+    def __init__(self, rate_limit: Optional[Union[str, List[str]]] = None):
         """
         Initialize rate limiter.
 
         Args:
-            rate_limit: Rate limit string (e.g., "10/m", "1/5s")
+            rate_limit: One rate limit string (e.g., "10/m", "1/5s") or a list
+                of them. Every window in the list is enforced independently,
+                which is what lets a single key carry both a per-minute and a
+                per-day quota.
         """
-        self.rate_limit = rate_limit or "0/s"
-        self.requests_limit, self.window_seconds = self._parse_rate_limit(rate_limit)
+        if isinstance(rate_limit, (list, tuple)):
+            raw_limits: List[Optional[str]] = list(rate_limit) or [None]
+        else:
+            raw_limits = [rate_limit]
+
+        parsed = [self._parse_rate_limit(item) for item in raw_limits]
+
+        # Only windows with a positive quota and a positive length actually
+        # limit. "0" and zero-length windows contribute nothing.
+        self.windows: List[Tuple[int, int]] = [
+            (limit, seconds) for limit, seconds in parsed if limit > 0 and seconds > 0
+        ]
+
+        if len(parsed) == 1:
+            # Preserve the historical single-window attributes exactly.
+            self.requests_limit, self.window_seconds = parsed[0]
+        else:
+            # Summary used for pruning and state filtering: the widest window.
+            self.requests_limit, self.window_seconds = max(
+                self.windows, key=lambda item: item[1], default=(0, 0)
+            )
+
+        self.rate_limit = self._format_rate_limit(rate_limit)
         self.request_timestamps: Deque[float] = deque()
         self.last_accessed = time.time()
 
@@ -52,6 +76,17 @@ class RateLimiter:
 
     def __repr__(self):
         return f"<RateLimiter rate_limit={self.rate_limit}>"
+
+    @staticmethod
+    def _format_rate_limit(
+        rate_limit: Optional[Union[str, List[str]]],
+    ) -> str:
+        """Human-readable form used by repr and the persisted state."""
+        if rate_limit is None:
+            return "0/s"
+        if isinstance(rate_limit, (list, tuple)):
+            return ",".join(str(item) for item in rate_limit) or "0/s"
+        return str(rate_limit)
 
     def _parse_rate_limit(self, rate_limit: Optional[str]) -> Tuple[int, int]:
         """
@@ -95,6 +130,9 @@ class RateLimiter:
     def is_limited(self) -> bool:
         """
         Check if currently at rate limit.
+
+        With more than one window the limiter is at its limit as soon as any
+        single window is exhausted.
         """
         self.touch()
 
@@ -104,14 +142,30 @@ class RateLimiter:
         if time.time() < self.blocked_until:
             return True
 
-        if self.requests_limit == 0:
-            return False
-
-        if self.window_seconds == 0:
+        if not self.windows:
             return False
 
         self._clean_old_timestamps()
-        return len(self.request_timestamps) >= self.requests_limit
+        now = time.time()
+        for limit, seconds in self.windows:
+            if self._count_within(now, seconds) >= limit:
+                return True
+        return False
+
+    def _count_within(self, current_time: float, seconds: int) -> int:
+        """
+        Count recorded requests inside one window.
+
+        Timestamps are kept in ascending order, so walking from the right
+        stops at the first request that has aged out.
+        """
+        cutoff = current_time - seconds
+        count = 0
+        for timestamp in reversed(self.request_timestamps):
+            if timestamp < cutoff:
+                break
+            count += 1
+        return count
 
     def record(self) -> None:
         """
@@ -205,6 +259,9 @@ class RateLimiter:
     def time_until_reset(self) -> float:
         """
         Get time until rate limit resets.
+
+        With several windows the limiter only reopens once *every* exhausted
+        window has room again, so the answer is the slowest wait among them.
         """
 
         if not self.is_limited():
@@ -215,12 +272,26 @@ class RateLimiter:
 
         # A locked limiter has no natural reset time and may hold no
         # timestamps at all; guard against indexing an empty deque.
-        if not self.request_timestamps:
+        if not self.windows or not self.request_timestamps:
             return blocked_wait
 
-        oldest_timestamp = self.request_timestamps[0]
-        reset_time = oldest_timestamp + self.window_seconds - current_time
-        return max(blocked_wait, reset_time, 0.0)
+        timestamps = list(self.request_timestamps)
+        waits: List[float] = []
+        for limit, seconds in self.windows:
+            window_start = current_time - seconds
+            in_window = [
+                timestamp for timestamp in timestamps if timestamp >= window_start
+            ]
+            if len(in_window) < limit:
+                continue
+            # The oldest requests beyond the quota must age out before the
+            # window has room again.
+            expire_index = min(len(in_window) - limit, len(in_window) - 1)
+            waits.append(in_window[expire_index] + seconds - current_time)
+
+        if not waits:
+            return blocked_wait
+        return max(blocked_wait, max(waits), 0.0)
 
     def clear(self) -> None:
         """

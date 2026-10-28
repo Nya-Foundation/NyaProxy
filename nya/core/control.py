@@ -159,8 +159,22 @@ class TrafficManager:
         """
         Get or create a rate limiter for a specific API key.
         """
-        rate_limit = self.config.get_api_key_rate_limit(api_name)
-        return self.get_or_create_limiter(f"{api_name}_key_{key}", rate_limit)
+        return self.get_or_create_limiter(
+            f"{api_name}_key_{key}", self._key_rate_limits(api_name)
+        )
+
+    def _key_rate_limits(self, api_name: str) -> Any:
+        """
+        Every quota configured for an API key.
+
+        Configs and test doubles written before multi-window support only
+        expose the single-limit getter, so fall back to it when the list
+        getter is absent.
+        """
+        getter = getattr(self.config, "get_api_key_rate_limits", None)
+        if callable(getter):
+            return getter(api_name)
+        return self.config.get_api_key_rate_limit(api_name)
 
     def get_user_limiter(self, api_name: str, user: str) -> RateLimiter:
         """

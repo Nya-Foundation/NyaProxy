@@ -210,6 +210,14 @@
                             "pattern": "^(0|(\\d+)/((\\d+[smhd])|[smhd]))$",
                             "description": "Per key rate limit (e.g. '10/m', '1/5s', or '0' for unlimited)"
                         },
+                        "key_rate_limits": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "pattern": "^(0|(\\d+)/((\\d+[smhd])|[smhd]))$"
+                            },
+                            "description": "Per key rate limits enforced simultaneously, e.g. ['40/m', '1000/d']. Takes precedence over key_rate_limit."
+                        },
                         "ip_rate_limit": {
                             "type": "string",
                             "pattern": "^(0|(\\d+)/((\\d+[smhd])|[smhd]))$",

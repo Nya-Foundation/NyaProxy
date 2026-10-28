@@ -31,6 +31,7 @@ BUILTIN_API_DEFAULTS: Dict[str, Any] = {
     "rate_limit.enabled": False,
     "rate_limit.endpoint_rate_limit": "0",
     "rate_limit.key_rate_limit": "0",
+    "rate_limit.key_rate_limits": [],
     "rate_limit.ip_rate_limit": "0",
     "rate_limit.user_rate_limit": "0",
     "rate_limit.rate_limit_paths": ["*"],
@@ -567,6 +568,20 @@ class ConfigManager:
         Get key rate limit.
         """
         return self.get_api_setting(api_name, "rate_limit.key_rate_limit", "str")
+
+    def get_api_key_rate_limits(self, api_name: str) -> List[str]:
+        """
+        Get every quota that applies to a single key.
+
+        ``key_rate_limits`` is the multi-window form (e.g. a per-minute and a
+        per-day quota enforced together). The older ``key_rate_limit`` string
+        is still honoured as a one-window shorthand.
+        """
+        limits = self.get_api_setting(api_name, "rate_limit.key_rate_limits", "list")
+        if limits:
+            return [str(limit) for limit in limits]
+        single = self.get_api_key_rate_limit(api_name)
+        return [single] if single else []
 
     def get_api_ip_rate_limit(self, api_name: str) -> str:
         """
